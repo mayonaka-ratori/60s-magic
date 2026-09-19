@@ -1,0 +1,15 @@
+import type { SpeechEntry } from './types';
+
+export class SpeechBook {
+  private entries=new Map<number,SpeechEntry>();
+  private locked=false;
+  add(entry: SpeechEntry) {
+    if(this.locked || !Number.isFinite(entry.startMs) || !Number.isFinite(entry.endMs) || entry.startMs<0 || entry.startMs>=14000 || entry.endMs<entry.startMs || entry.endMs>14000 || entry.text.length>1500)return;
+    const prior=this.entries.get(entry.id);
+    if(prior && (prior.revision>=entry.revision || (prior.final&&!entry.final)))return;
+    this.entries.set(entry.id,{...entry});
+  }
+  snapshot() { return [...this.entries.values()].filter(e=>e.final||e.stability>=0.8).sort((a,b)=>a.startMs-b.startMs); }
+  freeze() {this.locked=true;return this.snapshot();}
+  text() {return this.snapshot().map(e=>e.text).join('、');}
+}

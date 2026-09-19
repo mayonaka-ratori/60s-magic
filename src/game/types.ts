@@ -1,0 +1,41 @@
+export const ELEMENTS = ['fire', 'ice', 'lightning', 'wind', 'light', 'dark', 'neutral'] as const;
+export const FORMS = ['orb', 'beam', 'wall', 'dome', 'wave', 'swarm'] as const;
+export const PURPOSES = ['attack', 'defend', 'bind', 'enhance'] as const;
+export const TRAJECTORIES = ['straight', 'spiral', 'radial', 'orbit', 'homing'] as const;
+export type Element = typeof ELEMENTS[number];
+export type Form = typeof FORMS[number];
+export type Purpose = typeof PURPOSES[number];
+export type Trajectory = typeof TRAJECTORIES[number];
+export type Phase = 'ready' | 'draw' | 'build' | 'chant' | 'complete' | 'release' | 'handoff' | 'finished' | 'cancelled';
+export type Point = { x: number; y: number; t: number; hand: number; stroke: number };
+export type SpeechEntry = { id: number; revision: number; startMs: number; endMs: number; text: string; final: boolean; stability: number; source: 'google' | 'typed' };
+export type Motion = {
+  version: 'motion-1'; coordinateSpace: 'mirrored-normalized-screen';
+  sampleCount: number; trackedHands: number; durationMs: number;
+  coverageWidth: number; coverageHeight: number; pathLength: number;
+  closedness: number; convergence: number; smoothness: number;
+  hasMovement: boolean; descriptions: { coverage: string; outline: string; ending: string };
+};
+export type SpellState = {
+  schemaVersion: 'spell-state-2'; sessionId: string; castId: string; inputRevision: number;
+  phase: 'free'; currentTask: string;
+  inputWindow: { startSessionMs: number; endSessionMs: number; chantPromptSessionMs: number; motionAndSpeechConcurrent: true };
+  motion: Motion;
+  timedEvents: Array<{ startMs: number; endMs: number; motion?: string; speech?: string; speechTiming?: 'utterance' | 'typed' }>;
+  speech: { status: 'recognized' | 'typed' | 'unavailable'; locale: 'ja-JP'; rawTranscript: string; normalizedTranscript: string; explicitCount: number | null; explicitNegation: boolean };
+  previous: null;
+  enemy: { attackKind: 'none'; encounterMode: 'exhibition_success' };
+};
+export type Answer = { type?: string; choice?: string; probabilities?: Record<string, number>; confidence?: number; score?: number; noul?: number };
+export type JevReply = { sessionId: string; castId: string; inputRevision: number; model?: string; answers?: Record<string, Answer>; status: string };
+export type Recipe = {
+  version: 'recipe-1'; element: Element; purpose: Purpose; form: Form; trajectory: Trajectory;
+  count: number; explicitCount: number | null; defense: number; area: number; duration: number; concentration: number;
+  enclosure: boolean; split: boolean; developsPrevious: boolean | null; motionSpeechAligned: boolean | null;
+  noAttack: boolean; name: string; source: 'local' | 'mixed' | 'jev';
+  decisions: Record<string, { source: 'word' | 'motion' | 'default' | 'jev'; reason: string }>;
+  assistance: string[]; model: string | null;
+};
+export const ELEMENT_LABELS: Record<Element, string> = { fire: '炎', ice: '氷', lightning: '雷', wind: '風', light: '光', dark: '闇', neutral: '無属性' };
+export const FORM_LABELS: Record<Form, string> = { orb: '球', beam: '光線', wall: '壁', dome: '結界', wave: '波', swarm: '連弾' };
+export const PURPOSE_LABELS: Record<Purpose, string> = { attack: '攻撃', defend: '防御', bind: '拘束', enhance: '強化' };
