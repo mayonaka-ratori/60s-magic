@@ -42,8 +42,6 @@ export const BLOOM_CALM_PEAK = 1.6;
 /** ブルームを切る目安のfpsと、戻す目安のfps。 */
 export const FPS_DROP = 55, FPS_BACK = 58;
 
-const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
-
 /** 重い後処理（ブルーム、色収差、歪み）を出す時間帯かどうか。 */
 export function postHeavyActive(t: number) { return t >= POST_FROM && t < POST_TO; }
 
