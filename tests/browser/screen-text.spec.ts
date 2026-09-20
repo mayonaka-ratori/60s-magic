@@ -63,3 +63,19 @@ test('遊ぶ人の画面には確認用の表示を出さない',async({page})=>
   await expect(page.locator('.report-actions')).toBeHidden();await expect(page.locator('#feedback')).toBeHidden();
   await page.goto('/?dev=1');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
 });
+
+test('1920×1080で、案内の文字が決めた大きさを下回らない',async({page})=>{
+  // Xboxの指針は1080pで最小28px、設計仕様は操作指示を36〜44pxとしている。
+  // 過去に cast-style.css の24px指定が clamp を打ち消していたので、ここで見張る。
+  await page.setViewportSize({width:1920,height:1080});
+  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.locator('#start').click();await expect(page.locator('#bottom-hud')).toBeVisible();
+  const 下限:Record<string,number>={'#instruction':36,'#hint':16,'.steps span':16,'.enemy-health':20,'#timer b':30,'#timer small':15,'#cancel':14,'.input-panel label':15};
+  for(const [target,min] of Object.entries(下限)) {
+    const size=await page.evaluate(sel=>{const n=document.querySelector(sel);return n?parseFloat(getComputedStyle(n).fontSize):NaN;},target);
+    expect(size,`${target}の文字が${min}pxより小さい`).toBeGreaterThanOrEqual(min);
+  }
+  await expect(page.locator('#instruction')).toHaveText('押したまま、自由に描こう');
+  const 行数=await page.locator('#instruction').evaluate(n=>{const range=document.createRange();range.selectNodeContents(n);return range.getClientRects().length;});
+  expect(行数,'見出しが折り返している').toBe(1);
+});

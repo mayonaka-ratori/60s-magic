@@ -25,7 +25,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <section class="hud" id="hud" hidden><div class="top-progress"><i id="progress"></i></div><div class="enemy-health">遺跡の騎士<i><b id="health"></b></i></div><button class="exit" id="cancel">中止する</button><div class="demo-tag" id="demo-tag" hidden>見本の再生</div>
     <div class="recognized" id="recognized" hidden></div><div class="voice-meter" id="meter" aria-hidden="true">${'<i></i>'.repeat(22)}</div><div class="voice-label" id="voice-label" hidden>声を受け付けています</div><p class="service-notice" id="service-notice" role="status"></p>
     <div class="input-panel" id="input-panel"><label for="chant">声の代わりに、文字で試す</label><input id="chant" type="text" maxlength="160" autocomplete="off" placeholder="例：雷よ、七つに分かれろ"><p>描きながら14秒まで変更できます。<br>何も入れず、線だけでも遊べます。</p></div>
-    <div class="bottom-hud" id="bottom-hud"><h2 class="instruction" id="instruction">手を動かしてみよう</h2><div class="hint" id="hint"></div><div class="steps"><span id="step-input" class="active"><b>1</b>線を描く</span><i></i><span id="step-complete"><b>2</b>形になる</span><i></i><span id="step-release"><b>3</b>放つ</span></div></div>
+    <div class="bottom-hud" id="bottom-hud"><h2 class="instruction" id="instruction">手を動かしてみよう</h2><div class="hint" id="hint"></div><div class="steps"><span id="step-input" class="active"><b>1</b>描く・唱える</span><i></i><span id="step-complete"><b>2</b>術式完成</span><i></i><span id="step-release"><b>3</b>発動</span></div></div>
   </section>
   <section class="result" id="result" hidden><div class="chapter">あなたの魔法ができました</div><h2 id="spell-name"></h2><p class="spell-description" id="spell-description"></p><p class="transcript" id="transcript"></p><div class="result-actions"><button class="primary" id="again">もう一度つくる</button><button class="secondary" id="back">最初へ戻る</button></div><div class="feedback dev-only" id="feedback"><span>自分の魔法を放ったと感じましたか？</span><button data-feedback="yes">そう感じた</button><button data-feedback="unclear">まだ分かりにくい</button></div><div class="report-actions dev-only"><button class="text-button" id="record">確認用の記録を見る</button><button class="text-button" id="download">記録を保存する</button></div></section>
   <div class="status-sheet" id="sheet" hidden><section class="status-content" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="sheet-head"><h2 id="sheet-title"></h2><button class="secondary" id="sheet-close">閉じる</button></div><div id="sheet-body"></div></section></div>
@@ -37,6 +37,7 @@ const devView=new URLSearchParams(location.search).has('dev');
 if(devView)document.body.dataset.dev='1';
 const show=(id:string,visible:boolean)=>{el(id).hidden=!visible;};
 const magic=new MagicCanvas(el<HTMLCanvasElement>('magic'));
+const timerValue=el('timer').querySelector('b')!;
 const sound=new CastAudio();
 const soundToggle=document.createElement('button');soundToggle.id='sound-toggle';soundToggle.className='sound-toggle';soundToggle.textContent='音を消す';el('hud').append(soundToggle);
 function setSound(enabled:boolean){sound.setEnabled(enabled);el<HTMLInputElement>('use-sound').checked=enabled;el<HTMLButtonElement>('test-sound').disabled=!enabled;soundToggle.textContent=enabled?'音を消す':'音を出す';soundToggle.setAttribute('aria-pressed',String(!enabled));if(enabled)void sound.prepare();}
@@ -128,7 +129,8 @@ el('chant').addEventListener('input',()=>{if(session?.accepting)session.speech.a
 function updateUi() {
   if(!session)return;
   const t=session.elapsed/1000,phase=session.phase;
-  el('timer').innerHTML=`<small>のこり</small><b>${Math.max(0,Math.ceil(24-t))}</b><small>秒</small>`;
+  const left=Math.max(0,Math.ceil(24-t));
+  if(timerValue.textContent!==String(left))timerValue.textContent=String(left);
   el('progress').style.width=`${Math.min(100,t/24*100)}%`;
   const labels:Partial<Record<Phase,[string,string]>>={
     draw:[mode==='pointer'?'押したまま、自由に描こう':'手を動かしてみよう','止まっても、また描き足せます'],
