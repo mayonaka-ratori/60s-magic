@@ -132,6 +132,8 @@ npx playwright test tests/browser/local-voice.spec.ts
 
 確認用の合成音声と結果は `.local-speech` に置きます。人の録音ではありません。認識用のファイルが未取得のPCでは音声の試験はできず、ブラウザーの音声試験は確認用の音がなければ省略します。
 
+演出は「派手」の設定が既定で、`?preset=calm|vivid|max` で変えられます。演出だけを見比べる画面は [http://localhost:5173/?view=effects](http://localhost:5173/?view=effects) です。[実装の説明](docs/演出のバリエーション_実装.md)と[調査と検討](docs/演出のバリエーション_調査と検討.md)。
+
 人に試してもらう手順は [docs/最初の24秒_確認手順.md](docs/最初の24秒_確認手順.md) にまとめています。
 今回の結果と未確認事項は [docs/実装と確認の記録.md](docs/実装と確認の記録.md) をご覧ください。
 文書の一覧と段階ごとの進み具合は [docs/README.md](docs/README.md) にまとめています。
