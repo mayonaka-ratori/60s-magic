@@ -6,7 +6,9 @@ const overlaps=(page:Page,where:string)=>page.evaluate(([sel,label])=>{
   const name=(n:Element)=>(n.id?'#'+n.id:'.'+String(n.className).split(' ')[0]);
   const shown=[...document.querySelectorAll(sel)].filter(n=>{
     const style=getComputedStyle(n),box=n.getBoundingClientRect();
-    return style.display!=='none'&&style.visibility!=='hidden'&&Number(style.opacity)>0&&!n.closest('[hidden]')&&box.width>2&&box.height>2;
+    // たたんだ details の中身は見えないが、四角形だけは残るので外す。
+    return style.display!=='none'&&style.visibility!=='hidden'&&Number(style.opacity)>0
+      &&!n.closest('[hidden]')&&!n.closest('details:not([open])')&&box.width>2&&box.height>2;
   });
   const found:string[]=[];
   for(let i=0;i<shown.length;i++)for(let j=i+1;j<shown.length;j++) {
@@ -62,4 +64,49 @@ test('遊ぶ人の画面には確認用の表示を出さない',async({page})=>
   await expect(page.locator('#result')).toBeVisible({timeout:32000});
   await expect(page.locator('.report-actions')).toBeHidden();await expect(page.locator('#feedback')).toBeHidden();
   await page.goto('/?dev=1');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
+});
+
+test('1920×1080で、案内の文字が決めた大きさを下回らない',async({page})=>{
+  // Xboxの指針は1080pで最小28px、設計仕様は操作指示を36〜44pxとしている。
+  // 過去に上書きの24px指定が clamp を打ち消していたので、ここで見張る。
+  await page.setViewportSize({width:1920,height:1080});
+  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.locator('#start').click();await expect(page.locator('#bottom-hud')).toBeVisible();
+  const 下限:Record<string,number>={'#instruction':36,'#hint':16,'.steps span':16,'.enemy-health':20,'#timer b':30,'#timer small':15,'#cancel':14,'.input-panel label':15};
+  for(const [target,min] of Object.entries(下限)) {
+    const size=await page.evaluate(sel=>{const n=document.querySelector(sel);return n?parseFloat(getComputedStyle(n).fontSize):NaN;},target);
+    expect(size,`${target}の文字が${min}pxより小さい`).toBeGreaterThanOrEqual(min);
+  }
+  await expect(page.locator('#instruction')).toHaveText('押したまま、自由に描こう');
+  const 行数=await page.locator('#instruction').evaluate(n=>{const range=document.createRange();range.selectNodeContents(n);return range.getClientRects().length;});
+  expect(行数,'見出しが折り返している').toBe(1);
+});
+
+test('締め切りが近づくと知らせ、発動では魔法名を大きく出す',async({page})=>{
+  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
+  await page.locator('#chant').fill('雷よ、七つに分かれろ');
+  // 描画が遅い環境でも取りこぼさないよう、1秒ごとに見て、出たものを集める。
+  const 見たもの=new Set<string>();
+  for(let i=0;i<26&&await page.locator('#result').isHidden();i++) {
+    const いま=await page.evaluate(()=>({
+      段階:document.getElementById('app')!.dataset.deadline??'',
+      時計:!(document.getElementById('timer') as HTMLElement).hidden,
+      光:parseFloat(getComputedStyle(document.getElementById('deadline')!).opacity),
+      名前:(document.getElementById('reveal') as HTMLElement).hidden?'':document.getElementById('reveal-name')!.textContent??'',
+      案内:!(document.getElementById('bottom-hud') as HTMLElement).hidden,
+    }));
+    if(いま.段階)見たもの.add(`段階:${いま.段階}`);
+    if(いま.光>.05)見たもの.add('外周の光');
+    if(!いま.時計)見たもの.add('締め切り後は時計を消す');
+    if(いま.名前)見たもの.add(`魔法名:${いま.名前}`);
+    if(いま.名前&&!いま.案内)見たもの.add('発動中は案内を閉じる');
+    await page.waitForTimeout(900);
+  }
+  for(const 期待 of ['段階:soon','段階:urgent','外周の光','締め切り後は時計を消す','魔法名:7つの雷の連弾','発動中は案内を閉じる'])
+    expect([...見たもの],`${期待}を見ていない`).toContain(期待);
+  await expect(page.locator('#result')).toBeVisible({timeout:12000});
+  await page.waitForTimeout(1500);
+  await expect(page.locator('#result')).not.toHaveClass(/name-only/);
+  await expect(page.locator('#again')).toBeVisible();
 });

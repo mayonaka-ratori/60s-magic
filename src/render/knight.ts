@@ -17,7 +17,7 @@ import { clamp } from '../game/motion';
 import { colors } from './magic';
 import { getPreset, type EffectPreset } from './effects/presets';
 import { smooth } from './effects/frame';
-import { FADE_OUT_AT } from './effects/screen';
+import { FADE_OUT_AT, IMPACT_AT } from './effects/screen';
 import type { Recipe } from '../game/types';
 
 /** 演出が消え終わる時刻（ミリ秒）。画面全体の効果と同じ値を使う。 */
@@ -344,6 +344,25 @@ export class Knight {
     context.setTransform(1,0,0,1,0,0);context.globalAlpha=1;context.globalCompositeOperation='source-over';
     this.trail.push(spot);if(this.trail.length>4)this.trail.shift();
   }
+  /**
+   * 当たった場所に魔法の色の傷あとを残す。体力バーを見なくても効いたと分かるようにする。
+   * 濃さは命中から0.9秒で薄くなり、その後は0.38のまま残す。
+   */
+  private paintScar(scar:number,recipe:Recipe|null,x:number,y:number) {
+    const c=this.view;if(!c)return;
+    const w=this.canvas.width,h=this.canvas.height;
+    // 一枚絵の騎士と同じ大きさの比で描く。画面の大きさが変わっても傷あとの比は変えない。
+    const color=this.preset.palettes[recipe?.element??'neutral'].main,r=44*Math.max(w/1672,h/941);
+    c.save();c.setTransform(1,0,0,1,0,0);c.globalCompositeOperation='lighter';
+    const glow=c.createRadialGradient(x,y,0,x,y,r);
+    glow.addColorStop(0,color+'cc');glow.addColorStop(.45,color+'55');glow.addColorStop(1,color+'00');
+    c.globalAlpha=Math.min(1,scar);c.fillStyle=glow;
+    c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fill();
+    c.globalAlpha=Math.min(1,scar*.9);c.strokeStyle=color;c.lineWidth=2.4*Math.max(w/1672,h/941);c.lineCap='round';
+    c.beginPath();c.moveTo(x-r*.44,y-r*.34);c.lineTo(x+r*.32,y+r*.36);
+    c.moveTo(x-r*.12,y+r*.42);c.lineTo(x+r*.4,y-r*.24);c.stroke();
+    c.restore();
+  }
   /** 控えめモード。白飛びを消し、残像と輪郭の発光を弱める。 */
   setCalm(calm:boolean){this.calm=calm;}
   /** 見た目の設定（控えめ・派手・最大）。演出canvasと同じものを渡す。 */
@@ -375,8 +394,12 @@ export class Knight {
     const spot=knightTransform(pose,w,h,unit);
     this.compose(pose,recipe,spot,unit);
     const hit=knightPoint(spot,projected.x,projected.y);
+    // 命中から0.9秒かけて薄くなり、その後は残り続ける傷あと。
+    const scar=active&&ms>=IMPACT_AT*1000?Math.max(.38,1.15-(ms-IMPACT_AT*1000)/900):0;
+    if(scar>0)this.paintScar(scar,recipe,hit.x,hit.y);
     this.target={x:hit.x/w,y:hit.y/h};
     this.canvas.dataset.state=pose.state;
+    this.canvas.dataset.scar=scar>0?'1':'0';
     this.canvas.classList.toggle('spell-finished',active&&ms>=FADE_OUT_MS);
   }
   dispose(){this.scene.dispose();this.engine.dispose();}
