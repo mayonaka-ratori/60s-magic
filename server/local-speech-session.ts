@@ -38,7 +38,7 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
     // 終了の直前に途中の認識を始めず、最後の音を含む要求を優先する。
     if(!ended&&lastSample>=217600)return;
     // 締め切りに間に合わない認識は始めない。結果を捨てるだけで、直前の結果を送るのも遅れる。
-    if(ended&&lastProcessingMs>0&&now+lastProcessingMs*1.1>deadline){finish();return;}
+    if(ended&&lastProcessingMs>0&&now+lastProcessingMs>deadline){finish();return;}
     busy=true;lastRequestAt=now;
     const requestVersion=version,start=firstSample,end=lastSample,isFinal=ended;
     const audio=Buffer.from(pcm.subarray(start*2,end*2));

@@ -5,10 +5,10 @@ import type { JevReply, Phase, Recipe, SpellState } from './types';
 import { readChant, type ChantCorrection } from './chant-dictionary';
 
 // 16秒の確定は仕様の決まりなので動かさない。その手前をどう割るかだけを決める。
-/** 14秒で入力を締めたあと、声の最後の文字を待てる時間。画面側の打ち切りに合わせる。 */
-export const SPEECH_WAIT_MS=1100;
+/** 14秒で入力を締めたあと、声の最後の文字を待てる時間。MacのGPUでの認識一回分（約1.3秒）が入る長さにする。 */
+export const SPEECH_WAIT_MS=1400;
 /** 声を待つのをやめ、Jevへ送る時刻。声が先に届けばもっと早く送る。 */
-export const SPEECH_LIMIT_MS=15100;
+export const SPEECH_LIMIT_MS=15400;
 /** Jevの返事を受け取れる最後の時刻。確定の手前で必ず打ち切る。 */
 export const REPLY_LIMIT_MS=15900;
 /** 魔法を確定する時刻。 */
