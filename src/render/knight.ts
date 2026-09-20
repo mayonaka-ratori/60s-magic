@@ -136,7 +136,8 @@ export class Knight {
       for(let y=0;y<SHEET;y++)for(let x=0;x<SHEET;x++) {
         const dx=(at(x+1,y)-at(x-1,y))/255*depth,dy=(at(x,y+1)-at(x,y-1))/255*depth;
         const len=Math.hypot(dx,dy,1),i=(y*SHEET+x)*4;
-        out.data[i]=(-dx/len*.5+.5)*255;out.data[i+1]=(-dy/len*.5+.5)*255;out.data[i+2]=(1/len*.5+.5)*255;out.data[i+3]=255;
+        // 縦は絵が上下入れ替わって貼られるぶん、符号を逆にする。ここを間違えるとへこみが出っぱりに見える。
+        out.data[i]=(-dx/len*.5+.5)*255;out.data[i+1]=(dy/len*.5+.5)*255;out.data[i+2]=(1/len*.5+.5)*255;out.data[i+3]=255;
       }
       c.putImageData(out,0,0);texture.update();return texture;
     };
@@ -191,12 +192,13 @@ export class Knight {
     dents.level=.6;
 
     // 盾の紋章。術式と同じ丸と三角を彫る。絵の真ん中が盾の面の真ん中に来る。
+    // 絵は上下が入れ替わって貼られるので、三角は絵の下向きに描くと盾では上を向く。
     const crest=(c:CanvasRenderingContext2D,color:string,width:number)=>{
       c.strokeStyle=color;c.lineWidth=width;c.lineJoin='round';
       for(const r of [76,65]){c.beginPath();c.arc(128,128,r,0,Math.PI*2);c.stroke();}
       c.beginPath();
       for(let i=0;i<3;i++){
-        const a=-Math.PI/2+i*Math.PI*2/3,x=128+Math.cos(a)*56,y=128+Math.sin(a)*56;
+        const a=Math.PI/2+i*Math.PI*2/3,x=128+Math.cos(a)*56,y=128+Math.sin(a)*56;
         if(i)c.lineTo(x,y);else c.moveTo(x,y);
       }
       c.closePath();c.stroke();
@@ -226,7 +228,7 @@ export class Knight {
       }
     });
 
-    // 腰布の裾を欠けさせる。横に並ぶ方向が裾の外周、絵の左端が裾の先。
+    // 腰布の裾を欠けさせる。絵の左端が裾の先で、縦に並ぶ方向が裾を一周する向き。
     const tatter=sheet('腰布の絵','#e6e6e6',(c,wrap)=>{
       paintGrime(c,wrap);
       c.globalCompositeOperation='destination-out';
@@ -235,11 +237,17 @@ export class Knight {
       c.beginPath();c.moveTo(-2,-2);
       for(let y=0;y<=SHEET;y+=8)c.lineTo(5+Math.sin(y/SHEET*Math.PI*4)*4+Math.sin(y/SHEET*Math.PI*14)*2,y);
       c.lineTo(-2,SHEET+2);c.closePath();c.fill();
+      const notch=(at:number,deep:number,half:number)=>{
+        c.beginPath();c.moveTo(-2,at-half);c.quadraticCurveTo(deep*.55,at-half*.25,deep,at);
+        c.quadraticCurveTo(deep*.55,at+half*.25,-2,at+half);c.closePath();c.fill();
+      };
       for(let y=rnd()*10;y<SHEET;y+=5+rnd()*15) {
         const chance=rnd(),deep=chance<.34?10+rnd()*14:chance<.8?22+rnd()*22:44+rnd()*26;
-        const half=4+rnd()*(deep<26?6:11),at=y;
-        wrap(()=>{c.beginPath();c.moveTo(-2,at-half);c.quadraticCurveTo(deep*.55,at-half*.25,deep,at);
-          c.quadraticCurveTo(deep*.55,at+half*.25,-2,at+half);c.closePath();c.fill();});
+        const half=4+rnd()*(deep<26?6:11);
+        // 一周する向き（縦）だけ回り込ませる。横へ回すと腰側の端まで欠ける。
+        notch(y,deep,half);
+        if(y-half<0)notch(y+SHEET,deep,half);
+        if(y+half>SHEET)notch(y-SHEET,deep,half);
       }
       c.globalCompositeOperation='source-over';
     });
@@ -253,11 +261,13 @@ export class Knight {
       return m;
     };
     // 汚れとてかりむらを貼る。色は材質の色に掛かり、てかりは場所ごとに強弱が付く。
-    const worn=(m:StandardMaterial,shiny=true)=>{
-      m.diffuseTexture=grime;m.bumpTexture=dents;
+    const worn=(m:StandardMaterial,shiny=true,paint=grime,relief=dents)=>{
+      m.diffuseTexture=paint;m.bumpTexture=relief;
       if(shiny)m.specularTexture=shine;
       return m;
     };
+    // 同じ見た目の材質は数値を1か所にまとめ、片方だけ直してしまうのを防ぐ。
+    const GOLD=['#8c7749',.36,.7] as const,STEEL=['#8a919d',.48,1.2] as const,FABRIC=['#393c47',.05,.6] as const;
     // 金属には空と床を映り込ませる。正面より縁のほうが強く映る。
     const metal=(m:StandardMaterial,strength=1)=>{
       m.reflectionTexture=sight;
@@ -267,18 +277,16 @@ export class Knight {
     };
     this.armor=worn(metal(material('鎧','#5c6069',.3,1)));
     const plate=worn(metal(material('当て板','#464955',.23,.8),.8));
-    const cloth=worn(material('布','#393c47',.05,.6),false);cloth.backFaceCulling=false;
+    const cloth=worn(material('布',...FABRIC),false);cloth.backFaceCulling=false;
     // 腰布は裾を欠かせる。透けさせるのではなく、絵の薄い所を描かない形にして、重なりの順番で困らないようにする。
-    const skirt=worn(material('腰布','#393c47',.05,.6),false);skirt.backFaceCulling=false;
-    skirt.diffuseTexture=tatter;skirt.useAlphaFromDiffuseTexture=true;
+    const skirt=worn(material('腰布',...FABRIC),false,tatter);skirt.backFaceCulling=false;
     skirt.transparencyMode=StandardMaterial.MATERIAL_ALPHATEST;skirt.alphaCutOff=.45;
     const hollow=material('隙間','#0b0f16',.02);hollow.emissiveColor=new Color3(.52,.23,.07);
     this.eyes=hollow;
-    const trim=worn(metal(material('金の縁','#8c7749',.36,.7),.9));
-    const beltTrim=worn(metal(material('帯の飾り','#8c7749',.36,.7),.9));beltTrim.diffuseTexture=braid;
-    const steel=worn(metal(material('刃と縁','#8a919d',.48,1.2),1.3));
-    const shieldPlate=worn(metal(material('盾の面','#8a919d',.48,1.2),1.3));
-    shieldPlate.diffuseTexture=emblem;shieldPlate.bumpTexture=emblemDents;
+    const trim=worn(metal(material('金の縁',...GOLD),.9));
+    const beltTrim=worn(metal(material('帯の飾り',...GOLD),.9),true,braid);
+    const steel=worn(metal(material('刃と縁',...STEEL),1.3));
+    const shieldPlate=worn(metal(material('盾の面',...STEEL),1.3),true,emblem,emblemDents);
     this.coreMaterial=material('胸の核','#2a2418',.1);this.coreMaterial.emissiveColor=Color3.FromHexString('#6f542e');
 
     this.root=new TransformNode('遺跡の騎士',this.scene);
