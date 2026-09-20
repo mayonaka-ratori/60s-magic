@@ -13,26 +13,28 @@ import { CastAudio } from './audio/cast-audio';
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas>
   <div class="vignette"></div>
-  <header><div class="brand"><span class="sigil" aria-hidden="true"></span><div><div class="brand-name">はじまりの魔法</div><p class="eyebrow">描いて、唱えて、解き放つ。</p></div></div><div class="top-right"><span class="trial">最初の24秒・試作</span><div class="timer" id="timer" hidden>00 <small>/ 24秒</small></div></div></header>
-  <section class="welcome" id="welcome"><div class="chapter">第一幕 / 最初の魔法</div><h1><span>その手で描く。</span><span>その言葉で放つ。</span></h1><p class="intro">自由に描いた線が、ひとつの魔法になる。<br>手を動かしながら、好きな言葉を唱えてください。</p>
+  <header><div class="brand"><span class="sigil" aria-hidden="true"></span><div><div class="brand-name">はじまりの魔法</div><p class="eyebrow">描いて、唱えて、解き放つ。</p></div></div><div class="top-right"><span class="trial dev-only">最初の24秒・試作</span><div class="timer" id="timer" hidden><small>のこり</small><b>24</b><small>秒</small></div></div></header>
+  <section class="welcome" id="welcome"><div class="chapter">第一幕 / 最初の魔法</div><h1><span>その手で描く。</span><span>その言葉で放つ。</span></h1><p class="intro">自由に描いた線が、ひとつの魔法になる。<br>手を動かしながら、好きな言葉を唱えてください。<br>形に正解はありません。小さな動きでも大丈夫。</p>
     <fieldset class="mode-options"><legend>描き方を選ぶ</legend><label class="mode-option"><input type="radio" name="mode" value="camera"><strong>手で描く</strong><small>カメラを使う・片手でも</small></label><label class="mode-option"><input type="radio" name="mode" value="pointer" checked><strong>マウスで試す</strong><small>画面を押したまま動かす</small></label></fieldset>
     <label class="voice-option"><input type="checkbox" id="use-voice">マイクで唱える <span id="voice-availability"></span></label>
     <div class="sound-options"><label><input id="use-sound" type="checkbox" checked>効果音</label><label for="sound-volume">音量</label><input id="sound-volume" type="range" min="0" max="100" value="25" aria-label="効果音の音量"><output id="sound-volume-value">25%</output><button id="test-sound" type="button">音を試す</button></div>
-    <button class="primary" id="start">魔法をつくる <span class="arrow" aria-hidden="true">↗</span></button><div class="welcome-actions"><button class="text-button" id="demo">見本の動きを見る</button><button class="text-button" id="chant-words">詠唱の言葉を見る</button><button class="text-button" id="settings">接続の確認</button></div>
-    <p><a class="text-button" href="/?view=look">新しい背景・騎士・術式を見る ↗</a></p>
+    <button class="primary" id="start">魔法をつくる <span class="arrow" aria-hidden="true">↗</span></button><div class="welcome-actions"><button class="text-button" id="demo">見本の動きを見る</button><button class="text-button" id="chant-words">詠唱の言葉を見る</button><button class="text-button dev-only" id="settings">接続の確認</button></div>
+    <p class="dev-only"><a class="text-button" href="/?view=look">新しい背景・騎士・術式を見る ↗</a></p>
     <p class="notice" id="notice" role="status"></p><p class="privacy" id="privacy">カメラの映像はこのPC内で処理します。音声認識の設定を確認しています。</p>
-  </section><div class="enemy-label" id="enemy-label">向こうにいるのは、一体の騎士</div>
-  <div class="ready-footer" id="ready-footer"><span>形に正解はありません。小さな動きでも大丈夫。</span><span>描く14秒 → 完成3秒 → 発動と余韻</span></div>
-  <section class="hud" id="hud" hidden><div class="top-progress"><i id="progress"></i></div><div class="enemy-health">遺跡の騎士<i><b id="health"></b></i></div><button class="exit" id="cancel">中止する</button><div class="demo-tag" id="demo-tag" hidden>見本の再生</div>
-    <div class="recognized" id="recognized" hidden></div><div class="voice-meter" id="meter" aria-hidden="true">${'<i></i>'.repeat(22)}</div><div class="voice-label" id="voice-label">文字でも唱えられます</div>
-    <div class="input-panel" id="input-panel"><label for="chant">声の代わりに、文字で試す</label><input id="chant" type="text" maxlength="160" autocomplete="off" placeholder="例：雷よ、七つに分かれろ"><p>描きながら14秒まで変更できます。<br>何も入れず、線だけでも遊べます。</p></div>
-    <div class="bottom-hud" id="bottom-hud"><p class="phase-caption" id="phase-caption">手の動きを、光に</p><h2 class="instruction" id="instruction">手を動かしてみよう</h2><div class="hint" id="hint"></div><div class="steps"><span id="step-input" class="active"><b>1</b>描く・唱える</span><i></i><span id="step-complete"><b>2</b>術式完成</span><i></i><span id="step-release"><b>3</b>発動</span></div></div>
   </section>
-  <section class="result" id="result" hidden><div class="chapter">一回目の魔法が完成しました</div><h2 id="spell-name"></h2><p class="spell-description" id="spell-description"></p><p class="transcript" id="transcript"></p><div class="result-actions"><button class="primary" id="again">もう一度つくる</button><button class="secondary" id="back">最初へ戻る</button></div><div class="feedback" id="feedback"><span>自分の魔法を放ったと感じましたか？</span><button data-feedback="yes">そう感じた</button><button data-feedback="unclear">まだ分かりにくい</button></div><div class="report-actions"><button class="text-button" id="record">確認用の記録を見る</button><button class="text-button" id="download">記録を保存する</button></div></section>
-  <div class="status-sheet" id="sheet" hidden><section class="status-content" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><h2 id="sheet-title"></h2><div id="sheet-body"></div><button class="secondary" id="sheet-close">閉じる</button></section></div>
+  <section class="hud" id="hud" hidden><div class="top-progress"><i id="progress"></i></div><div class="enemy-health">遺跡の騎士<i><b id="health"></b></i></div><button class="exit" id="cancel">中止する</button><div class="demo-tag" id="demo-tag" hidden>見本の再生</div>
+    <div class="recognized" id="recognized" hidden></div><div class="voice-meter" id="meter" aria-hidden="true">${'<i></i>'.repeat(22)}</div><div class="voice-label" id="voice-label" hidden>声を受け付けています</div><p class="service-notice" id="service-notice" role="status"></p>
+    <div class="input-panel" id="input-panel"><label for="chant">声の代わりに、文字で試す</label><input id="chant" type="text" maxlength="160" autocomplete="off" placeholder="例：雷よ、七つに分かれろ"><p>描きながら14秒まで変更できます。<br>何も入れず、線だけでも遊べます。</p></div>
+    <div class="bottom-hud" id="bottom-hud"><h2 class="instruction" id="instruction">手を動かしてみよう</h2><div class="hint" id="hint"></div><div class="steps"><span id="step-input" class="active"><b>1</b>線を描く</span><i></i><span id="step-complete"><b>2</b>形になる</span><i></i><span id="step-release"><b>3</b>放つ</span></div></div>
+  </section>
+  <section class="result" id="result" hidden><div class="chapter">あなたの魔法ができました</div><h2 id="spell-name"></h2><p class="spell-description" id="spell-description"></p><p class="transcript" id="transcript"></p><div class="result-actions"><button class="primary" id="again">もう一度つくる</button><button class="secondary" id="back">最初へ戻る</button></div><div class="feedback dev-only" id="feedback"><span>自分の魔法を放ったと感じましたか？</span><button data-feedback="yes">そう感じた</button><button data-feedback="unclear">まだ分かりにくい</button></div><div class="report-actions dev-only"><button class="text-button" id="record">確認用の記録を見る</button><button class="text-button" id="download">記録を保存する</button></div></section>
+  <div class="status-sheet" id="sheet" hidden><section class="status-content" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="sheet-head"><h2 id="sheet-title"></h2><button class="secondary" id="sheet-close">閉じる</button></div><div id="sheet-body"></div></section></div>
   <div class="loading" id="loading">魔法の準備をしています…</div>`;
 
 const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
+// 確認用の表示。遊ぶ人には出さず、?dev=1 を付けたときだけ出す。
+const devView=new URLSearchParams(location.search).has('dev');
+if(devView)document.body.dataset.dev='1';
 const show=(id:string,visible:boolean)=>{el(id).hidden=!visible;};
 const magic=new MagicCanvas(el<HTMLCanvasElement>('magic'));
 const sound=new CastAudio();
@@ -55,10 +57,10 @@ let serviceNotice='',prepareVersion=0;
 const frameIntervals:number[]=[];let lastFrame=performance.now();
 
 async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json());}catch{serviceNotice='接続を確認できません。PC内の規則で遊べます。';status.speech=false;}
-  el('voice-availability').textContent=status.speech?(status.speechProvider==='local'?'（このPCで認識）':'（Googleで認識）'):status.localSpeech?.state==='loading'?'（準備中）':'（接続の確認をご覧ください）';
+  el('voice-availability').textContent=status.speech?(status.speechProvider==='local'?'（このPCで聞き取ります）':'（Googleで聞き取ります）'):status.localSpeech?.state==='loading'?'（準備中です）':'（いまは使えません）';
   el<HTMLInputElement>('use-voice').disabled=!status.speech;
   if(!status.speech)el<HTMLInputElement>('use-voice').checked=false;
-  el('privacy').textContent=`カメラの映像はこのPC内で処理します。${status.speechProvider==='google'?'マイクの音声はGoogleへ送り、文字に変えます。':'音声もこのPC内で文字に変え、外へ送りません。'}${status.jev?'文字と動きの特徴はJevへ送ります。':'Jevは未接続です。'}この試作では自動保存しません。`;}
+  el('privacy').textContent=`${status.speechProvider==='google'?'カメラの映像はこのPCの中だけで扱います。声はGoogleへ送って文字に変えます。':'カメラの映像も声も、このPCの中だけで扱い、外へ送りません。'}${status.jev?'文字にした言葉と動きの形だけ、魔法を決める処理へ送ります。':''}記録は保存しません。`;}
 void readStatus();
 const statusTimer=setInterval(()=>{if(!session&&!preparing)void readStatus();},3000);
 
@@ -66,18 +68,18 @@ function cleanup(){sound.stop();camera?.dispose();camera=null;voice?.dispose();v
 function toReady(message='') {
   el('app').dataset.screen='ready';
   prepareVersion++;session?.cancel();cleanup();session=null;preparing=false;
-  show('welcome',true);show('enemy-label',true);show('ready-footer',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);
+  show('welcome',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);
   el<HTMLButtonElement>('start').disabled=false;el<HTMLButtonElement>('demo').disabled=false;el('notice').textContent=message;
 }
 async function begin(isDemo=false) {
   if(preparing)return;preparing=true;const version=++prepareVersion;
   void sound.prepare();
   cleanup();session=null;demo=isDemo;mode=(document.querySelector<HTMLInputElement>('input[name="mode"]:checked')?.value??'pointer');
-  el<HTMLButtonElement>('start').disabled=true;el<HTMLButtonElement>('demo').disabled=true;el('notice').textContent='準備しています。許可と読み込みの時間は24秒に含みません。';
+  el<HTMLButtonElement>('start').disabled=true;el<HTMLButtonElement>('demo').disabled=true;el('notice').textContent='準備しています…';
   const id=crypto.randomUUID();
   try {
     if(mode==='camera'&&!demo) {
-      if(!status.handModel)throw new Error('手の認識ファイルがありません。接続の確認から準備方法をご覧ください。');
+      if(!status.handModel)throw new Error(devView?'手の認識ファイルがありません。接続の確認から準備方法をご覧ください。':'いまは手で描けません。「マウスで試す」で遊べます。');
       const input=new HandCamera((hands,timestamp)=>{
         if(version!==prepareVersion)return;
         cursors=hands;if(hands.length)lastHandAt=timestamp;
@@ -100,9 +102,9 @@ async function begin(isDemo=false) {
   sound.start(!!voice);
   el('app').dataset.screen='playing';
   endedInput=false;requested=false;resultShown=false;preparing=false;feedback=null;serviceNotice='';lastHandAt=performance.now();frameIntervals.length=0;
-  show('welcome',false);show('enemy-label',false);show('ready-footer',false);show('result',false);show('hud',true);show('timer',true);show('bottom-hud',true);show('demo-tag',demo);show('recognized',false);
-  show('input-panel',!voice&&!demo);show('meter',!!voice);show('voice-label',!demo);
-  el('voice-label').textContent=voice?'声を受け付けています':'声の代わりに文字で試せます';
+  show('welcome',false);show('result',false);show('hud',true);show('timer',true);show('bottom-hud',true);show('demo-tag',demo);show('recognized',false);
+  show('input-panel',!voice&&!demo);show('meter',!!voice);show('voice-label',!!voice&&!demo);
+  el('service-notice').textContent='';
   el<HTMLInputElement>('chant').value='';el<HTMLInputElement>('chant').disabled=false;el('health').style.width='100%';
   document.querySelectorAll('[data-feedback]').forEach(button=>button.classList.remove('selected'));
   if(demo)session.speech.add({id:0,revision:1,startMs:11000,endMs:13500,text:'雷よ、七つに分かれろ',final:true,stability:1,source:'typed'});
@@ -126,20 +128,21 @@ el('chant').addEventListener('input',()=>{if(session?.accepting)session.speech.a
 function updateUi() {
   if(!session)return;
   const t=session.elapsed/1000,phase=session.phase;
-  el('timer').innerHTML=`${Math.min(24,Math.floor(t)).toString().padStart(2,'0')} <small>/ 24秒</small>`;
+  el('timer').innerHTML=`<small>のこり</small><b>${Math.max(0,Math.ceil(24-t))}</b><small>秒</small>`;
   el('progress').style.width=`${Math.min(100,t/24*100)}%`;
-  const labels:Partial<Record<Phase,[string,string,string]>>={
-    draw:['手の動きを、光に',mode==='pointer'?'押したまま、自由に描こう':'手を動かしてみよう','止まっても、また描き足せます'],
-    build:['描いた線に、光が集まる','そのまま、描き足して','好きな言葉を、いつ唱え始めても大丈夫'],
-    chant:['描く・唱える',voice?'描きながら、詠唱せよ':'描きながら、言葉を添えて','声や文字がなくても、魔法は完成します'],
-    complete:['術式完成',t<16?'描いた線に、力が集まる':'あなたの魔法が、完成する','もう手を止めても大丈夫'],
-    release:['発動',session.recipe?.name??'魔法を解き放つ',session.recipe?.purpose==='defend'?'あなたの壁が、騎士の前へ広がる':session.recipe?.purpose==='bind'?'あなたの魔法が、騎士を囲む':session.recipe?.purpose==='enhance'?'術式から出た力が、騎士へ届く':'あなたの術式から、敵へ'],
-    handoff:['最初の魔法を、放った','描いた形が、ここに残る','今回の試作は、ここまでです'],
+  const labels:Partial<Record<Phase,[string,string]>>={
+    draw:[mode==='pointer'?'押したまま、自由に描こう':'手を動かしてみよう','止まっても、また描き足せます'],
+    build:['そのまま、描き足して','好きな言葉を、いつ唱え始めても大丈夫'],
+    chant:[voice?'描きながら、詠唱せよ':'描きながら、言葉を添えて','声や文字がなくても、魔法は完成します'],
+    complete:[t<16?'描いた線に、力が集まる':'あなたの魔法が、完成する','もう手を止めても大丈夫'],
+    release:[session.recipe?.name??'魔法を解き放つ',session.recipe?.purpose==='defend'?'あなたの壁が、騎士の前へ広がる':session.recipe?.purpose==='bind'?'あなたの魔法が、騎士を囲む':session.recipe?.purpose==='enhance'?'描いた形から出た力が、騎士へ届く':'あなたの描いた形から、敵へ'],
+    handoff:['最初の魔法を、放った','描いた形は、この後も残ります'],
   };
-  const label=labels[phase];if(label){el('phase-caption').textContent=label[0];el('instruction').textContent=label[1];el('hint').textContent=label[2];}
+  const label=labels[phase];if(label){el('instruction').textContent=label[0];el('hint').textContent=label[1];}
   if(t>=2&&t<6&&!summarizeMotion(session.motion.raw).hasMovement)el('hint').textContent=mode==='pointer'?'画面を押したまま、少し動かそう':'片手を少し動かそう';
   if(mode==='camera'&&t<14&&!cursors.length&&performance.now()-lastHandAt>800)el('hint').textContent='手を画面の前へ。描いた線は残っています';
-  if(serviceNotice)el('voice-label').textContent=serviceNotice;
+  el('service-notice').textContent=serviceNotice;
+  if(t>=14)show('voice-label',false);
   el('step-input').classList.toggle('active',t<14);el('step-complete').classList.toggle('active',t>=14&&t<17);el('step-release').classList.toggle('active',t>=17);
   el<HTMLInputElement>('chant').disabled=t>=14;show('input-panel',!voice&&!demo&&t<14);
   if(t>=18.5)el('health').style.width='70%';
@@ -154,7 +157,7 @@ function finish() {
   if(!session?.recipe)return;resultShown=true;voice?.dispose();voice=null;camera?.dispose();camera=null;cursors=[];
   show('bottom-hud',false);show('input-panel',false);show('meter',false);show('voice-label',false);show('result',true);show('feedback',!demo);
   const r=session.recipe;
-  el('spell-name').textContent=r.name;el('spell-description').textContent=`${ELEMENT_LABELS[r.element]} / ${PURPOSE_LABELS[r.purpose]} / ${FORM_LABELS[r.form]}${r.count>1?' / '+r.count+'つ':''}`;
+  el('spell-name').textContent=r.name;el('spell-description').textContent=`${ELEMENT_LABELS[r.element]}の${PURPOSE_LABELS[r.purpose]}。${r.count>1?`${r.count}つの`:''}${FORM_LABELS[r.form]}のかたち。`;
   el('transcript').textContent=session.state?.speech.rawTranscript?`「${session.state.speech.rawTranscript}」${session.state.speech.status==='typed'?'（文字で入力）':''}`:'詠唱なし。描いた線から魔法をつくりました。';
   el('app').dataset.screen='result';show('hud',false);show('timer',false);drawResult();
 }
@@ -173,12 +176,13 @@ let sheetReturnFocus:HTMLElement|null=null;
 function sheet(title:string,body:string){sheetReturnFocus=document.activeElement as HTMLElement;el('sheet-title').textContent=title;el('sheet-body').replaceChildren();const pre=document.createElement('pre');pre.textContent=body;el('sheet-body').append(pre);show('sheet',true);el('sheet-close').focus({preventScroll:true});el('sheet-body').closest('.status-content')!.scrollTop=0;}
 el('chant-words').addEventListener('click',()=>{
   const groups=[...new Set(chantDictionary.entries.map(w=>w.group))];
-  sheet('詠唱の言葉',`好きな言葉を組み合わせて唱えられます。短い言葉でも大丈夫です。\n難しい言葉は聞き違えることがあります。声の代わりに文字でも試せます。\n\n試しに唱える例\n${chantDictionary.examples.join('\n\n')}\n\n${groups.map(group=>`${group}\n${chantDictionary.entries.filter(w=>w.group===group).map(w=>`${w.term}（${w.reading}）`).join('・')}`).join('\n\n')}\n\n作品の用語は読み方の参考です。その作品の技を再現する機能はありません。`);
+  sheet('詠唱の言葉',`好きな言葉を組み合わせて唱えられます。短い言葉でも大丈夫です。\n難しい言葉は聞き違えることがあります。声の代わりに文字でも試せます。\n\n試しに唱える例\n${chantDictionary.examples.join('\n\n')}\n\n${groups.map(group=>`${group}\n${chantDictionary.entries.filter(w=>w.group===group).map(w=>`${w.term}（${w.reading}）`).join('・')}`).join('\n\n')}\n\nほかの作品の言葉は、読み方の参考として載せています。`);
 });
 el('settings').addEventListener('click',async()=>{await readStatus();sheet('接続の確認',`Jev：${status.jev?'接続情報を設定済み（実通信はプレイ時）':'未設定。PC内の規則で動作'}\n音声認識：${status.speechProvider==='local'?status.localSpeech?.message??'このPCでの認識を準備してください':status.speechProvider==='google'?'Google Cloud の接続を使用':'使用しない設定'}\n${status.speechProvider==='local'?'認識モデル：Kotoba-Whisper v2.0 / このPCのGPU\n':''}手の認識：${status.handModel?'ファイルを準備済み':'npm run setup:assets で準備'}\n\nローカル音声認識の準備は npm run setup:speech です。GoogleのAPIキーや課金設定は不要です。変更後はアプリを起動し直します。\n\n${el('privacy').textContent}\n\n詳しくは README.md をご覧ください。これは最初の24秒の試作です。防御・最後の魔法・魔導書・QRは次の段階で追加します。`);});
 el('record').addEventListener('click',()=>{sheet('今回の確認用記録',JSON.stringify(report(),null,2));});
 function closeSheet(){show('sheet',false);sheetReturnFocus?.focus();}
 el('sheet-close').addEventListener('click',closeSheet);
+el('sheet').addEventListener('click',event=>{if(event.target===el('sheet'))closeSheet();});
 window.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!el('sheet').hidden)closeSheet();else if(session||preparing)toReady('中止しました。');}if(event.key==='Tab'&&!el('sheet').hidden){event.preventDefault();el('sheet-close').focus();}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&(preparing||session&&!resultShown))toReady('画面が隠れたため中止しました。最初から始められます。');});
 window.addEventListener('resize',()=>{stage.resize();magic.resize();if(resultShown)drawResult();});

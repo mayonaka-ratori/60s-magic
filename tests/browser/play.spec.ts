@@ -2,7 +2,7 @@ import { test,expect } from '@playwright/test';
 
 test('最初の24秒を最後まで遊び、線と七つの雷を記録できる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/');await expect(page.locator('#loading')).toBeHidden();await page.screenshot({path:'test-results/01-ready.png'});
+  await page.goto('/?dev=1');await expect(page.locator('#loading')).toBeHidden();await page.screenshot({path:'test-results/01-ready.png'});
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
   await page.mouse.move(460,450);await page.mouse.down();
@@ -32,7 +32,7 @@ test('遅いJevの回答は使わず、本人の氷の壁で時刻どおり発�
     const s=route.request().postDataJSON();await new Promise(resolve=>setTimeout(resolve,3000));
     await route.fulfill({json:{sessionId:s.sessionId,castId:s.castId,inputRevision:s.inputRevision,status:'ok',answers:{element:{type:'choice',choice:'fire',probabilities:{fire:1}}}}}).catch(()=>{});
   });
-  await page.goto('/');await page.locator('#start').click();await page.locator('#chant').fill('雷ではなく氷よ、壁となれ');
+  await page.goto('/?dev=1');await page.locator('#start').click();await page.locator('#chant').fill('雷ではなく氷よ、壁となれ');
   await expect(page.locator('#step-release')).toHaveClass('active',{timeout:20000});
   await expect(page.locator('#result')).toBeVisible({timeout:9000});await expect(page.locator('#spell-name')).toHaveText('氷の壁');
   await page.locator('#record').click();const record=JSON.parse(await page.locator('#sheet-body pre').innerText());
@@ -60,7 +60,7 @@ test('Jevの期限内の回答で曖昧な言葉を反映し、発動時刻は�
       element:{type:'choice',choice:'ice',probabilities:{ice:.9,unknown:.1}},form:{type:'choice',choice:'wall',probabilities:{wall:.9,orb:.1}},purpose:{type:'choice',choice:'defend',probabilities:{defend:.9,unknown:.1}},
     }}});
   });
-  await page.goto('/');await page.locator('#start').click();await page.locator('#chant').fill('冬の静けさよ、前に立て');
+  await page.goto('/?dev=1');await page.locator('#start').click();await page.locator('#chant').fill('冬の静けさよ、前に立て');
   await expect(page.locator('#recognized')).toBeVisible({timeout:18000});await expect(page.locator('#step-complete')).toHaveClass('active');
   await expect(page.locator('#result')).toBeVisible({timeout:11000});await expect(page.locator('#spell-name')).toHaveText('氷の壁');
   await page.locator('#record').click();const record=JSON.parse(await page.locator('#sheet-body pre').innerText());
