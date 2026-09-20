@@ -5,11 +5,11 @@ import { MagicCanvas, colors } from './magic';
 import { clamp } from '../game/motion';
 import type { Point, Recipe } from '../game/types';
 import { emptyLive, type LiveInput } from '../game/live-input';
+import { Composite, compositeSettings, layerMotion } from './composite';
 
 /** 層ひとつ分の変形。動く量（move）と常時の余白（pad）を掛けて作る。中心を軸にする。 */
 export function layerTransform(screen:{shakeX:number;shakeY:number;rotate:number;zoom:number},move:number,pad:number) {
-  const x=Math.round(screen.shakeX*move),y=Math.round(screen.shakeY*move);
-  const rotate=screen.rotate*move,scale=screen.zoom*pad;
+  const {x,y,rotate,scale}=layerMotion(screen,move,pad);
   if(!x&&!y&&Math.abs(rotate)<.01&&Math.abs(scale-1)<.001)return pad===1?'':`scale(${pad})`;
   return `translate(${x}px,${y}px) rotate(${rotate.toFixed(3)}deg) scale(${scale.toFixed(4)})`;
 }
@@ -28,16 +28,20 @@ export class CastScene {
   /** 層ごとの常時の余白（拡大）。端に黒帯が出ないように背景と騎士を1.03倍にしておく。 */
   private pads=[1.03,1.03,1];
   private lastTransforms=['','',''];
-  constructor(private canvas:HTMLCanvasElement,private backdrop:HTMLImageElement,private effects:MagicCanvas,knightCanvas:HTMLCanvasElement) {
+  /** 合成用のBabylonシーン。作れなかったときは null で、今まで通りのHTMLの層のまま遊べる。 */
+  readonly composite:Composite|null;
+  private calm=false;
+  constructor(private canvas:HTMLCanvasElement,private backdrop:HTMLImageElement,private effects:MagicCanvas,knightCanvas:HTMLCanvasElement,compositeCanvas?:HTMLCanvasElement|null) {
     this.layers=[backdrop,knightCanvas,canvas];
     this.spell=new CompletedSpell(canvas,false);
     this.knight=new Knight(knightCanvas);
+    this.composite=compositeCanvas?Composite.create(compositeCanvas,{world:backdrop,knight:knightCanvas,spell:canvas,magic:effects.canvas},compositeSettings(location.search)):null;
     this.ready=Promise.all([backdrop.decode(),this.spell.ready(),this.knight.ready]).then(()=>{});
   }
-  resize(){this.spell.resize();this.knight.resize();this.revision++;}
+  resize(){this.spell.resize();this.knight.resize();this.composite?.resize();this.revision++;}
   get impactTarget(){return this.knight.target;}
-  /** 控えめモード。揺れと閃光と停止を抑える。 */
-  setCalm(calm:boolean){this.effects.setCalm(calm);}
+  /** 控えめモード。揺れと閃光と停止を抑える。合成では色収差と歪みも切る。 */
+  setCalm(calm:boolean){this.calm=calm;this.effects.setCalm(calm);}
   /** 今の演出の時刻（ms）。命中の停止を含む。 */
   get effectMs(){return this.effects.effectMs;}
   render(points:Point[],ms:number,recipe:Recipe|null,voice:number,cursors:Array<{x:number;y:number}>,ready:boolean,live:LiveInput=emptyLive) {
@@ -70,6 +74,11 @@ export class CastScene {
     this.canvas.dataset.scale=pose.scale.toFixed(4);
     this.canvas.dataset.visible=String(!ready&&pose.opacity>0);
     this.backdrop.classList.toggle('spell-finished',!ready&&ms>=23500);
+    // 遊んでいる間だけ合成を使う。終わりのぼかしに入ったらHTMLの層へ戻す。
+    if(this.composite){
+      this.composite.setActive(!ready&&ms<23500);
+      this.composite.render({screen,t:worldMs/1000,target:this.impactTarget,calm:this.calm});
+    }
   }
-  dispose(){this.spell.dispose();this.knight.dispose();}
+  dispose(){this.composite?.dispose();this.spell.dispose();this.knight.dispose();}
 }

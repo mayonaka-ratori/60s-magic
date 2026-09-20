@@ -1,4 +1,4 @@
-import { ELEMENTS, FORMS, PURPOSES, TRAJECTORIES, ELEMENT_LABELS, FORM_LABELS, type Answer, type Element, type Form, type Purpose, type Recipe, type SpellState, type JevReply } from './types';
+import { ELEMENTS, FORMS, PURPOSES, TRAJECTORIES, ELEMENT_LABELS, FORM_LABELS, type Answer, type Element, type Form, type Purpose, type Recipe, type Blend, type SpellState, type JevReply } from './types';
 import { clamp } from './motion';
 import { readChant } from './chant-dictionary';
 
@@ -47,7 +47,7 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   else if(/球|玉/.test(text))wordForm='orb';else if(/群|分かれ|連弾/.test(text))wordForm='swarm';
   const count=explicitCount(text);
   if(count!==null&&count>1)wordForm='swarm';
-  const recipe:Recipe={version:'recipe-1',accent:null,element:wordElement??'neutral',purpose:wordPurpose??'attack',
+  const recipe:Recipe={version:'recipe-1',accent:null,blend:null,element:wordElement??'neutral',purpose:wordPurpose??'attack',
     form:wordForm??(motion.closedness>0.82?'orb':motion.coverageWidth>0.42&&motion.coverageHeight<0.2?'wave':'beam'),
     trajectory:'straight',count:count??1,explicitCount:count,defense:wordPurpose==='defend'?0.8:motion.closedness>0.8?0.6:motion.hasMovement?0.2:0.5,
     area:clamp(Math.max(motion.coverageWidth,motion.coverageHeight)*1.3,0.2,1),duration:0.5,concentration:motion.convergence,
@@ -81,6 +81,7 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   }
   // 飾り色。主属性と違う属性語のうち、一番先のものを使う。同じなら飾り色はなし。
   recipe.accent=[wordElement,wordAccent].find(e=>e&&e!==recipe.element)??null;
+  recipe.blend=blendOf(recipe.element,recipe.accent);
   if(noAttack)recipe.purpose='defend';
   if(recipe.purpose==='defend'&&!wordForm)recipe.form=recipe.enclosure?'dome':'wall';
   if(recipe.purpose==='bind')recipe.enclosure=true;
@@ -94,4 +95,18 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   recipe.model=used?reply?.model??null:null;
   recipe.name=`${recipe.count>1?`${recipe.count}つの`:''}${recipe.element==='neutral'?'はじまりの':ELEMENT_LABELS[recipe.element]+'の'}${recipe.purpose==='bind'?'縛り':recipe.purpose==='enhance'?'力':FORM_LABELS[recipe.form]}`;
   return recipe;
+}
+
+// 組み合わせの表。並びは名前の順に揃えてある。
+const amplifyPairs=['fire+ice','fire+light','dark+fire','ice+light','dark+ice','dark+light'];
+const burstPairs=['fire+lightning','fire+wind','light+lightning','dark+lightning'];
+/**
+ * 二属性の合わせ方。二つの属性の相性で三つに分かれる。
+ * 「熱と冷」（炎と氷）と「明と暗」（光と闇）は互いに相反するので、ぶつかるほど明るく光る「増幅」。
+ * 雷が荒れる組み合わせと炎に風を足したものは「爆発」。残りは並び立つので、二色が交互に出る「持続」。
+ */
+export function blendOf(element:Element,accent:Element|null|undefined):Blend|null {
+  if(!accent||accent===element||element==='neutral'||accent==='neutral')return null;
+  const key=[element,accent].sort().join('+');
+  return amplifyPairs.includes(key)?'amplify':burstPairs.includes(key)?'burst':'sustain';
 }

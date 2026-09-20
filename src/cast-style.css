@@ -1,7 +1,9 @@
 /* 一枚絵の背景と、独立した発光の描画面を重ねる。 */
 #app{isolation:isolate}#world{object-fit:cover;object-position:center;transition:filter .6s}#world.spell-finished{filter:blur(5px) brightness(.63)}
 #spell{position:absolute;inset:0;width:100%;height:100%;mix-blend-mode:screen;pointer-events:none}
-#knight{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#knight.spell-finished{filter:blur(5px) brightness(.63)}
+#knight{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+/* 段階4の合成。四枚の層をまとめて描き直した絵を、いちばん手前に一枚だけ置く。使わない間は隠す。 */
+#composite{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;visibility:hidden}#knight.spell-finished{filter:blur(5px) brightness(.63)}
 .sound-options{display:flex;align-items:center;gap:10px;font-size:11px;margin:-7px 0 17px;color:#c6d5df}.sound-options label{display:flex;align-items:center;gap:5px}.sound-options input{accent-color:#d7bd89}.sound-options input[type=range]{width:110px}.sound-options output{min-width:30px}.sound-toggle{position:absolute;right:36px;top:158px;pointer-events:auto;background:#081728c9;color:#e1e9ed;border:1px solid #a9b8c04d;padding:7px 12px;font-size:12px}
 .sound-options button{font-size:10px;padding:5px 7px;background:#102234;color:#d8e5ed;border:1px solid #c0d7e74d;white-space:nowrap}
 @media(max-width:520px){.sound-options{gap:6px;font-size:11px}.sound-options input[type=range]{width:72px}}

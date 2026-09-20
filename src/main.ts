@@ -15,7 +15,7 @@ import { ScreenOverlay } from './render/overlay';
 import { HealthBar } from './render/health-bar';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
-  <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas>
+  <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas><canvas id="composite" aria-hidden="true"></canvas>
   <div class="vignette"></div>
   <header><div class="brand"><span class="sigil" aria-hidden="true"></span><div><div class="brand-name">はじまりの魔法</div><p class="eyebrow">描いて、唱えて、解き放つ</p></div></div><div class="top-right"><span class="trial dev-only">最初の24秒・試作</span><div class="timer" id="timer" hidden><small>のこり</small><b>24</b><small>秒</small></div></div></header>
   <section class="welcome" id="welcome"><div class="chapter">第一幕 / 最初の魔法</div><h1><span>その手で描く</span><span>その言葉で放つ</span></h1><p class="intro">自由に描いた線が、ひとつの魔法になる。<br>手を動かしながら、好きな言葉を唱えよう。<br>形に正解はないので、小さな動きでも大丈夫</p>
@@ -56,10 +56,13 @@ const soundToggle=document.createElement('button');soundToggle.id='sound-toggle'
 // 演出を控えめにする切り替え。開始画面は音の設定の隣、プレイ中は「音を消す」の隣に置く。
 const calmToggle=document.createElement('button');calmToggle.id='calm-toggle';calmToggle.className='calm-toggle';calmToggle.type='button';el('hud').append(calmToggle);
 const calmOption=document.createElement('button');calmOption.id='calm-option';calmOption.className='calm-option';calmOption.type='button';document.querySelector('.sound-options')?.append(calmOption);
+// 合成のシーンにも控えめモードを伝える。作られる前に呼ばれることがあるので、作れてから入れる。
+let calmTarget:{setCalm(on:boolean):void}|null=null;
 function setCalm(on:boolean,remember=true){
   // ?calm=1 と「動きを減らす」設定のときは、ボタンで派手にはできない。
   calmMode=calmForced||on;
   magic.setCalm(calmMode);
+  calmTarget?.setCalm(calmMode);
   const label=calmMode?'演出を派手にする':'演出を控えめにする';
   for(const button of [calmToggle,calmOption]){button.textContent=label;button.setAttribute('aria-pressed',String(calmMode));button.disabled=calmForced&&calmMode;}
   if(remember&&!calmForced){try{localStorage.setItem(CALM_KEY,calmMode?'1':'0');}catch{/* 保存できなくても遊べます。 */}}
@@ -73,7 +76,8 @@ el('use-sound').addEventListener('change',()=>setSound(el<HTMLInputElement>('use
 soundToggle.addEventListener('click',()=>setSound(!el<HTMLInputElement>('use-sound').checked));
 el<HTMLInputElement>('sound-volume').addEventListener('input',event=>{const value=Number((event.target as HTMLInputElement).value);sound.setVolume(value/100);el('sound-volume-value').textContent=`${value}%`;});
 let stage:CastScene;
-try {stage=new CastScene(el<HTMLCanvasElement>('spell'),el<HTMLImageElement>('world'),magic,el<HTMLCanvasElement>('knight'));}catch {el('loading').textContent='光の表示を準備できませんでした。Chromeの画像処理の設定を確認してください。';throw new Error('WebGL初期化に失敗');}
+try {stage=new CastScene(el<HTMLCanvasElement>('spell'),el<HTMLImageElement>('world'),magic,el<HTMLCanvasElement>('knight'),el<HTMLCanvasElement>('composite'));}catch {el('loading').textContent='光の表示を準備できませんでした。Chromeの画像処理の設定を確認してください。';throw new Error('WebGL初期化に失敗');}
+calmTarget=stage;stage.setCalm(calmMode);
 const resultCanvas=document.createElement('canvas');resultCanvas.id='result-spell';resultCanvas.setAttribute('aria-label','今回描いた術式');el('result').prepend(resultCanvas);
 const resultMagic=new MagicCanvas(resultCanvas);
 let session:CastSession|null=null,camera:HandCamera|null=null,voice:VoiceInput|null=null;
@@ -228,7 +232,7 @@ function drawResult(){if(session?.recipe)resultMagic.thumbnail(session.motion.di
 
 function report() {
   const sorted=[...frameIntervals].sort((a,b)=>a-b);
-  return {...session?.report(),mode:demo?'demo':mode,feedback,calmMode,audio:sound.snapshot,speechFallback:session?.speech.usedFallback??false,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:sorted[Math.floor(sorted.length*0.99)]??null,cameraProcessingMs:lastCameraLatency||null,note:'手を動かしてから表示されるまでの遅れは未計測。カメラ処理時間とは別。マウスの入力から描画までは diagnostics.drawing にある。'},
+  return {...session?.report(),mode:demo?'demo':mode,feedback,calmMode,audio:sound.snapshot,composite:stage.composite?stage.composite.report:{used:false,reason:new URLSearchParams(location.search).get('composite')==='0'?'?composite=0 で切っている':'WebGLを用意できず、HTMLの層のまま'},speechFallback:session?.speech.usedFallback??false,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:sorted[Math.floor(sorted.length*0.99)]??null,cameraProcessingMs:lastCameraLatency||null,note:'手を動かしてから表示されるまでの遅れは未計測。カメラ処理時間とは別。マウスの入力から描画までは diagnostics.drawing にある。'},
     diagnostics:diag?.summary()??null,recordedAt:new Date().toISOString(),userAgent:navigator.userAgent,screen:{width:innerWidth,height:innerHeight,pixelRatio:devicePixelRatio}};
 }
 /** サーバー側の記録（音声認識の処理時間など）も合わせて一つのJSONにする。 */
