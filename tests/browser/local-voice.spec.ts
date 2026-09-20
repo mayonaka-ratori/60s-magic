@@ -16,7 +16,7 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     page.on('websocket',socket=>{if(!socket.url().startsWith('ws://127.0.0.1:5173/'))outsideAudio.push(socket.url());});
     await page.goto('http://127.0.0.1:5173/');
     await expect(page.locator('#use-voice')).toBeEnabled({timeout:15000});await expect(page.locator('#privacy')).toContainText('音声もこのPC内');
-    await page.locator('#use-voice').check();await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
+    await page.locator('#use-voice').check();await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await expect(page.locator('#hud')).toBeVisible();
     await page.mouse.move(500,420);await page.mouse.down();
     for(let i=0;i<18;i++){await page.mouse.move(620+Math.sin(i/4)*140,420+Math.cos(i/4)*120);await page.waitForTimeout(30);}
     await page.mouse.up();await expect(page.locator('#instruction')).toHaveText('描きながら、詠唱せよ',{timeout:13000});

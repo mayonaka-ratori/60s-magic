@@ -25,6 +25,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   </section><div class="enemy-label" id="enemy-label">向こうにいるのは、一体の騎士</div>
   <div class="ready-footer" id="ready-footer"><span>形に正解はありません。小さな動きでも大丈夫。</span><span>描く14秒 → 完成3秒 → 発動と余韻</span></div>
   <section class="hud" id="hud" hidden><div class="top-progress"><i id="progress"></i></div><div class="enemy-health">遺跡の騎士<i><b id="health"></b></i></div><button class="exit" id="cancel">中止する</button><div class="demo-tag" id="demo-tag" hidden>見本の再生</div>
+    <div class="countdown" id="countdown" hidden role="status"><p class="countdown-title">詠唱の準備を始めよ</p><div class="countdown-number" id="countdown-number">3</div><p class="countdown-hint" id="countdown-hint"></p></div>
     <div class="recognized" id="recognized" hidden></div><div class="voice-meter" id="meter" aria-hidden="true">${'<i></i>'.repeat(22)}</div><div class="voice-label" id="voice-label">文字でも唱えられます</div>
     <div class="input-panel" id="input-panel"><label for="chant">声の代わりに、文字で試す</label><input id="chant" type="text" maxlength="160" autocomplete="off" placeholder="例：雷よ、七つに分かれろ"><p>描きながら14秒まで変更できます。<br>何も入れず、線だけでも遊べます。</p></div>
     <div class="bottom-hud" id="bottom-hud"><p class="phase-caption" id="phase-caption">手の動きを、光に</p><h2 class="instruction" id="instruction">手を動かしてみよう</h2><div class="hint" id="hint"></div><div class="steps"><span id="step-input" class="active"><b>1</b>描く・唱える</span><i></i><span id="step-complete"><b>2</b>術式完成</span><i></i><span id="step-release"><b>3</b>発動</span></div></div>
@@ -55,6 +56,8 @@ let status:{jev:boolean;speech:boolean;handModel:boolean;model:string;speechProv
 let serviceNotice='',prepareVersion=0;
 const frameIntervals:number[]=[];let lastFrame=performance.now();
 let diag:Diagnostics|null=null,lastReport:ReturnType<typeof report>|null=null,lockLogged=false;
+/** 24秒の前に置く準備の秒数。手や声の位置を決める時間で、24秒にも60秒にも含めない。 */
+const COUNTDOWN_SECONDS=3;let countingDown=false;
 
 async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json());}catch{serviceNotice='接続を確認できません。PC内の規則で遊べます。';status.speech=false;}
   el('voice-availability').textContent=status.speech?(status.speechProvider==='local'?'（このPCで認識）':'（Googleで認識）'):status.localSpeech?.state==='loading'?'（準備中）':'（接続の確認をご覧ください）';
@@ -68,7 +71,7 @@ function cleanup(){sound.stop();camera?.dispose();camera=null;voice?.dispose();v
 function toReady(message='') {
   el('app').dataset.screen='ready';
   if(session&&!resultShown){diag?.log('中止');lastReport=report();}
-  prepareVersion++;session?.cancel();cleanup();session=null;preparing=false;
+  prepareVersion++;session?.cancel();cleanup();session=null;preparing=false;countingDown=false;show('countdown',false);
   show('last-record',!!lastReport);
   show('welcome',true);show('enemy-label',true);show('ready-footer',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);
   el<HTMLButtonElement>('start').disabled=false;el<HTMLButtonElement>('demo').disabled=false;el('notice').textContent=message;
@@ -102,6 +105,21 @@ async function begin(isDemo=false) {
     if(version===prepareVersion)toReady(message);return;
   }
   if(version!==prepareVersion)return;
+  if(!demo) {
+    // 機器の準備が終わってから、手の位置と声の用意をする時間を置く。ここは24秒に含めない。
+    countingDown=true;el('app').dataset.screen='countdown';
+    show('welcome',false);show('enemy-label',false);show('ready-footer',false);show('result',false);show('hud',true);show('timer',false);show('bottom-hud',false);show('input-panel',false);show('recognized',false);show('demo-tag',false);
+    show('meter',!!voice);show('voice-label',false);show('countdown',true);
+    el('countdown-hint').textContent=mode==='camera'?'手を画面の前に出して、描き始める位置を決めよう':'マウスを、描き始めたい位置へ動かそう';
+    el<HTMLInputElement>('chant').value='';
+    diag?.log('準備の合図を開始',{seconds:COUNTDOWN_SECONDS});
+    for(let remaining=COUNTDOWN_SECONDS;remaining>0;remaining--) {
+      el('countdown-number').textContent=String(remaining);
+      await new Promise(resolve=>setTimeout(resolve,1000));
+      if(version!==prepareVersion)return;
+    }
+    countingDown=false;show('countdown',false);
+  }
   session=new CastSession(undefined,id);diag?.rebase(session.startMs);diag?.log('24秒を開始');voice?.start(performance.now()-session.startMs);
   sound.start(!!voice);
   el('app').dataset.screen='playing';
@@ -112,6 +130,7 @@ async function begin(isDemo=false) {
   el<HTMLInputElement>('chant').value='';el<HTMLInputElement>('chant').disabled=false;el('health').style.width='100%';
   document.querySelectorAll('[data-feedback]').forEach(button=>button.classList.remove('selected'));
   if(demo)session.speech.add({id:0,revision:1,startMs:11000,endMs:13500,text:'雷よ、七つに分かれろ',final:true,stability:1,source:'typed'});
+  if(el<HTMLInputElement>('chant').value)addTypedChant();
   updateUi();
 }
 
@@ -120,14 +139,17 @@ el('again').addEventListener('click',()=>{toReady();void begin();});el('back').a
 el('cancel').addEventListener('click',()=>toReady('中止しました。もう一度、最初から始められます。'));
 let pointerDown=false;
 const pointer=(event:PointerEvent)=>{
-  if(!session?.accepting||mode!=='pointer'||demo||!pointerDown)return;
+  if(mode!=='pointer'||demo||!pointerDown)return;
   const rect=magic.canvas.getBoundingClientRect(),x=(event.clientX-rect.left)/rect.width,y=(event.clientY-rect.top)/rect.height;
+  if(countingDown){cursors=[{x,y}];return;}
+  if(!session?.accepting)return;
   session.motion.add(x,y,performance.now()-session.startMs);cursors=[{x,y}];diag?.pointer();
 };
 magic.canvas.addEventListener('pointerdown',event=>{pointerDown=true;magic.canvas.setPointerCapture(event.pointerId);pointer(event);});
 magic.canvas.addEventListener('pointermove',pointer);
 for(const name of ['pointerup','pointercancel','lostpointercapture'])magic.canvas.addEventListener(name,()=>{pointerDown=false;session?.motion.break(0);cursors=[];});
-el('chant').addEventListener('input',()=>{diag?.log('文字を入力',{length:el<HTMLInputElement>('chant').value.length});if(session?.accepting)session.speech.add({id:10000,revision:Math.ceil(performance.now()*1000),startMs:0,endMs:Math.min(13999,performance.now()-session.startMs),text:el<HTMLInputElement>('chant').value,final:true,stability:1,source:'typed'});});
+function addTypedChant(){if(session?.accepting)session.speech.add({id:10000,revision:Math.ceil(performance.now()*1000),startMs:0,endMs:Math.min(13999,performance.now()-session.startMs),text:el<HTMLInputElement>('chant').value,final:true,stability:1,source:'typed'});}
+el('chant').addEventListener('input',()=>{diag?.log('文字を入力',{length:el<HTMLInputElement>('chant').value.length});addTypedChant();});
 
 function updateUi() {
   if(!session)return;
@@ -194,7 +216,11 @@ el('chant-words').addEventListener('click',()=>{
   sheet('詠唱の言葉',`好きな言葉を組み合わせて唱えられます。短い言葉でも大丈夫です。\n難しい言葉は聞き違えることがあります。声の代わりに文字でも試せます。\n\n試しに唱える例\n${chantDictionary.examples.join('\n\n')}\n\n${groups.map(group=>`${group}\n${chantDictionary.entries.filter(w=>w.group===group).map(w=>`${w.term}（${w.reading}）`).join('・')}`).join('\n\n')}\n\n作品の用語は読み方の参考です。その作品の技を再現する機能はありません。`);
 });
 el('settings').addEventListener('click',async()=>{await readStatus();sheet('接続の確認',`Jev：${status.jev?'接続情報を設定済み（実通信はプレイ時）':'未設定。PC内の規則で動作'}\n音声認識：${status.speechProvider==='local'?status.localSpeech?.message??'このPCでの認識を準備してください':status.speechProvider==='google'?'Google Cloud の接続を使用':'使用しない設定'}\n${status.speechProvider==='local'?`認識モデル：Kotoba-Whisper v2.0 / このPCの${status.localSpeech?.device==='cpu'?'CPU（遅れることがあります）':'GPU'}\n`:''}手の認識：${status.handModel?'ファイルを準備済み':'npm run setup:assets で準備'}\n\nローカル音声認識の準備は npm run setup:speech です。GoogleのAPIキーや課金設定は不要です。変更後はアプリを起動し直します。\n\n${el('privacy').textContent}\n\n詳しくは README.md をご覧ください。これは最初の24秒の試作です。防御・最後の魔法・魔導書・QRは次の段階で追加します。`);});
-el('record').addEventListener('click',()=>void fullReport().then(data=>sheet('今回の確認用記録',JSON.stringify(data,null,2))));
+el('record').addEventListener('click',()=>{
+  // まず手元の記録をすぐ出し、サーバー側の記録が届いたら同じ画面を差し替える。
+  const base=report();sheet('今回の確認用記録',JSON.stringify(base,null,2));
+  void fullReport(base).then(data=>{const pre=el('sheet-body').querySelector('pre');if(pre&&!el('sheet').hidden&&el('sheet-title').textContent==='今回の確認用記録')pre.textContent=JSON.stringify(data,null,2);});
+});
 function closeSheet(){show('sheet',false);sheetReturnFocus?.focus();}
 el('sheet-close').addEventListener('click',closeSheet);
 window.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!el('sheet').hidden)closeSheet();else if(session||preparing)toReady('中止しました。');}if(event.key==='Tab'&&!el('sheet').hidden){event.preventDefault();el('sheet-close').focus();}});
@@ -226,9 +252,9 @@ function animate(now:number) {
     if(current.elapsed>=24000&&!resultShown)finish();
     if(now-lastUi>80){updateUi();lastUi=now;}
   }
-  const ms=session?Math.min(24000,session.elapsed):now;
+  const ms=session?Math.min(24000,session.elapsed):countingDown?0:now;
   if(session&&!resultShown)sound.update(ms,session.recipe);
-  stage.render(session?.motion.display??[],ms,session?.recipe??null,voice?.level??0,cursors,!session);
+  stage.render(session?.motion.display??[],ms,session?.recipe??null,voice?.level??0,cursors,!session&&!countingDown);
 }
 requestAnimationFrame(animate);
 void Promise.all([stage.ready,document.fonts.ready]).then(()=>show('loading',false)).catch(()=>{el('loading').textContent='背景と光を読み込めませんでした。再読み込みしてください。';});

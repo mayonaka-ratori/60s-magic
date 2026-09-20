@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitSpell, completedSpellFrame, spellPose, backdropTarget } from '../src/render/spell-layout';
+import { fitSpell, completedSpellFrame, spellPose, backdropTarget, smoothStroke } from '../src/render/spell-layout';
 import type { Point } from '../src/game/types';
 
 describe('完成した術式の配置', () => {
@@ -47,5 +47,19 @@ describe('完成した術式の配置', () => {
       expect(target.x).toBe(.5);
       expect(target.y*h).toBeCloseTo((h-941*scale)/2+.32*941*scale);
     }
+  });
+});
+
+describe('表示の線をなめらかにする',()=>{
+  it('始点と終点を動かさず、ぎざぎざを小さくする',()=>{
+    const jagged=Array.from({length:12},(_,i)=>({x:i/11,y:i%2?0.52:0.48,stroke:1}));
+    const smooth=smoothStroke(jagged);
+    expect(smooth[0]).toEqual(jagged[0]);expect(smooth.at(-1)).toEqual(jagged.at(-1));
+    expect(smooth.length).toBeGreaterThan(jagged.length);
+    const inner=smooth.slice(4,-4),spread=Math.max(...inner.map(p=>p.y))-Math.min(...inner.map(p=>p.y));
+    expect(spread).toBeLessThan(0.01);expect(smooth.every(p=>p.stroke===1)).toBe(true);
+  });
+  it('2点以下の線はそのまま返す',()=>{
+    const two=[{x:0,y:0},{x:1,y:1}];expect(smoothStroke(two)).toEqual(two);
   });
 });

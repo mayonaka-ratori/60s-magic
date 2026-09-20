@@ -7,7 +7,7 @@ test('詠唱の言葉と読みを見て、かなの難語から雷を発動す�
   expect(await page.locator('#sheet-body').evaluate(el=>el.closest('.status-content')!.scrollTop)).toBe(0);
   await page.screenshot({path:'test-results/chant-words.png'});
   await page.locator('#sheet-close').click();await expect(page.locator('#chant-words')).toBeFocused();
-  await page.locator('#start').click();await page.locator('#chant').fill('らいていよ、七つに分かれろ');
+  await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await page.locator('#chant').fill('らいていよ、七つに分かれろ');
   await expect(page.locator('#result')).toBeVisible({timeout:28000});
   await expect(page.locator('#spell-name')).toHaveText('7つの雷の連弾');
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
