@@ -16,7 +16,6 @@ import { CubeTextureCreateFromImages } from '@babylonjs/core/Materials/Textures/
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator';
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
-import { VertexBuffer } from '@babylonjs/core/Buffers/buffer';
 import { clamp } from '../game/motion';
 import { colors } from './magic';
 import type { Recipe } from '../game/types';
@@ -27,8 +26,10 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
   const hit=active?smooth(t/.09)*(1-smooth((t-.62)/.2)):0;
   const recover=active?smooth((t-.62)/.2)*(1-smooth((t-1.65)/.65)):0;
   const force=purpose==='bind'?.35:purpose==='enhance'?.5:1;
+  const flash=active?Math.max(0,1-t/.24)*(t>=0?1:0):0;
+  // flashは光の強さ、shakeは体の震え。震えは「動きを減らす」設定で止める。
   return {weights:[1-hit-recover,hit,recover],lean:reduced?0:hit*force,
-    breath:reduced?0:Math.sin(ms*.0016)*.003,flash:active?Math.max(0,1-t/.24)*(t>=0?1:0):0,
+    breath:reduced?0:Math.sin(ms*.0016)*.003,flash,shake:reduced?0:flash*.028,
     state:hit>.1?'hit':recover>.1?'recover':'idle'};
 }
 
@@ -186,6 +187,8 @@ export class Knight {
         c.fillStyle=`rgba(${v},${(.08+rnd()*.16).toFixed(3)})`;c.fillRect(rnd()*SHEET,rnd()*SHEET,1+rnd()*3,1+rnd()*3);}
     });
 
+    dents.level=.6;
+
     const material=(name:string,color:string,specular=.24,rim=0)=>{
       const m=new StandardMaterial(name,this.scene);
       m.diffuseColor=Color3.FromHexString(color);m.specularColor=new Color3(specular,specular*1.06,specular*1.14);m.specularPower=46;
@@ -195,7 +198,7 @@ export class Knight {
     };
     // 汚れとてかりむらを貼る。色は材質の色に掛かり、てかりは場所ごとに強弱が付く。
     const worn=(m:StandardMaterial,shiny=true)=>{
-      m.diffuseTexture=grime;m.bumpTexture=dents;m.bumpTexture.level=.6;
+      m.diffuseTexture=grime;m.bumpTexture=dents;
       if(shiny)m.specularTexture=shine;
       return m;
     };
@@ -246,7 +249,7 @@ export class Knight {
       const shin=cone('脛当て',leg,side*.02,.32,0,.28,.23,.44);shin.rotation.z=-open*1.4;
       const foot=new TransformNode('足',this.scene);foot.parent=leg;foot.position.set(side*.03,0,-.02);foot.rotation.y=-side*.2;
       box('具足',foot,0,.1,-.06,.32,.2,.46,plate);
-      cone('具足の先',foot,0,.07,-.36,.1,.3,.24,4,plate).rotation.x=-Math.PI/2;
+      cone('具足の先',foot,0,.07,-.36,.1,.3,.24,4,plate).rotation.set(-Math.PI/2,0,0);
     }
     // 腰。輪郭に段を3つ付けて重ね板にし、その下に布を長く垂らす。元絵の裾広がりに合わせる。
     lathe('腰の板',this.root,0,1.35,0,[[.45,-.25],[.42,-.24],[.44,-.19],[.4,-.13],[.37,-.12],[.39,-.07],[.35,-.01],[.33,0],[.34,.05],[.31,.12],[.28,.2],[.27,.25]]);
@@ -275,7 +278,7 @@ export class Knight {
     lathe('兜',this.head,0,.16,0,[[0,-.13],[.23,-.13],[.25,-.09],[.22,-.05],[.235,.03],[.225,.12],[.19,.21],[.12,.28],[0,.31]],this.armor,Mesh.CAP_ALL,16);
     for(const side of [-1,1])box('兜の目',this.head,side*.07,.13,-.235,.09,.05,.04,hollow);
     // 面。前へ尖らせて、平らな顔に見えないようにする。
-    const face=cone('面覆い',this.head,0,.08,-.18,0,.3,.26,4,plate);face.rotation.set(-Math.PI/2,0,Math.PI/4);
+    const face=cone('面覆い',this.head,0,.08,-.18,0,.3,.26,4,plate);face.rotation.set(-Math.PI/2,0,0);
     // 兜の角。外へ開きながら後ろへ寝かせる。
     for(const side of [-1,1]) {
       const horn=cone('兜の角',this.head,side*.17,.23,.05,0,.14,.34,6,plate);horn.rotation.set(.45,0,-side*.55);
@@ -290,7 +293,7 @@ export class Knight {
       const big=side>0?1.12:1;
       const pauldron=lathe('肩当て',node,side*.03,.04,0,[[.26,-.21],[.21,-.19],[.2,-.15],[.25,-.13],[.19,-.11],[.185,-.07],[.23,-.05],[.18,-.03],[.19,.02],[.175,.08],[.13,.13],[0,.16]],this.armor,Mesh.CAP_ALL,16);
       pauldron.scaling.set(big,.9*big,1.05*big);
-      const spike=cone('肩の棘',node,side*.18,.08,0,0,.11,.19,6,plate);spike.rotation.z=-side*1.1;
+      const spike=cone('肩の棘',node,side*.18,.08,0,0,.11,.19,6,plate);spike.rotation.set(0,0,-side*1.1);
       cone('上腕',node,side*.01,-.27,0,.22,.19,.4,12,plate);
       const elbow=new TransformNode(name+'の肘',this.scene);
       elbow.parent=node;elbow.position.set(side*.02,-.46,0);elbow.rotation.x=.26;
@@ -308,8 +311,8 @@ export class Knight {
       const tip=cone('鍔の先',sword,side*.29,-.04,0,.02,.11,.1,6,trim);tip.rotation.set(0,0,side*Math.PI/2);
     }
     // 刃は幅の広い身と先の三角に分ける。細いと画面の中でただの線に見える。
-    const blade=cone('刃',sword,0,-.73,0,.28,.25,1.14,4,steel);blade.scaling.z=.2;blade.rotation.y=Math.PI/4;
-    const point=cone('切っ先',sword,0,-1.45,0,.25,.02,.31,4,steel);point.scaling.z=.2;point.rotation.y=Math.PI/4;
+    const blade=cone('刃',sword,0,-.73,0,.28,.25,1.14,4,steel);blade.scaling.z=.2;
+    const point=cone('切っ先',sword,0,-1.45,0,.25,.02,.31,4,steel);point.scaling.z=.2;
     const [shieldShoulder,shieldHand]=arm('盾を持つ腕',1);this.shieldArm=shieldShoulder;
     // 盾は四角柱を平たくし、縦へ伸ばした凧形。金の縁と中央の飾りを重ねる。
     const mount=new TransformNode('盾の取り付け',this.scene);mount.parent=shieldHand;mount.position.set(.3,-.3,-.2);mount.rotation.set(-.24,-.34,.1);
@@ -347,16 +350,10 @@ export class Knight {
     const shadow=MeshBuilder.CreateGround('影',{width:2.3,height:3.2},this.scene);
     shadow.parent=this.root;shadow.position.set(0,.02,-.5);shadow.material=shadowMaterial;
 
-    // 汚れの絵は部品の大小に関係なく1枚ぶん貼られるため、そのままだと小さい部品ほど粒が細かくなる。
-    // 実寸を測り、だいたい1.2mで1枚になるよう部品ごとに目盛りを引き伸ばす。
+    // 手前の光が落とす影。作った部品はすべて影を出し、影も受ける。足元の丸い影だけは別で、濃淡を描いた面を置いている。
     for(const mesh of this.scene.meshes) {
       if(mesh===shadow)continue;
-      const uv=mesh.getVerticesData(VertexBuffer.UVKind);
-      if(!uv)continue;
-      mesh.computeWorldMatrix(true);
-      const half=mesh.getBoundingInfo().boundingBox.extendSizeWorld;
-      const tiles=Math.min(4,Math.max(.35,Math.max(half.x,half.y,half.z)*2/1.2));
-      mesh.setVerticesData(VertexBuffer.UVKind,uv.map(v=>v*tiles));
+      shadows.addShadowCaster(mesh as Mesh);mesh.receiveShadows=true;
     }
 
     // にじむ光は胸の核と兜の隙間だけ。鎧の縁まで広げると輪郭がぼやける。
@@ -378,11 +375,11 @@ export class Knight {
     const p=blendPose(pose.weights);
     // 待機の間もわずかに体と腕を動かし、首をゆっくり振る。動きを減らす設定では止める。
     const live=this.motion.matches?0:1,t=ms/1000;
-    const shake=pose.flash*.028;
+    const shake=pose.shake;
     this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7);
     this.root.position.y=p.crouch+pose.breath*4;
-    this.root.position.x=Math.sin(ms*.13)*shake;
-    this.root.rotation.z=Math.sin(ms*.09)*shake;
+    this.root.position.x=Math.sin(t*62)*shake;
+    this.root.rotation.z=Math.sin(t*44)*shake;
     this.body.rotation.x=p.body+Math.sin(t*.42+1)*.008*live;
     this.body.rotation.z=Math.sin(t*.55)*.012*live;
     this.head.rotation.x=p.head;
