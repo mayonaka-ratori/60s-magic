@@ -4,7 +4,7 @@ import { fitSpell, smoothStroke } from './spell-layout';
 import { getPreset, intensityOf, rgba, type EffectPreset } from './effects/presets';
 import { GlowSprites } from './effects/sprites';
 import { ParticlePool } from './effects/particles';
-import { screenState, effectTime, RELEASE_AT, type ScreenState } from './effects/screen';
+import { screenState, effectTime, hitStopOf, RELEASE_AT, type ScreenState } from './effects/screen';
 import { drawParticles, type Frame, type XY } from './effects/frame';
 import { drawCharge } from './effects/charge';
 import { drawRelease, drawTravel } from './effects/release';
@@ -30,8 +30,10 @@ export class MagicCanvas {
   private sprites = new GlowSprites();
   private pool: ParticlePool;
   private fired = new Set<string>();
-  private lastRaw = -1; private lastEffect = -1;
+  private lastRaw = -1; private lastEffect = -1; private lastEffectMs = 0;
   private state: ScreenState = still;
+  /** 控えめモード。揺れと閃光と停止を抑える。 */
+  calm = false;
   preset: EffectPreset;
   constructor(readonly canvas: HTMLCanvasElement, preset?: EffectPreset | string | null) {
     this.ctx = canvas.getContext('2d')!;
@@ -46,12 +48,21 @@ export class MagicCanvas {
   }
   /** 画面全体にかかる効果。背景や騎士の層を揺らすために外から読む。 */
   get screen() { return this.state; }
+  /** 今の演出の時刻（ms）。命中の停止を含む。騎士や術式もこの時刻を見る。 */
+  get effectMs() { return this.lastEffectMs; }
+  /** 与えた時刻から、停止を含んだ演出の時刻（ms）を出す。時刻だけで決まる純粋な計算。 */
+  effectMsOf(ms: number, recipe: Recipe | null, amount = 0) {
+    const t = ms / 1000;
+    if (t < 17) return ms;
+    return effectTime(t, hitStopOf(this.preset, intensityOf(recipe, this.preset, amount), amount, this.calm)) * 1000;
+  }
+  setCalm(calm: boolean) { this.calm = calm; }
   get particleCount() { return this.pool.count; }
   resize() {
     const rect = this.canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio, 1.5);
     this.width = rect.width; this.height = rect.height; this.canvas.width = rect.width * dpr; this.canvas.height = rect.height * dpr; this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  private reset() { this.pool.clear(); this.pool.reseed(7); this.fired.clear(); this.lastRaw = -1; this.lastEffect = -1; this.state = still; }
+  private reset() { this.pool.clear(); this.pool.reseed(7); this.fired.clear(); this.lastRaw = -1; this.lastEffect = -1; this.lastEffectMs = 0; this.state = still; }
 
   renderEffects(points: Point[], ms: number, recipe: Recipe | null, voice: number, cursors: XY[], ready: boolean, target: XY, origin: XY, live: LiveInput = emptyLive) {
     const c = this.ctx, w = this.width, h = this.height, t = ms / 1000;
@@ -61,12 +72,20 @@ export class MagicCanvas {
     if (t < this.lastRaw - .05) this.reset();
     this.lastRaw = t;
     const preset = this.preset, palette = preset.palettes[recipe?.element ?? 'neutral'], intensity = intensityOf(recipe, preset, live.amount), accent = recipe?.accent ? preset.palettes[recipe.accent] : null;
-    this.state = screenState(t, intensity, preset, recipe?.purpose ?? null, 0, live.amount);
+    this.state = screenState(t, intensity, preset, recipe?.purpose ?? null, 0, live.amount, this.calm);
     const te = effectTime(t, this.state.hitStop), dt = this.lastEffect < 0 ? 0 : clamp(te - this.lastEffect, 0, .05);
-    this.lastEffect = te;
-    const fade = 1 - clamp((t - 21) / 2), hit = { x: target.x * w, y: target.y * h };
+    this.lastEffect = te; this.lastEffectMs = te * 1000;
+    // 放出直前の暗転の間は、粒も光も見せない。
+    const lit = 1 - this.state.blackout;
+    const fade = (1 - clamp((t - 21) / 2)) * lit, hit = { x: target.x * w, y: target.y * h };
 
-    c.save(); c.translate(this.state.shakeX, this.state.shakeY);
+    // 揺れ、傾き、寄りをまとめて演出の面にもかける。中心を軸に回して拡大する。
+    c.save();
+    c.translate(w / 2 + this.state.shakeX, h / 2 + this.state.shakeY);
+    if (this.state.rotate) c.rotate(this.state.rotate * Math.PI / 180);
+    if (this.state.zoom !== 1) c.scale(this.state.zoom, this.state.zoom);
+    c.translate(-w / 2, -h / 2);
+    c.globalAlpha = lit;
     // 背景を暗くする。術式の周りは明るいまま残す。
     if (this.state.darken > .003) {
       const g = c.createRadialGradient(origin.x, origin.y, 40, origin.x, origin.y, Math.max(w, h) * .8);
@@ -101,7 +120,7 @@ export class MagicCanvas {
       once: (key, run) => { if (!this.fired.has(key)) { this.fired.add(key); run(); } } };
     c.globalAlpha = fade;
     // 描いている間の即時反応。動きと言葉に、その場で光が応える。
-    if (t < 17) { c.save(); drawStrokeReactions(frame); drawWordReactions(frame); c.restore(); c.globalCompositeOperation = 'lighter'; }
+    if (t < 17) { c.save(); drawStrokeReactions(frame); drawWordReactions(frame); c.restore(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = fade; }
     if (recipe) {
       drawCharge(frame);
       if (te >= RELEASE_AT) { c.save(); drawRelease(frame); drawTravel(frame); drawImpact(frame); c.restore(); }
@@ -119,6 +138,11 @@ export class MagicCanvas {
       c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = .28;
       const d = this.state.chromatic, cw = this.canvas.width, ch = this.canvas.height;
       c.drawImage(this.canvas, 0, 0, cw, ch, -d, 0, w, h); c.drawImage(this.canvas, 0, 0, cw, ch, d, 0, w, h); c.restore();
+    }
+    // 放出直前の暗転。部品が自分で濃さを決めても消えるように、最後に演出の面ごと削る。
+    if (this.state.blackout > 0) {
+      c.save(); c.globalCompositeOperation = 'destination-out';
+      c.fillStyle = `rgba(0,0,0,${clamp(this.state.blackout)})`; c.fillRect(0, 0, w, h); c.restore();
     }
     // 閃光と暗転の全画面の塗りは、HTMLの層（src/render/overlay.ts）が担当する。
   }

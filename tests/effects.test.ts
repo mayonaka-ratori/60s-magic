@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { presets, getPreset, intensityOf, increase } from '../src/render/effects/presets';
-import { screenState, effectTime } from '../src/render/effects/screen';
+import { screenState, effectTime, hitStopOf, shockAt, wobble } from '../src/render/effects/screen';
 import { ParticlePool } from '../src/render/effects/particles';
 import { ELEMENTS, type Recipe } from '../src/game/types';
 
@@ -67,5 +67,66 @@ describe('粒の置き場', () => {
     const pool = new ParticlePool(1); pool.spawn({ x: 100, y: 0, pull: 4000, px: 0, py: 0, life: 5 });
     for (let i = 0; i < 100; i++) pool.update(.03);
     expect(pool.count).toBe(0);
+  });
+});
+
+describe('揺れ、寄り、暗転', () => {
+  const vivid = (t: number, calm = false) => screenState(t, 2, presets.vivid, 'attack', 0, .5, calm);
+  it('揺れは命中の直後が一番強く、時間とともに減って止まる', () => {
+    const size = (t: number) => Math.hypot(vivid(t).shakeX, vivid(t).shakeY);
+    expect(size(18.52)).toBeGreaterThan(size(18.8));
+    expect(size(18.8)).toBeGreaterThan(size(19.05));
+    expect(size(19.3)).toBe(0);
+    // 衝撃の強さは減り続け、同じ時刻なら何度でも同じ値になる。
+    expect(shockAt(18.6, .5, 1)).toBeGreaterThan(shockAt(18.9, .5, 1));
+    expect(vivid(18.6).shakeX).toBe(vivid(18.6).shakeX);
+    expect(wobble(3.42, 1)).toBe(wobble(3.42, 1));
+    expect(Math.abs(wobble(7.77, 2))).toBeLessThanOrEqual(1);
+  });
+  it('傾きは1度まで、揺れの拡大は1.03倍まで', () => {
+    for (let t = 17; t < 19.5; t += .01) {
+      const s = screenState(t, 3, presets.max, 'attack');
+      expect(Math.abs(s.rotate)).toBeLessThanOrEqual(1);
+      expect(s.zoom).toBeLessThanOrEqual(1.11 * 1.03 * 1.03 + .001);
+    }
+  });
+  it('控えめモードでは揺れも傾きも寄りも停止もなく、閃光は3分の1', () => {
+    const calm = vivid(18.52, true);
+    expect(calm.shakeX).toBe(0); expect(calm.shakeY).toBe(0);
+    expect(calm.rotate).toBe(0); expect(calm.zoom).toBe(1); expect(calm.hitStop).toBe(0);
+    expect(calm.chromatic).toBe(0);
+    expect(calm.flash).toBeCloseTo(vivid(18.52).flash / 3, 5);
+  });
+  it('寄りは溜めの後半で1.03倍まで進み、命中で1.1倍から0.3秒で戻る', () => {
+    const zoomOf = (t: number) => screenState(t, 1, presets.vivid, 'attack').zoom;
+    expect(zoomOf(15.4)).toBeCloseTo(1, 3);
+    expect(zoomOf(16.3)).toBeGreaterThan(zoomOf(15.8));
+    expect(zoomOf(16.99)).toBeCloseTo(1.03, 3);
+    // 命中の瞬間は寄り1.1倍に揺れの拡大が少し乗る。
+    expect(zoomOf(18.5)).toBeGreaterThan(1.09); expect(zoomOf(18.5)).toBeLessThan(1.14);
+    expect(zoomOf(18.7)).toBeLessThan(zoomOf(18.55));
+    expect(zoomOf(18.81)).toBeLessThan(1.03);
+  });
+  it('放出の直前だけ完全に暗転し、17秒で抜ける', () => {
+    const black = (t: number) => screenState(t, 1, presets.vivid, 'attack').blackout;
+    expect(black(16.9)).toBe(0);
+    expect(black(16.95)).toBeGreaterThan(.5);
+    expect(black(16.99)).toBe(1);
+    expect(black(17)).toBe(0);
+  });
+  it('背景の彩度は溜めの後半で0.6まで落ち、命中の後に戻る', () => {
+    const sat = (t: number) => screenState(t, 1, presets.vivid, 'attack').saturate;
+    expect(sat(15.4)).toBe(1);
+    expect(sat(16.2)).toBeLessThan(1);
+    expect(sat(17)).toBeCloseTo(.6, 3);
+    expect(sat(19.2)).toBeGreaterThan(sat(18.6));
+    expect(sat(20.5)).toBeCloseTo(1, 3);
+  });
+  it('命中の停止は弱60ms、強90ms、とどめ200msの三段', () => {
+    expect(hitStopOf(presets.vivid, .5)).toBeCloseTo(.06);
+    expect(hitStopOf(presets.vivid, 2)).toBeCloseTo(.09);
+    expect(hitStopOf(presets.vivid, 2.8, 1)).toBeCloseTo(.2);
+    expect(hitStopOf(presets.calm, 3, 1)).toBe(0);
+    expect(hitStopOf(presets.max, 3, 1, true)).toBe(0);
   });
 });

@@ -1,5 +1,6 @@
 import './effects-lab.css';
 import { MagicCanvas } from './render/magic';
+import { layerTransform } from './render/cast-scene';
 import { Knight } from './render/knight';
 import { presets, defaultPresetName } from './render/effects/presets';
 import { spellPose } from './render/spell-layout';
@@ -63,13 +64,16 @@ function recipe(): Recipe {
     noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null };
 }
 
-type Side = { magic: MagicCanvas; knight: Knight; layers: HTMLElement[]; meter: HTMLOutputElement; frames: number[]; lastShake: string };
+// 控えめモードは ?calm=1 で渡す。揺れ、傾き、寄り、停止がなくなり、閃光が3分の1になる。
+const calmMode = params.get('calm') === '1';
+type Side = { magic: MagicCanvas; knight: Knight; layers: HTMLElement[]; meter: HTMLOutputElement; frames: number[]; lastShake: string[] };
 const sides: Side[] = ['a', 'b'].map(side => {
   const frame = document.querySelector<HTMLElement>(`[data-side="${side}"]`)!;
   const magic = new MagicCanvas(el<HTMLCanvasElement>(`magic-${side}`), value(`preset-${side}`));
+  magic.setCalm(calmMode);
   const knight = new Knight(el<HTMLCanvasElement>(`knight-${side}`));
   el(`preset-${side}`).addEventListener('change', () => { magic.setPreset(value(`preset-${side}`)); ms = Math.min(ms, 13500); });
-  return { magic, knight, layers: [frame.querySelector('.lab-backdrop')!, el(`knight-${side}`)], meter: el<HTMLOutputElement>(`meter-${side}`), frames: [], lastShake: '' };
+  return { magic, knight, layers: [frame.querySelector('.lab-backdrop')!, el(`knight-${side}`)], meter: el<HTMLOutputElement>(`meter-${side}`), frames: [], lastShake: ['', ''] };
 });
 
 let ms = 13500, playing = true, loopStart = 13500, last = performance.now();
@@ -110,19 +114,26 @@ function animate(now: number) {
     s.meter.textContent = `${s.magic.preset.label}　粒 ${s.magic.particleCount}　${(1000 / average).toFixed(0)}fps`;
   }
 }
+const unlockedNow = () => el<HTMLInputElement>('unlocked').checked;
 function renderSides(dt = 0) {
   const current = recipe();
   for (const s of sides) {
     const w = s.magic.canvas.clientWidth, h = s.magic.canvas.clientHeight; if (!w || !h) continue;
-    const pose = spellPose(points, w, h, ms);
+    // 見比べ画面でも世界の時計は一つ。命中の停止は騎士にも効く。
+    const worldMs = s.magic.effectMsOf(ms, unlockedNow() ? null : current, Number(params.get('amount') ?? .5));
+    const pose = spellPose(points, w, h, worldMs);
     const displayed = points.map(p => ({ ...p, x: ((p.x - .5) * w * pose.scale + pose.dx + w / 2) / w, y: ((p.y - .5) * h * pose.scale + pose.dy + h / 2) / h }));
-    s.knight.render(ms, true, current);
+    s.knight.render(worldMs, true, current);
     // 見比べ画面では入力の量を URL の amount= で仮に与える。言葉は空。
     const live: LiveInput = { words: liveWordsNow(), amount: Number(params.get('amount') ?? .5), voice: 0 };
-    const unlocked = el<HTMLInputElement>('unlocked').checked;
+    const unlocked = unlockedNow();
     s.magic.renderEffects(displayed, ms, unlocked ? null : current, 0, [], false, s.knight.target, pose.center, live);
-    const shake = s.magic.screen, transform = shake.shakeX || shake.shakeY ? `translate(${shake.shakeX}px,${shake.shakeY}px)` : '';
-    if (transform !== s.lastShake) { for (const layer of s.layers) layer.style.transform = transform; s.lastShake = transform; }
+    // 背景と騎士に揺れ、傾き、寄りを当てる。騎士は背景より1.3倍大きく動かす。
+    const screen = s.magic.screen, moves = [1, 1.3];
+    for (let i = 0; i < s.layers.length; i++) {
+      const transform = layerTransform(screen, moves[i], 1.03);
+      if (transform !== s.lastShake[i]) { s.layers[i].style.transform = transform; s.lastShake[i] = transform; }
+    }
     if (dt) { s.frames.push(dt); if (s.frames.length > 90) s.frames.shift(); }
   }
 }

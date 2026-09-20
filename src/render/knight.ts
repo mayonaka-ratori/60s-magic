@@ -15,17 +15,45 @@ import { GlowLayer } from '@babylonjs/core/Layers/glowLayer';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
 import { colors } from './magic';
+import { getPreset } from './effects/presets';
 import type { Recipe } from '../game/types';
 
 const smooth=(x:number)=>{const p=clamp(x);return p*p*(3-2*p);};
-export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack') {
+const mix=(a:string,b:string,r:number)=>{
+  const read=(hex:string)=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
+  const [ar,ag,ab]=read(a),[br,bg,bb]=read(b);
+  return `rgb(${Math.round(ar+(br-ar)*r)},${Math.round(ag+(bg-ag)*r)},${Math.round(ab+(bb-ab)*r)})`;
+};
+
+/** 入力の量から反応の強さ（0〜1）を出す。個数、範囲、収束が大きいほど大きく崩れる。 */
+export function reactionPower(recipe:Recipe|null|undefined) {
+  if(!recipe)return .45;
+  const many=clamp((recipe.count-1)/5),wide=clamp((recipe.area-.2)/.8),focus=clamp(recipe.concentration);
+  return clamp(.16+many*.42+wide*.22+focus*.26);
+}
+
+export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45) {
   const t=(ms-18500)/1000;
   const hit=active?smooth(t/.09)*(1-smooth((t-.62)/.2)):0;
   const recover=active?smooth((t-.62)/.2)*(1-smooth((t-1.65)/.65)):0;
   const force=purpose==='bind'?.35:purpose==='enhance'?.5:1;
+  // 反応の強さ。弱いと怯むだけ、中でよろめき、強いと転倒に近い崩れになる。
+  const strength=clamp(power)*force,struck=active&&t>=0;
+  // 奥へ押されて戻る。強いほど戻りが遅い。
+  const push=struck?(t<.15?smooth(t/.15):1-smooth((t-.15)/(.35+strength*.85))):0;
+  // 転倒に近い沈み込みは強いときだけ。0.6秒で沈み、1.2秒で戻る。
+  const fall=clamp((strength-.55)/.45);
+  const collapse=struck?fall*(t<.6?smooth(t/.6):1-smooth((t-.6)/1.2)):0;
+  // 白飛びは白、属性色、白の三段で合計0.15秒。
+  const step=struck&&t<.15?Math.floor(t/.05):-1;
   return {weights:[1-hit-recover,hit,recover],lean:reduced?0:hit*force,
     breath:reduced?0:Math.sin(ms*.0016)*.003,flash:active?Math.max(0,1-t/.24)*(t>=0?1:0):0,
-    state:hit>.1?'hit':recover>.1?'recover':'idle'};
+    state:hit>.1?'hit':recover>.1?'recover':'idle',
+    strength,push:reduced?0:push,collapse:reduced?0:collapse,
+    // 打撃の向きに合わせ、右へのけぞる。単位は度。
+    spin:reduced?0:push*(1.4+strength*2.6)+collapse*3.4,
+    flashAlpha:step<0?0:(.85-step*.2)*(.5+strength*.5),flashTint:step===1?1:0,
+    ghost:struck&&t<.3?1-t/.3:0,rim:struck&&t<.6?1-smooth(t/.6):0};
 }
 
 // 待機・ひるむ・構えを戻すの3姿勢。角度だけを並べ、weightsで混ぜる。
@@ -62,10 +90,21 @@ export class Knight {
   private burst:PointLight;
   readonly ready:Promise<void>;
   private motion=matchMedia('(prefers-reduced-motion: reduce)');
+  // 立体の騎士は画面に出さないcanvasへ描き、その絵を表に出すcanvasへ重ねて仕上げる。
+  private source=document.createElement('canvas');
+  private view:CanvasRenderingContext2D|null;
+  // 白いシルエットと属性色の影を作る使い回しの小さなcanvas。毎コマ作り直さない。
+  private stencil=document.createElement('canvas');
+  private stencilContext:CanvasRenderingContext2D|null;
+  private trail:Array<{x:number;y:number;scale:number;rot:number}>=[];
+  private cssSize='';
   target={x:.5,y:.32};
   constructor(private canvas:HTMLCanvasElement) {
-    this.engine=new Engine(canvas,true,{alpha:true,premultipliedAlpha:false,preserveDrawingBuffer:false});
-    this.engine.setHardwareScalingLevel(1/Math.min(devicePixelRatio,1.5));
+    this.source.width=this.source.height=16;
+    this.view=canvas.getContext('2d');
+    this.stencilContext=this.stencil.getContext('2d');
+    // 描いた絵をそのまま取り出すため、描画面を残す設定にする。
+    this.engine=new Engine(this.source,true,{alpha:true,premultipliedAlpha:false,preserveDrawingBuffer:true});
     this.scene=new Scene(this.engine);
     // 背景の一枚絵を透かすため、描画面は透明のままにする。
     this.scene.clearColor=new Color4(0,0,0,0);
@@ -200,13 +239,83 @@ export class Knight {
     this.ready=this.scene.whenReadyAsync(true).then(()=>{this.scene.render();});
   }
   resize() {
-    this.engine.resize();
+    const cssWidth=Math.max(1,this.canvas.clientWidth),cssHeight=Math.max(1,this.canvas.clientHeight);
+    const ratio=Math.min(devicePixelRatio||1,1.5);
+    const width=Math.max(1,Math.round(cssWidth*ratio)),height=Math.max(1,Math.round(cssHeight*ratio));
+    this.cssSize=`${cssWidth}x${cssHeight}`;
+    if(this.canvas.width!==width||this.canvas.height!==height){this.canvas.width=width;this.canvas.height=height;}
+    this.engine.setSize(width,height);
+    // 残像と輪郭は形しか使わないので、半分の大きさで足りる。
+    this.stencil.width=Math.max(1,Math.round(width/2));this.stencil.height=Math.max(1,Math.round(height/2));
     // 背景の一枚絵と同じ拡大率で騎士を見せる。横長の画面では背景が広がる分だけ寄る。
-    const cover=Math.max(1,this.canvas.clientWidth/Math.max(1,this.canvas.clientHeight)/BACKDROP_RATIO);
+    const cover=Math.max(1,cssWidth/cssHeight/BACKDROP_RATIO);
     this.camera.fov=2*Math.atan(TAN/cover);
   }
-  render(ms:number,active:boolean,recipe:Recipe|null) {
-    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose);
+  /** 騎士の形だけを一色で塗った絵を作る。使い回しのcanvasに毎回上書きする。 */
+  private paintStencil(color:string) {
+    const context=this.stencilContext;if(!context)return null;
+    const w=this.stencil.width,h=this.stencil.height;
+    context.setTransform(1,0,0,1,0,0);context.globalAlpha=1;context.globalCompositeOperation='source-over';
+    context.clearRect(0,0,w,h);context.drawImage(this.source,0,0,w,h);
+    context.globalCompositeOperation='source-in';context.fillStyle=color;context.fillRect(0,0,w,h);
+    return this.stencil;
+  }
+  /** 立体の絵を、吹き飛びと回転、白飛び、残像、輪郭の発光と合わせて表の面へ写す。 */
+  private compose(pose:ReturnType<typeof knightPose>,recipe:Recipe|null) {
+    const context=this.view;if(!context)return null;
+    const w=this.canvas.width,h=this.canvas.height;if(w<2||h<2)return null;
+    const unit=w/Math.max(1,this.canvas.clientWidth||w);
+    const foot={x:w/2,y:h*FOOT};
+    // 奥へ（上へ）押され、少し縮む。崩れるときは沈む。回転は足元を軸にする。
+    const spot={x:0,y:(-pose.push*(4+pose.strength*7)+pose.collapse*11)*unit,
+      scale:1-pose.push*.03-pose.collapse*.02,rot:pose.spin*Math.PI/180};
+    const place=(dx=0,dy=0)=>{
+      context.setTransform(1,0,0,1,0,0);
+      context.translate(foot.x+spot.x+dx,foot.y+spot.y+dy);context.rotate(spot.rot);
+      context.scale(spot.scale,spot.scale);context.translate(-foot.x,-foot.y);
+    };
+    const main=getPreset(null).palettes[recipe?.element??'neutral'].main;
+    context.setTransform(1,0,0,1,0,0);context.globalAlpha=1;context.globalCompositeOperation='source-over';
+    context.clearRect(0,0,w,h);
+    place();context.drawImage(this.source,0,0,w,h);
+    context.setTransform(1,0,0,1,0,0);
+    // 白飛び。今描いた騎士の形の上だけを塗る。白、属性色、白の三段。
+    if(pose.flashAlpha>0) {
+      context.globalCompositeOperation='source-atop';context.globalAlpha=Math.min(1,pose.flashAlpha);
+      context.fillStyle=pose.flashTint?mix('#ffffff',main,.72):'#ffffff';context.fillRect(0,0,w,h);
+    }
+    // 輪郭の発光と残像は本体の後ろへ回す。
+    context.globalCompositeOperation='destination-over';
+    if(pose.rim>0) {
+      const glow=this.paintStencil(main),step=2.6*unit;
+      if(glow) {
+        context.globalAlpha=.35*pose.rim;
+        for(let i=0;i<8;i++) {
+          const angle=i*Math.PI/4;
+          place(Math.cos(angle)*step,Math.sin(angle)*step);context.drawImage(glow,0,0,w,h);
+        }
+      }
+    }
+    if(pose.ghost>0&&this.trail.length) {
+      const ghost=this.paintStencil(mix('#ffffff',main,.25));
+      if(ghost)for(let i=0;i<3&&i<this.trail.length;i++) {
+        const past=this.trail[this.trail.length-1-i];
+        context.globalAlpha=(.3-i*.1)*pose.ghost;
+        context.setTransform(1,0,0,1,0,0);
+        context.translate(foot.x+past.x,foot.y+past.y);context.rotate(past.rot);
+        context.scale(past.scale,past.scale);context.translate(-foot.x,-foot.y);
+        context.drawImage(ghost,0,0,w,h);
+      }
+    }
+    context.setTransform(1,0,0,1,0,0);context.globalAlpha=1;context.globalCompositeOperation='source-over';
+    this.trail.push(spot);if(this.trail.length>4)this.trail.shift();
+    return spot;
+  }
+  render(ms:number,active:boolean,recipe:Recipe|null,power?:number) {
+    // 表示の大きさが変わっていたら、描く前に合わせ直す。
+    const size=`${Math.max(1,this.canvas.clientWidth)}x${Math.max(1,this.canvas.clientHeight)}`;
+    if(size!==this.cssSize)this.resize();
+    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe));
     const p=blendPose(pose.weights);
     this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7);
     this.root.position.y=p.crouch+pose.breath*4;
@@ -223,7 +332,15 @@ export class Knight {
     this.scene.render();
     const w=this.engine.getRenderWidth(),h=this.engine.getRenderHeight();
     const projected=Vector3.Project(this.core.getAbsolutePosition(),Matrix.Identity(),this.scene.getTransformMatrix(),this.camera.viewport.toGlobal(w,h));
-    this.target={x:projected.x/w,y:projected.y/h};
+    const spot=this.compose(pose,recipe);
+    let targetX=projected.x,targetY=projected.y;
+    // 胸の狙い先も、吹き飛びと回転の分だけ動かす。
+    if(spot) {
+      const footX=w/2,footY=h*FOOT,cos=Math.cos(spot.rot),sin=Math.sin(spot.rot);
+      const dx=(targetX-footX)*spot.scale,dy=(targetY-footY)*spot.scale;
+      targetX=footX+spot.x+dx*cos-dy*sin;targetY=footY+spot.y+dx*sin+dy*cos;
+    }
+    this.target={x:targetX/w,y:targetY/h};
     this.canvas.dataset.state=pose.state;
     this.canvas.classList.toggle('spell-finished',active&&ms>=23500);
   }
