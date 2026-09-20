@@ -7,8 +7,10 @@ export class MotionRecorder {
   readonly display: Point[] = [];
   private last = new Map<number, Point>();
   private stroke = 0;
+  /** 受け付ける時刻の範囲。回ごとに変わる（一回目は0〜14秒、防御は24〜31秒）。 */
+  constructor(private from = 0, private to = 14000) {}
   add(x: number, y: number, t: number, hand = 0) {
-    if (![x, y, t].every(Number.isFinite) || t < 0 || t >= 14000) return false;
+    if (![x, y, t].every(Number.isFinite) || t < this.from || t >= this.to) return false;
     const previous = this.last.get(hand);
     if (previous && t <= previous.t) return false;
     const broken = !previous || t-previous.t > 350 || distance({x,y}, previous) > 0.3;

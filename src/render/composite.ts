@@ -15,6 +15,7 @@ import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPi
 import '@babylonjs/core/Rendering/depthRendererSceneComponent';
 import type { ScreenState } from './effects/screen';
 import { IMPACT_AT, RELEASE_AT } from './effects/screen';
+import { BEATS, type Beat } from '../game/rounds';
 import { LAYER_FRAGMENT, LAYER_VERTEX, SHOCKWAVE_SHADER, registerCompositeShaders } from './composite-shaders';
 
 /**
@@ -42,8 +43,10 @@ export const FPS_DROP = 55, FPS_BACK = 58;
 
 const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
 
-/** 重い後処理（ブルーム、色収差、歪み）を出す時間帯かどうか。 */
-export function postHeavyActive(t: number) { return t >= POST_FROM && t < POST_TO; }
+/** 重い後処理（ブルーム、色収差、歪み）を出す時間帯かどうか。回ごとに、発動の直前から余韻までだけ。 */
+export function postHeavyActive(t: number, beat: Beat = BEATS[0]) {
+  return t >= beat.release - (RELEASE_AT - POST_FROM) && t < beat.impact + (POST_TO - IMPACT_AT);
+}
 
 /** 衝撃波の輪。命中からの時間で半径が広がり、幅と強さが細く弱くなる。外にいる間は null。 */
 export type Ripple = { radius: number; width: number; strength: number };
@@ -55,10 +58,10 @@ export function rippleAt(t: number, impactAt = IMPACT_AT, life = RIPPLE_SECONDS)
 }
 
 /** ブルームの強さ。放出で3倍、命中で5倍まで上がり、0.4秒ほどで元へ戻る。 */
-export function bloomWeightAt(t: number) {
+export function bloomWeightAt(t: number, beat: Beat = BEATS[0]) {
   let boost = 1;
-  if (t >= RELEASE_AT) boost = Math.max(boost, 1 + (BLOOM_RELEASE - 1) * Math.max(0, 1 - (t - RELEASE_AT) / .4));
-  if (t >= IMPACT_AT) boost = Math.max(boost, 1 + (BLOOM_PEAK - 1) * Math.max(0, 1 - (t - IMPACT_AT) / .4));
+  if (t >= beat.release) boost = Math.max(boost, 1 + (BLOOM_RELEASE - 1) * Math.max(0, 1 - (t - beat.release) / .4));
+  if (t >= beat.impact) boost = Math.max(boost, 1 + (BLOOM_PEAK - 1) * Math.max(0, 1 - (t - beat.impact) / .4));
   return BLOOM_BASE * boost;
 }
 
@@ -115,6 +118,8 @@ export type CompositeFrame = {
   target: { x: number; y: number };
   /** 控えめモード。色収差と歪みを切る。 */
   calm: boolean;
+  /** この回の時刻の表（秒）。後処理を出す時間帯を決めるのに使う。 */
+  beat?: Beat;
 };
 
 /** 板ひとつ分。元のcanvasと、そこへ貼り付けるテクスチャを持つ。 */
@@ -328,18 +333,18 @@ export class Composite {
     this.boards.world.mesh.scaling.set(this.width / 2 * 1.03, this.height / 2 * 1.03, 1);
     this.boards.knight.mesh.scaling.set(this.width / 2 * 1.03, this.height / 2 * 1.03, 1);
 
-    const heavy = postHeavyActive(frame.t);
+    const heavy = postHeavyActive(frame.t, frame.beat);
     this.setPost(heavy);
     if (heavy) {
       const bloom = this.keepBloom || bloomDecision(this.bloomOn, this.fps);
       if (bloom !== this.bloomOn) { this.bloomOn = bloom; this.pipeline.bloomEnabled = bloom; }
-      this.pipeline.bloomWeight = bloomWeightAt(frame.t);
+      this.pipeline.bloomWeight = bloomWeightAt(frame.t, frame.beat);
       // 色収差は命中後0.5秒だけ。値は画面全体の効果から受け取る。控えめモードでは出さない。
       const chromatic = frame.calm ? 0 : frame.screen.chromatic;
       this.pipeline.chromaticAberration.aberrationAmount = chromatic * 6;
       this.pipeline.chromaticAberration.radialIntensity = 1.4;
       this.center = frame.target;
-      this.ripple = frame.calm ? null : rippleAt(frame.t);
+      this.ripple = frame.calm ? null : rippleAt(frame.t, frame.beat?.impact);
       this.canvas.dataset.ripple = this.ripple ? `${this.ripple.radius.toFixed(3)}:${this.shockwave.isReady() ? '出ている' : '準備中'}` : '';
     } else {
       this.ripple = null;

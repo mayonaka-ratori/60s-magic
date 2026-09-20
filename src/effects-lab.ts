@@ -84,7 +84,7 @@ el('loop-release').addEventListener('click', () => { loopStart = loopStart === 1
 el('single').addEventListener('click', () => { const single = el('layout').classList.toggle('single'); el('single').setAttribute('aria-pressed', String(single)); el('single').textContent = single ? '二画面にする' : '一画面にする'; resize(); });
 // つまみで先へ飛ばすときは、途中のコマを速く描いて粒の動きを追いつかせる。戻すときは最初から。
 function seek(target: number) {
-  if (target < ms) { ms = 13500; for (const s of sides) s.magic.renderEffects([], 24000, null, 0, [], true, { x: .5, y: .3 }, { x: 0, y: 0 }); }
+  if (target < ms) { ms = 13500; for (const s of sides) s.magic.renderEffects({ points: [], ms: 24000, recipe: null, voice: 0, cursors: [], ready: true, target: { x: .5, y: .3 }, origin: { x: 0, y: 0 } }); }
   while (ms + 1000 / 60 < target) { ms += 1000 / 60; renderSides(); }
   ms = target;
 }
@@ -125,9 +125,9 @@ function renderSides(dt = 0) {
     const displayed = points.map(p => ({ ...p, x: ((p.x - .5) * w * pose.scale + pose.dx + w / 2) / w, y: ((p.y - .5) * h * pose.scale + pose.dy + h / 2) / h }));
     s.knight.render(worldMs, true, current);
     // 見比べ画面では入力の量を URL の amount= で仮に与える。言葉は空。
-    const live: LiveInput = { words: liveWordsNow(), amount: Number(params.get('amount') ?? .5), voice: 0 };
+    const live: LiveInput = { words: liveWordsNow(), amount: Number(params.get('amount') ?? .5), voice: 0, rings: 0 };
     const unlocked = unlockedNow();
-    s.magic.renderEffects(displayed, ms, unlocked ? null : current, 0, [], false, s.knight.target, pose.center, live);
+    s.magic.renderEffects({ points: displayed, ms, recipe: unlocked ? null : current, voice: 0, cursors: [], ready: false, target: s.knight.target, origin: pose.center, live });
     // 背景と騎士に揺れ、傾き、寄りを当てる。騎士は背景より1.3倍大きく動かす。
     const screen = s.magic.screen, moves = [1, 1.3];
     for (let i = 0; i < s.layers.length; i++) {

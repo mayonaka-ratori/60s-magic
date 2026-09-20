@@ -2,13 +2,12 @@ import { clamp } from '../../game/motion';
 import { increase } from './presets';
 import { glow, line, noise, type Frame } from './frame';
 
-const CHARGE_AT = 14, CHARGE_END = 17;
-
-/** 蓄積と完成（14〜17秒）。粒が中心へ吸い込まれ、魔法陣が回り、中心が脈打つ。 */
+/** 蓄積と完成（締め切りから発動まで）。粒が中心へ吸い込まれ、魔法陣が回り、中心が脈打つ。 */
 export function drawCharge(f: Frame) {
   const { c, t, origin: o, preset, intensity } = f;
+  const CHARGE_AT = f.beat.inputEnd, CHARGE_END = f.beat.release;
   if (t < CHARGE_AT || t >= CHARGE_END + .3) return;
-  const charge = clamp((t - CHARGE_AT) / 3), out = clamp((t - CHARGE_END) / .3);
+  const charge = clamp((t - CHARGE_AT) / (CHARGE_END - CHARGE_AT)), out = clamp((t - CHARGE_END) / .3);
   const fade = 1 - out;
   // 入力の量。重ねて描き、重ねて唱えるほど溜まりが濃くなる。0でも今までの見た目は変わらない。
   const amount = clamp(f.live.amount);

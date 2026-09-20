@@ -33,7 +33,7 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
   await page.screenshot({path:'test-results/knight-hit.png'});
   await expect(page.locator('#knight')).toHaveAttribute('data-state','recover');
   await page.screenshot({path:'test-results/knight-recover.png'});
-  await expect(page.locator('#result')).toBeVisible({timeout:8000});
+  await expect(page.locator('#result')).toBeVisible({timeout:25000});
   await expect(page.locator('#knight')).toHaveAttribute('data-state','idle');
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.activeSources).toBe(0);

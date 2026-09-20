@@ -45,3 +45,14 @@ body:not([data-dev]) .dev-only{display:none!important}
   .intro{font-size:12px;line-height:1.8;margin-bottom:12px}
   .mode-options{margin-bottom:10px}.welcome-actions{margin-top:0}
 }
+
+/* 幕の表示。回の切り替わりで0.8秒だけ大きく出す。 */
+.act-title{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-family:'Noto Serif JP',serif;font-size:clamp(28px,4vw,62px);letter-spacing:.3em;color:#e8f2ff;text-shadow:0 0 24px #7fc4ff8c,0 2px 10px #000a;pointer-events:none;animation:act-in .8s ease-out both}
+@keyframes act-in{0%{opacity:0;letter-spacing:.6em}18%{opacity:1}70%{opacity:1}100%{opacity:0;letter-spacing:.34em}}
+/* 結果に並べる、その回ごとの魔法。 */
+.spell-list{list-style:none;margin:10px 0 14px;padding:0;display:flex;flex-direction:column;gap:6px}
+.spell-list li{display:flex;align-items:baseline;gap:10px;font-size:12px;color:#c6d8e4;border-top:1px solid #8aa0b42e;padding-top:6px}
+.spell-list b{font-weight:400;font-size:10px;letter-spacing:.14em;color:#8fa8b8;min-width:44px}
+.spell-list span{font-family:'Noto Serif JP',serif;font-size:14px;color:#f0e4c7}
+.spell-list small{font-size:10px;color:#8fa8b8}
+@media(prefers-reduced-motion:reduce){.act-title{animation:none;opacity:1}}

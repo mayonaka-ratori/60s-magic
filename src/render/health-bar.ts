@@ -1,6 +1,9 @@
 import type { Recipe } from '../game/types';
+import { ROUNDS } from '../game/rounds';
 
 const clamp = (x: number) => Math.min(1, Math.max(0, x));
+/** 防御で弾き返したときに減る量。入力では変わらない。 */
+export const GUARD_DAMAGE=10;
 /** 命中で減る量。派手さ（個数、範囲、収束）で20〜45%にする。 */
 function damage(recipe: Recipe | null) {
   if (!recipe) return 24;
@@ -38,11 +41,16 @@ export class HealthBar {
     }
     this.show(left, trail);
   }
-  /** 命中の18.5秒で減らす。多段なら80msごとに分けて減らす。 */
+  /**
+   * 一回目の命中で減らし、防御で弾き返したときにもう一度減らす。多段なら80msごとに分ける。
+   * 体力は演出上の数値で、勝敗の計算には使わない。とどめの回を作るときに0までの段を足す。
+   */
   private plan(recipe: Recipe | null) {
     const total = damage(recipe), count = Math.max(1, Math.min(5, recipe && recipe.count > 1 ? recipe.count : 1));
     const steps: Array<{ at: number; from: number; left: number }> = [];
-    for (let i = 0; i < count; i++) steps.push({ at: 18500 + i * 80, from: 100 - total * i / count, left: 100 - total * (i + 1) / count });
+    for (let i = 0; i < count; i++) steps.push({ at: ROUNDS[0].impact + i * 80, from: 100 - total * i / count, left: 100 - total * (i + 1) / count });
+    const after = 100 - total;
+    steps.push({ at: 37500, from: after, left: Math.max(0, after - GUARD_DAMAGE) });
     return steps;
   }
   private show(left: number, trail: number) {

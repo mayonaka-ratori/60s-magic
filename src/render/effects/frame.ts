@@ -4,6 +4,8 @@ import type { GlowSprites } from './sprites';
 import type { ParticlePool } from './particles';
 import type { LiveInput } from '../../game/live-input';
 import type { Point } from '../../game/types';
+import type { Beat } from '../../game/rounds';
+import type { GuardPlan, XY as AimPoint } from '../../game/guard';
 import { blendOf } from '../../game/recipe';
 import { mixHue, lighten } from './presets';
 
@@ -22,6 +24,14 @@ export type Frame = {
   accent: Palette | null;
   /** いまの入力（言葉、量、声）と、表示用の点列、手の位置 */
   live: LiveInput; points: Point[]; cursors: XY[];
+  /** この回の時刻の表（秒）。部品はここからの相対で描き、秒数を埋め込まない */
+  beat: Beat;
+  /** 防御の回で確定した盾と止め方。確定前と他の回は null */
+  guard: GuardPlan | null;
+  /** 狙いの印の位置（正規化）。防御の回だけ使う */
+  aim: AimPoint;
+  /** 前の回から引き継いだ光点（正規化）。防御の回の間ずっと薄く残す */
+  inherited: AimPoint[];
   /** 一度だけ実行する。粒の発生などに使う */
   once: (key: string, run: () => void) => void;
 };

@@ -1,10 +1,8 @@
-import { dueSounds, type SoundCue } from './cues';
+import { dueSounds, shouldDuck, type SoundCue } from './cues';
 import { SampleBank } from './sample-bank';
 import type { Recipe } from '../game/types';
 import { intensityOf, getPreset, type EffectPreset } from '../render/effects/presets';
 
-/** 録音を止める時刻。ここまでマイクを使う回は曲を下げ、効果音を鳴らさない。 */
-const RECORDING_END_MS=14750;
 /** 詠唱中に曲を下げる量。仕様の6〜10dBの中を取る。 */
 const DUCK_DB=8;
 
@@ -56,6 +54,14 @@ export class CastAudio {
     this.setDuck(microphone,.05);this.bgmStarted=false;this.bgmStartedAtMs=null;
   }
   stop(){this.previewVersion++;this.running=false;this.ducked=false;this.bgmStarted=false;this.fadeBgm(.35);this.clearSources();}
+  /** 狙いの印を囲えた合図。時刻ではなく出来事で鳴らすので、cues の表には入れない。 */
+  ring(count:number) {
+    if(!this.running||!this.enabled||!this.volume||this.context?.state!=='running'||!this.master)return;
+    // 録音している間も、この音だけは鳴らさない（マイクへ回り込むため）。
+    if(this.microphone)return;
+    this.play('ring',null,count);
+    this.events.push({name:'ring',atMs:this.lastMs,sample:false});
+  }
   async preview() {
     if(this.running||!this.enabled)return;
     this.clearSources();const version=++this.previewVersion;await this.prepare();
@@ -65,7 +71,9 @@ export class CastAudio {
   update(ms:number,recipe:Recipe|null,preset:EffectPreset=getPreset(null)) {
     if(!this.running)return;
     const cues=dueSounds(this.lastMs,ms,this.microphone);this.lastMs=ms;
-    if(this.ducked&&ms>=RECORDING_END_MS)this.setDuck(false,.4);
+    // 録音している回の間だけ曲を下げる。回ごとに下げ直す。
+    const duck=this.microphone&&shouldDuck(ms);
+    if(duck!==this.ducked)this.setDuck(duck,duck?.05:.4);
     if(!this.enabled||!this.volume||this.context?.state!=='running'||!this.master)return;
     // 素材の読み込みや音の許可が開始より遅れても、そのときの進み具合の位置から曲を始める。
     if(!this.bgmStarted&&this.bank.bgm){this.startBgm(ms/1000);this.bgmStartedAtMs=ms;}
@@ -131,6 +139,19 @@ export class CastAudio {
     if(cue==='trace'||cue==='chant') {this.tone(cue==='trace'?260:390,520,.65,.035);return;}
     if(cue==='build') {this.tone(100,340,1.9,.12);this.tone(150,510,1.65,.045);this.noise(1.5,.065,400,1900);if(big>.3)this.tone(55,110,2.2,.08*big);return;}
     if(cue==='complete') {for(const ratio of [1,1.5,2])this.tone(440*ratio,440*ratio,.8,.045);return;}
+    if(cue==='ring') {
+      // 囲えた合図。囲った数だけ音の高さが上がる。intensity に囲った数を入れて呼ぶ。
+      const step=Math.min(4,Math.max(0,Math.round(intensity)-1));
+      this.tone(660*Math.pow(1.19,step),660*Math.pow(1.19,step),.34,.07,'triangle');
+      this.tone(990*Math.pow(1.19,step),990*Math.pow(1.19,step),.22,.03);return;
+    }
+    if(cue==='block') {
+      // 受け止めた音。低い衝撃、金属の鳴り、砕けた破片の三層。
+      this.tone(96,44,.6,.42,'triangle');this.noise(.3,.55,2400,420);
+      for(const frequency of [520,806,1290])this.tone(frequency*pitch,frequency*pitch*.9,.45,.06);
+      if(big>.3){this.tone(52,34,.8,.3*big);this.noise(.55,.24*big,900,160);}
+      return;
+    }
     if(cue==='release') {
       this.tone(220*pitch,60*pitch,.55,.2,'triangle');this.noise(.8,.36,800,2600);
       this.tone(880*pitch,300*pitch,.6,.06);

@@ -4,7 +4,10 @@ import { increase, type Palette } from './presets';
 import { RELEASE_AT, IMPACT_AT } from './screen';
 import { glow, line, edged, mixOf, noise, ease, type Frame, type XY } from './frame';
 
+/** 一回目の、放出から命中までの長さ（秒）。 */
 export const ARRIVAL = IMPACT_AT - RELEASE_AT;
+/** その回の、放出から命中までの長さ（秒）。 */
+export const arrivalOf = (f: Frame) => f.beat.impact - f.beat.release;
 
 /**
  * 連弾の i 発目が届くまでの遅れ（秒）。80ms間隔で数発届き、最後の1発だけ200ms空けて落とす。
@@ -18,8 +21,8 @@ export function hitDelay(i: number, count: number) {
 /** 本体 i 個目の位置。進み具合 0〜1 と軌道から決まる。尾を描くために過去の値も求められる。 */
 export function bodyPoint(f: Frame, i: number, travelRaw: number, time: number): XY {
   const r = f.recipe, { origin: o, target: g } = f, count = Math.max(1, r.count);
-  // 弾ごとに少し遅らせる。最初の1発が18.5秒、最後の1発が一番遅れて届く。
-  const travel = clamp(travelRaw - hitDelay(i, count) / ARRIVAL);
+  // 弾ごとに少し遅らせる。最初の1発が命中の時刻、最後の1発が一番遅れて届く。
+  const travel = clamp(travelRaw - hitDelay(i, count) / arrivalOf(f));
   const radius = 24 + r.area * 70 + f.intensity * 10, angle = i / count * Math.PI * 2, arc = Math.sin(clamp(travel) * Math.PI);
   let x = o.x + (g.x - o.x) * travel, y = o.y + (g.y - o.y) * travel;
   if (count > 1) { x += Math.cos(angle) * radius * arc; y += Math.sin(angle) * radius * arc * .8; }
@@ -61,7 +64,7 @@ export function drawBody(f: Frame, x: number, y: number, size: number, element: 
 /** 放出（17秒）。閃光、衝撃波の輪、放射状の線、飛び出す粒。 */
 export function drawRelease(f: Frame) {
   const { c, t, origin: o, target: g, preset, intensity, recipe: r } = f;
-  const time = t - RELEASE_AT;
+  const time = t - f.beat.release;
   if (time < 0) return;
   const violent = r.purpose === 'attack', mix = mixOf(f), pal0 = mix.pal;
   f.once('release', () => {
@@ -103,7 +106,7 @@ export function drawRelease(f: Frame) {
 /** 飛翔（17〜18.5秒）と持続する本体。球は尾を引き、光線は帯、壁と結界は面、拘束は輪。 */
 export function drawTravel(f: Frame) {
   const { c, t, origin: o, target: g, preset, intensity, recipe: r } = f;
-  const time = t - RELEASE_AT;
+  const time = t - f.beat.release, ARRIVAL = arrivalOf(f);
   if (time < 0 || time > 7) return;
   const travel = clamp(time / ARRIVAL), fade = (1 - clamp((time - 3.2 - r.duration) / 2.8)) * (1 - clamp((time - 4) / 2));
   if (fade <= 0) return;

@@ -25,11 +25,11 @@ async function playThrough(page:Page,where:string) {
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   await page.mouse.move(420,400);await page.mouse.down();await page.mouse.move(700,520,{steps:20});await page.mouse.up();
   // 描いている間から余韻まで、1秒ごとに見る。描画が遅い環境でも取りこぼさない。
-  for(let i=0;i<26&&await page.locator('#result').isHidden();i++) {
+  for(let i=0;i<44&&await page.locator('#result').isHidden();i++) {
     found.push(...await overlaps(page,`${where}・${await page.locator('#timer').innerText()}`));
     await page.waitForTimeout(1000);
   }
-  await expect(page.locator('#result')).toBeVisible({timeout:12000});
+  await expect(page.locator('#result')).toBeVisible({timeout:14000});
   found.push(...await overlaps(page,`${where}・結果`));
   return [...new Set(found)];
 }
