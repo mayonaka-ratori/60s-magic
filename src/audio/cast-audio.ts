@@ -144,7 +144,7 @@ export class CastAudio {
   private play(cue:SoundCue,recipe:Recipe|null,intensity=1):boolean {
     const element=recipe?.element??'neutral',pitch=element==='fire'?.7:element==='dark'?.55:element==='ice'?1.35:1;
     const picked=this.bank.pick(cue,element);
-    if(picked){this.sample(picked.buffer,picked.gain,cue==='impact'||cue==='release'?Math.sqrt(pitch):1);if(!picked.synth)return true;}
+    if(picked){this.sample(picked.buffer,picked.gain,cue==='impact'||cue==='finish'||cue==='release'?Math.sqrt(pitch):1);if(!picked.synth)return true;}
     this.synth(cue,element,pitch,intensity);
     return !!picked;
   }
@@ -172,7 +172,8 @@ export class CastAudio {
       this.tone(880*pitch,300*pitch,.6,.06);
       if(big>.3){this.noise(.5,.2*big,3000,600);this.tone(1760*pitch,440*pitch,.4,.05*big);}return;
     }
-    if(cue==='impact') {
+    // とどめの一撃は、いまは命中と同じ音で鳴らす。専用の音は別に作る。
+    if(cue==='impact'||cue==='finish') {
       this.tone(110,40,.65,.45,'triangle');this.noise(.38,.65,2800,350);
       if(big>.3){this.tone(48,30,.9,.35*big,'sine');this.noise(.7,.3*big,1200,120);}
       for(const frequency of [720,1103,1781])this.tone(frequency*pitch,frequency*pitch*.85,.5,.07);

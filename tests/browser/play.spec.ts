@@ -9,7 +9,7 @@ async function encircleAim(page:import('@playwright/test').Page,radiusX=150,radi
   await page.mouse.up();
 }
 
-test('40秒を最後まで遊び、七つの雷と、印を囲んだ盾を記録できる',async({page})=>{
+test('60秒を最後まで遊び、七つの雷と、印を囲んだ盾と、とどめの魔法を記録できる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/?dev=1');await expect(page.locator('#loading')).toBeHidden();await page.screenshot({path:'test-results/01-ready.png'});
   await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await expect(page.locator('#hud')).toBeVisible();
@@ -46,20 +46,34 @@ test('40秒を最後まで遊び、七つの雷と、印を囲んだ盾を記録
   await expect(page.locator('#step-release')).toHaveClass('active',{timeout:5000});
   await page.waitForTimeout(1600);await page.screenshot({path:'test-results/08-blocked.png'});
   await expect(page.locator('#instruction')).toHaveText('騎士の胸が開いた',{timeout:6000});await page.screenshot({path:'test-results/09-weakpoint.png'});
-  await expect(page.locator('#result')).toBeVisible({timeout:6000});await expect(page.locator('#spell-name')).toHaveText('氷の壁');
+  // 40秒からとどめの回。弱点へもう一度描いて唱える。
+  await expect(page.locator('#instruction')).toHaveText('弱点へ、最後の術式を描け',{timeout:6000});
+  await page.locator('#chant').fill('光よ、集まれ、貫け');
+  await page.mouse.move(700,430);await page.mouse.down();
+  for(let i=0;i<40;i++){await page.mouse.move(700+Math.sin(i/7)*170,430+Math.cos(i/7)*130);await page.waitForTimeout(35);}
+  await page.mouse.up();
+  await expect(page.locator('#instruction')).toHaveText('全力で詠唱せよ',{timeout:8000});await page.screenshot({path:'test-results/10-finish-drawing.png'});
+  await expect(page.locator('#step-release')).toHaveClass('active',{timeout:10000});
+  await page.waitForTimeout(2600);await page.screenshot({path:'test-results/11-final-blow.png'});
+  // 60秒で結果。魔法名はとどめの回だけ57秒に出るので、そこまで待つ。
+  await expect(page.locator('#result')).toBeVisible({timeout:12000});await expect(page.locator('#spell-name')).toHaveText('氷の壁');
   await expect(page.locator('#spell-list')).toContainText('7つの雷の連弾');
+  await expect(page.locator('#spell-list')).toContainText('とどめ');
   await expect(page.locator('#spell-description')).toContainText('弾き返した');
   await expect(page.locator('#spell')).toHaveAttribute('data-visible','false');await expect(page.locator('#result-spell')).toBeVisible();
   await expect(page.locator('#transcript')).toContainText('文字で入力');await page.screenshot({path:'test-results/05-result.png'});
   await page.locator('[data-feedback="yes"]').click();await page.locator('#record').click();
   const record=JSON.parse(await page.locator('#sheet-body pre').innerText());
-  const first=record.rounds[0],defend=record.rounds[1];
+  const first=record.rounds[0],defend=record.rounds[1],finish=record.rounds[2];
   expect(first.rawPoints.length).toBeGreaterThan(50);expect(first.rawPoints.at(-1).t).toBeGreaterThan(11000);expect(first.recipe.count).toBe(7);
   expect(first.events.find((e:{name:string})=>e.name==='recipe-locked').observedMs).toBeLessThan(16250);
   expect(defend.rawPoints.filter((p:{t:number})=>p.t>=24000&&p.t<31000).length).toBeGreaterThan(20);
   expect(defend.guard.enclosed).toBe(true);expect(defend.guard.style).toBe('reflect');
   expect(defend.guard.rings).toBeGreaterThanOrEqual(1);expect(defend.guard.moved).toBe(false);
   expect(defend.events.find((e:{name:string})=>e.name==='recipe-locked').observedMs).toBeLessThan(33250);
+  expect(record.scope).toBe('full-60-seconds');expect(record.rounds.length).toBe(3);
+  expect(finish.rawPoints.filter((p:{t:number})=>p.t>=40000&&p.t<49000).length).toBeGreaterThan(20);
+  expect(finish.events.find((e:{name:string})=>e.name==='recipe-locked').observedMs).toBeLessThan(51250);
   expect(record.feedback).toBe('yes');expect(errors).toEqual([]);
 });
 
@@ -70,7 +84,7 @@ test('遅いJevの回答は使わず、本人の氷の壁で時刻どおり発�
   });
   await page.goto('/?dev=1');await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await page.locator('#chant').fill('雷ではなく氷よ、壁となれ');
   await expect(page.locator('#step-release')).toHaveClass('active',{timeout:20000});
-  await expect(page.locator('#result')).toBeVisible({timeout:26000});
+  await expect(page.locator('#result')).toBeVisible({timeout:46000});
   await expect(page.locator('#spell-list')).toContainText('氷の壁');
   await page.locator('#record').click();const record=JSON.parse(await page.locator('#sheet-body pre').innerText());
   const first=record.rounds[0];
@@ -102,7 +116,7 @@ test('Jevの期限内の回答で曖昧な言葉を反映し、発動時刻は�
   });
   await page.goto('/?dev=1');await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await page.locator('#chant').fill('冬の静けさよ、前に立て');
   await expect(page.locator('#recognized')).toBeVisible({timeout:18000});await expect(page.locator('#step-complete')).toHaveClass('active');
-  await expect(page.locator('#result')).toBeVisible({timeout:28000});
+  await expect(page.locator('#result')).toBeVisible({timeout:48000});
   await expect(page.locator('#spell-list')).toContainText('氷の壁');
   await page.locator('#record').click();const record=JSON.parse(await page.locator('#sheet-body pre').innerText());
   const first=record.rounds[0];

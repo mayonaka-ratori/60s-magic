@@ -1,6 +1,6 @@
 import { ROUNDS, type Round } from '../game/rounds';
 
-export type SoundCue='trace'|'chant'|'build'|'complete'|'release'|'impact'|'settle'|'block'|'ring';
+export type SoundCue='trace'|'chant'|'build'|'complete'|'release'|'impact'|'finish'|'settle'|'block'|'ring';
 export type Cue={name:SoundCue;at:number;quietUntil:number;round:Round['id']};
 
 /** 録音を止めてから効果音を鳴らし始めるまでの余裕（ms）。 */
@@ -12,7 +12,11 @@ function cuesOf(round:Round):Cue[] {
   const list:Array<[SoundCue,number]>=[];
   if(round.build!==null)list.push(['trace',round.build]);
   list.push(['chant',round.chant],['build',quietUntil],['complete',round.lock],['release',round.release],
-    [round.id==='defend'?'block':'impact',round.impact],['settle',round.impact+3500]);
+    [round.id==='defend'?'block':'impact',round.impact]);
+  // とどめの一撃は別の音にする。持たない回は飛ばす。
+  if(round.finalBlow!==null)list.push(['finish',round.finalBlow]);
+  // 静かな音への切り替え。一回目と防御は今までどおり命中の3.5秒後、とどめは余韻の始まり（57秒）。
+  list.push(['settle',round.finalBlow!==null?round.handoff:round.impact+3500]);
   return list.map(([name,at])=>({name,at,quietUntil,round:round.id}));
 }
 const soundCues:Cue[]=ROUNDS.flatMap(cuesOf);

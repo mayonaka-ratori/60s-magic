@@ -3,11 +3,10 @@ import type { Phase } from './types';
 /**
  * 一回分の時刻（ms）。60秒を三回に分けた表の一行にあたる。
  * 秒数は設計仕様の1.3の値をそのまま置いている。勝手に動かさない。
- * とどめの回（40〜60秒）はまだ作っていないので、この表は二行で止めてある。
  */
 export type Round = {
-  id: 'first' | 'defend';
-  /** 一回目が1、防御が2。 */
+  id: 'first' | 'defend' | 'finish';
+  /** 一回目が1、防御が2、とどめが3。 */
   index: number;
   castId: string;
   /** 入力の受付を始める時刻。 */
@@ -24,6 +23,8 @@ export type Round = {
   release: number;
   /** 敵へ届く、または敵の一撃が盾へ当たる時刻。 */
   impact: number;
+  /** とどめの一撃が核へ届く時刻。持たない回は null。回の名前（finish）と混ぜないため別の名前にしてある。 */
+  finalBlow: number | null;
   /** 次の場面へ渡す間の始まり。 */
   handoff: number;
   /** 回の終わり。 */
@@ -31,11 +32,12 @@ export type Round = {
 };
 
 export const ROUNDS: Round[] = [
-  { id: 'first', index: 1, castId: 'cast-01', start: 0, build: 6000, chant: 11000, inputEnd: 14000, lock: 16000, release: 17000, impact: 18500, handoff: 23000, end: 24000 },
-  { id: 'defend', index: 2, castId: 'cast-02', start: 24000, build: null, chant: 28000, inputEnd: 31000, lock: 33000, release: 34000, impact: 35400, handoff: 39000, end: 40000 },
+  { id: 'first', index: 1, castId: 'cast-01', start: 0, build: 6000, chant: 11000, inputEnd: 14000, lock: 16000, release: 17000, impact: 18500, finalBlow: null, handoff: 23000, end: 24000 },
+  { id: 'defend', index: 2, castId: 'cast-02', start: 24000, build: null, chant: 28000, inputEnd: 31000, lock: 33000, release: 34000, impact: 35400, finalBlow: null, handoff: 39000, end: 40000 },
+  { id: 'finish', index: 3, castId: 'cast-03', start: 40000, build: null, chant: 44000, inputEnd: 49000, lock: 51000, release: 52000, impact: 53600, finalBlow: 54500, handoff: 57000, end: 60000 },
 ];
 
-/** 今作ってあるところまでの終わり。とどめの回を足すと60000になる。 */
+/** 戦いの終わり。回の表の最後の行から決まる。 */
 export const BATTLE_END = ROUNDS[ROUNDS.length - 1].end;
 /** 締め切りのあと、声の最後の文字を待てる時間。MacのGPUでの認識一回分が入る長さ。 */
 export const SPEECH_WAIT_MS = 1400;
@@ -64,13 +66,19 @@ export function phaseAt(ms: number, round: Round = ROUNDS[0]): Phase {
 export type Beat = {
   start: number; build: number; chant: number; inputEnd: number; lock: number;
   release: number; impact: number; handoff: number; end: number;
+  /** とどめの一撃の時刻（秒）。持たない回は null。 */
+  finalBlow: number | null;
   /** 防御の回かどうか。敵の一撃を受け止める見せ方に切り替える。 */
   defend: boolean;
+  /** とどめの回かどうか。とどめだけの見せ方に切り替える。 */
+  finish: boolean;
 };
 export const beatOf = (round: Round): Beat => ({
   start: round.start / 1000, build: (round.build ?? round.start) / 1000, chant: round.chant / 1000,
   inputEnd: round.inputEnd / 1000, lock: round.lock / 1000, release: round.release / 1000,
-  impact: round.impact / 1000, handoff: round.handoff / 1000, end: round.end / 1000, defend: round.id === 'defend',
+  impact: round.impact / 1000, handoff: round.handoff / 1000, end: round.end / 1000,
+  finalBlow: round.finalBlow === null ? null : round.finalBlow / 1000,
+  defend: round.id === 'defend', finish: round.id === 'finish',
 });
 export const BEATS = ROUNDS.map(beatOf);
 export const beatAt = (t: number) => BEATS.find(beat => t < beat.end) ?? BEATS[BEATS.length - 1];

@@ -6,7 +6,7 @@ import type { Phase, Point } from './types';
 
 /**
  * 60秒の進行役。回ごとの仕組み（CastSession）を並べ、今どの回かを決めるだけ。
- * 時刻はすべて戦いの開始からのms。今は一回目（0〜24秒）と防御（24〜40秒）の二回。
+ * 時刻はすべて戦いの開始からのms。一回目（0〜24秒）、防御（24〜40秒）、とどめ（40〜60秒）の三回。
  */
 export class Battle {
   readonly id:string;
@@ -14,8 +14,10 @@ export class Battle {
   readonly casts:CastSession[];
   elapsed=0;
   cancelled=false;
-  /** 一回目から引き継ぐ光点。23秒で決め、防御の回の間ずっと薄く残す。 */
+  /** 前の回から引き継ぐ光点。一回目の分を23秒、防御の分を39秒で決め、あとの回の間ずっと薄く残す。 */
   inherited:Point[]=[];
+  /** 光点をもう受け取った回の名前。同じ回から二度取らないための覚え書き。 */
+  private handedOff=new Set<string>();
   constructor(private clock:()=>number=()=>performance.now(), id:string=crypto.randomUUID()) {
     this.id=id;this.startMs=clock();
     this.casts=ROUNDS.map(round=>new CastSession(clock,id,round,this.startMs));
@@ -26,6 +28,7 @@ export class Battle {
   get active() {return this.casts[this.round.index-1];}
   get first() {return this.casts[0];}
   get defend() {return this.casts[1];}
+  get finish() {return this.casts[2];}
   get phase():Phase {return this.cancelled?'cancelled':phaseAt(this.elapsed,this.round);}
   get accepting() {return !this.cancelled&&this.active.accepting;}
   get finished() {return this.elapsed>=BATTLE_END;}
@@ -35,13 +38,22 @@ export class Battle {
     if(this.cancelled)return;
     this.elapsed=Math.max(0,this.clock()-this.startMs);
     for(const cast of this.casts)cast.tick();
-    // 一回目の形と魔法を防御の回へ渡す。20〜30%だけ残す決まりなので光点は3つまで。
-    if(this.elapsed>=ROUNDS[0].handoff&&!this.inherited.length&&this.first.motion.display.length)this.inherited=getNodes(this.first.motion.display,3);
-    if(this.elapsed>=ROUNDS[0].handoff&&!this.defend.previous)this.defend.previous=this.first.summary;
+    // 前の回の形と魔法を次の回へ渡す。20〜30%だけ残す決まりなので、一回につき光点は3つまで（合計6つまで）。
+    this.handOff(0,this.first,this.defend);
+    this.handOff(1,this.defend,this.finish);
+  }
+  /** ひとつの回が終わる時刻に、その回の光点と魔法を次の回へ渡す。 */
+  private handOff(index:number,from:CastSession,to:CastSession) {
+    const round=ROUNDS[index];
+    if(this.elapsed<round.handoff||this.handedOff.has(round.id))return;
+    if(!from.motion.display.length&&!from.summary)return;
+    this.handedOff.add(round.id);
+    if(from.motion.display.length)this.inherited=[...this.inherited,...getNodes(from.motion.display,3)];
+    if(!to.previous)to.previous=from.summary;
   }
   cancel() {this.cancelled=true;for(const cast of this.casts)cast.cancel();}
   report() {
-    return {sessionId:this.id,scope:'first-40-seconds',rounds:this.casts.map(cast=>cast.report()),
+    return {sessionId:this.id,scope:'full-60-seconds',rounds:this.casts.map(cast=>cast.report()),
       cancelled:this.cancelled,inheritedNodes:this.inherited.length};
   }
 }

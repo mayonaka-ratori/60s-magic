@@ -32,10 +32,10 @@ describe('回の時刻表',()=>{
   });
   it('時刻から今の回が決まり、待ちと打ち切りは回ごとにずれる',()=>{
     expect(roundAt(0).id).toBe('first');expect(roundAt(23999).id).toBe('first');
-    expect(roundAt(24000).id).toBe('defend');expect(roundAt(99999).id).toBe('defend');
+    expect(roundAt(24000).id).toBe('defend');expect(roundAt(40000).id).toBe('finish');expect(roundAt(99999).id).toBe('finish');
     expect(speechLimitOf(defend)).toBe(32400);expect(replyLimitOf(defend)).toBe(32900);
     expect(speechLimitOf(first)).toBe(15400);expect(replyLimitOf(first)).toBe(15900);
-    expect(BATTLE_END).toBe(40000);
+    expect(BATTLE_END).toBe(60000);
     expect(beatAt(30).defend).toBe(true);expect(beatAt(10).defend).toBe(false);
     expect(beatAt(30).release).toBe(34);expect(beatAt(30).impact).toBe(35.4);
   });
@@ -48,7 +48,9 @@ describe('60秒の進行役',()=>{
     now=20000;battle.tick();expect(battle.accepting).toBe(false);expect(battle.active.round.id).toBe('first');
     now=24000;battle.tick();expect(battle.active.round.id).toBe('defend');expect(battle.accepting).toBe(true);
     now=31000;battle.tick();expect(battle.accepting).toBe(false);
-    now=40000;battle.tick();expect(battle.finished).toBe(true);
+    now=40000;battle.tick();expect(battle.active.round.id).toBe('finish');expect(battle.accepting).toBe(true);
+    now=49000;battle.tick();expect(battle.accepting).toBe(false);
+    now=60000;battle.tick();expect(battle.finished).toBe(true);
   });
   it('一回目の魔法と光点を防御の回へ渡す',()=>{
     let now=0;const battle=new Battle(()=>now);
