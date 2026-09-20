@@ -32,8 +32,10 @@ function noul(a:Answer|undefined) {return a?.type==='noul'&&typeof a.noul==='num
 export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   const text=affirmativeText(readChant(state.speech.normalizedTranscript).meaning);
   const motion=state.motion;
-  const matchedElements=elementWords.filter(([,re])=>re.test(text));
-  const wordElement=matchedElements.length===1?matchedElements[0][0]:null;
+  // 属性語は言った順に並べる。先頭が主属性、二つ目は飾り色。3つ以上あっても最初の2つだけ使う。
+  const matchedElements=elementWords.filter(([,re])=>re.test(text)).sort((a,b)=>text.search(a[1])-text.search(b[1]));
+  const wordElement=matchedElements[0]?.[0]??null;
+  const wordAccent=matchedElements[1]?.[0]??null;
   const noAttack=/攻撃(?:は|を)?しないで|攻撃するな|傷つけないで/.test(state.speech.rawTranscript);
   let wordPurpose:Purpose|null=null, wordForm:Form|null=null;
   if(/守|壁|障壁|結界|防げ/.test(text)||noAttack)wordPurpose='defend';
@@ -45,7 +47,7 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   else if(/球|玉/.test(text))wordForm='orb';else if(/群|分かれ|連弾/.test(text))wordForm='swarm';
   const count=explicitCount(text);
   if(count!==null&&count>1)wordForm='swarm';
-  const recipe:Recipe={version:'recipe-1',element:wordElement??'neutral',purpose:wordPurpose??'attack',
+  const recipe:Recipe={version:'recipe-1',accent:null,element:wordElement??'neutral',purpose:wordPurpose??'attack',
     form:wordForm??(motion.closedness>0.82?'orb':motion.coverageWidth>0.42&&motion.coverageHeight<0.2?'wave':'beam'),
     trajectory:'straight',count:count??1,explicitCount:count,defense:wordPurpose==='defend'?0.8:motion.closedness>0.8?0.6:motion.hasMovement?0.2:0.5,
     area:clamp(Math.max(motion.coverageWidth,motion.coverageHeight)*1.3,0.2,1),duration:0.5,concentration:motion.convergence,
@@ -53,7 +55,7 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
     noAttack,name:'',source:'local',decisions:{},assistance:[],model:null};
   for(const key of ['element','purpose','form','trajectory','defense','area','duration','concentration','enclosure','split','developsPrevious','motionSpeechAligned'])recipe.decisions[key]={source:'default',reason:'材料がないため既定値'};
   for(const key of ['form','area','concentration'])recipe.decisions[key]={source:'motion',reason:'今回の線から計算'};
-  if(wordElement)recipe.decisions.element={source:'word',reason:'現在の肯定された属性語'};
+  if(wordElement)recipe.decisions.element={source:'word',reason:wordAccent?'現在の肯定された属性語。先に言った方を主属性にし、二つ目は飾り色':'現在の肯定された属性語'};
   if(wordPurpose)recipe.decisions.purpose={source:'word',reason:'現在の用途の言葉'};
   if(wordForm)recipe.decisions.form={source:'word',reason:count&&count>1?'明示された個数':'現在の形の言葉'};
   if(/追尾|追え/.test(text)){recipe.trajectory='homing';recipe.decisions.trajectory={source:'word',reason:'追う指示を明示'};}
@@ -77,6 +79,8 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
     const value=noul(answers[key]);
     if(value!==null&&recipe.decisions[key].source!=='word') {recipe[key]=key==='developsPrevious'?false:value;recipe.decisions[key]={source:'jev',reason:'はい・いいえの確率が基準外の曖昧な範囲にない'};used++;}
   }
+  // 飾り色。主属性と違う属性語のうち、一番先のものを使う。同じなら飾り色はなし。
+  recipe.accent=[wordElement,wordAccent].find(e=>e&&e!==recipe.element)??null;
   if(noAttack)recipe.purpose='defend';
   if(recipe.purpose==='defend'&&!wordForm)recipe.form=recipe.enclosure?'dome':'wall';
   if(recipe.purpose==='bind')recipe.enclosure=true;

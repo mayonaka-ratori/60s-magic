@@ -9,6 +9,8 @@ export class SpeechBook {
     if(prior && (prior.revision>=entry.revision || (prior.final&&!entry.final)))return;
     this.entries.set(entry.id,{...entry});
   }
+  /** 途中の認識結果も含めた、いま聞こえている全部。確定前の即時反応だけに使う。 */
+  live() { return [...this.entries.values()].filter(e=>e.text.trim()).sort((a,b)=>a.startMs-b.startMs); }
   snapshot() { return [...this.entries.values()].filter(e=>e.text.trim()&&(e.final||e.stability>=0.8)).sort((a,b)=>a.startMs-b.startMs); }
   freeze() {this.locked=true;return this.snapshot();}
   text() {return this.snapshot().map(e=>e.text).join('、');}
