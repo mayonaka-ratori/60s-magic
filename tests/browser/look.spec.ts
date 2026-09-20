@@ -7,6 +7,14 @@ test('見本と比較し、自分の線を完成形にできる', async ({page})
   await expect(page.locator('#loading')).toBeHidden();
   await expect(page.locator('#spell')).toHaveAttribute('data-state','complete');
   await page.screenshot({path:'test-results/look-complete.png'});
+  await expect(page.locator('#knight')).toHaveAttribute('data-state','idle');
+  await page.getByRole('button',{name:'被弾'}).click();
+  await expect(page.locator('#knight')).toHaveAttribute('data-state','hit');
+  await page.screenshot({path:'test-results/look-knight-hit.png'});
+  await page.getByRole('button',{name:'構えを戻す'}).click();
+  await expect(page.locator('#knight')).toHaveAttribute('data-state','recover');
+  await page.getByRole('button',{name:'待機'}).click();
+  await expect(page.locator('#knight')).toHaveAttribute('data-state','idle');
   await page.getByRole('button',{name:'見本と並べる'}).click();
   await expect(page.locator('#reference')).toBeVisible();
   await page.screenshot({path:'test-results/look-compare.png'});
