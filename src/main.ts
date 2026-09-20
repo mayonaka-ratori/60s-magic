@@ -1,6 +1,6 @@
 import './style.css';
 import './cast-style.css';
-import { CastSession } from './game/session';
+import { CastSession, REPLY_LIMIT_MS, SPEECH_LIMIT_MS, SPEECH_WAIT_MS } from './game/session';
 import { summarizeMotion } from './game/motion';
 import { ELEMENT_LABELS, PURPOSE_LABELS, FORM_LABELS, type Phase } from './game/types';
 import { HandCamera } from './input/camera';
@@ -239,14 +239,16 @@ function animate(now:number) {
       // 見本は見本と表示し、本人の入力を確かめる記録には数えません。
       if(!(t>4.2&&t<5.1)){const x=0.49+Math.sin(t*0.9)*0.18+Math.sin(t*1.8)*0.025,y=0.54+Math.cos(t*1.8)*0.17;current.motion.add(x,y,current.elapsed);cursors=[{x,y}];}
     }
-    if(current.elapsed>=14000&&!endedInput){endedInput=true;voice?.stop();cursors=[];diag?.log('入力の受付を終了',{points:current.motion.raw.length});}
-    if(current.elapsed>=14700&&!requested){
+    if(current.elapsed>=14000&&!endedInput){endedInput=true;voice?.stop(SPEECH_WAIT_MS);cursors=[];diag?.log('入力の受付を終了',{points:current.motion.raw.length});}
+    // 声の最後の文字が届いたら、待たずにJevへ送る。届かないときだけ15.1秒まで待つ。
+    if(!requested&&current.elapsed>=14100&&(!voice||voice.settled||current.elapsed>=SPEECH_LIMIT_MS)){
       requested=true;const state=current.freeze();voice?.disconnect();requestAbort=new AbortController();const abort=requestAbort;
-      const record=diag;record?.log('入力を確定',{speechStatus:state.speech.status,transcript:state.speech.rawTranscript,usedFallback:current.speech.usedFallback,jevConfigured:status.jev});
-      const timeout=setTimeout(()=>abort.abort(),Math.max(0,15700-current.elapsed));
+      const record=diag;record?.log('入力を確定',{atMs:Math.round(current.elapsed),speechStatus:state.speech.status,transcript:state.speech.rawTranscript,usedFallback:current.speech.usedFallback,speechSettled:voice?.settled??null,jevConfigured:status.jev});
+      const timeout=setTimeout(()=>abort.abort(),Math.max(0,REPLY_LIMIT_MS-current.elapsed));
       void fetch('/api/interpret',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state),signal:abort.signal})
         .then(r=>{if(!r.ok)throw new Error('接続失敗');return r.json();}).then(reply=>{const accepted=session===current&&current.receive(reply);record?.log('Jevの返事',{status:reply.status,model:reply.model??null,accepted,answers:reply.answers?Object.keys(reply.answers).length:0});})
-        .catch(error=>{record?.log('Jevの返事なし',{reason:abort.signal.aborted?'15.7秒までに届かず打ち切り':error instanceof Error?error.message:'失敗'});/* 16秒の確定時にPC内の規則を使用します。 */}).finally(()=>clearTimeout(timeout));
+        .catch(error=>{record?.log('Jevの返事なし',{reason:abort.signal.aborted?'15.9秒までに届かず打ち切り':error instanceof Error?error.message:'失敗'});/* 確定のときにPC内の規則を使用します。 */})
+        .finally(()=>clearTimeout(timeout));
     }
     if(current.locked&&current.recipe&&!lockLogged){lockLogged=true;diag?.log('魔法を確定',{name:current.recipe.name,source:current.recipe.source,element:current.recipe.element,purpose:current.recipe.purpose,form:current.recipe.form,count:current.recipe.count});}
     if(current.elapsed>=24000&&!resultShown)finish();

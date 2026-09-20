@@ -4,6 +4,16 @@ import { affirmativeText, explicitCount, makeRecipe } from './recipe';
 import type { JevReply, Phase, Recipe, SpellState } from './types';
 import { readChant } from './chant-dictionary';
 
+// 16秒の確定は仕様の決まりなので動かさない。その手前をどう割るかだけを決める。
+/** 14秒で入力を締めたあと、声の最後の文字を待てる時間。画面側の打ち切りに合わせる。 */
+export const SPEECH_WAIT_MS=1100;
+/** 声を待つのをやめ、Jevへ送る時刻。声が先に届けばもっと早く送る。 */
+export const SPEECH_LIMIT_MS=15100;
+/** Jevの返事を受け取れる最後の時刻。確定の手前で必ず打ち切る。 */
+export const REPLY_LIMIT_MS=15900;
+/** 魔法を確定する時刻。 */
+export const LOCK_MS=16000;
+
 export function phaseAt(ms:number):Phase {
   if(ms<0)return 'ready';if(ms<6000)return 'draw';if(ms<11000)return 'build';if(ms<14000)return 'chant';
   if(ms<17000)return 'complete';if(ms<23000)return 'release';if(ms<24000)return 'handoff';return 'finished';
@@ -28,7 +38,7 @@ export class CastSession {
     this.elapsed=Math.max(0,this.clock()-this.startMs);
     const next=phaseAt(this.elapsed);
     if(next!==this.phase) {this.phase=next;this.events.push({name:next,atMs:{complete:14000,release:17000,handoff:23000,finished:24000}[next as 'complete']??this.elapsed,observedMs:this.elapsed});}
-    if(this.elapsed>=16000&&!this.locked)this.lock();
+    if(this.elapsed>=LOCK_MS&&!this.locked)this.lock();
   }
   get accepting() {return !this.cancelled&&this.clock()-this.startMs<14000;}
   freeze() {
@@ -54,13 +64,13 @@ export class CastSession {
     return result;
   }
   receive(reply:JevReply) {
-    if(this.cancelled||this.locked||this.clock()-this.startMs>=15700||reply.sessionId!==this.id||reply.castId!=='cast-01'||reply.inputRevision!==1)return false;
+    if(this.cancelled||this.locked||this.clock()-this.startMs>=REPLY_LIMIT_MS||reply.sessionId!==this.id||reply.castId!=='cast-01'||reply.inputRevision!==1)return false;
     this.reply=reply;return true;
   }
   lock() {
     if(this.locked||this.cancelled)return;
     this.recipe=makeRecipe(this.freeze(),this.reply);this.locked=true;
-    this.events.push({name:'recipe-locked',atMs:16000,observedMs:this.clock()-this.startMs});
+    this.events.push({name:'recipe-locked',atMs:LOCK_MS,observedMs:this.clock()-this.startMs});
   }
   cancel() {this.cancelled=true;this.phase='cancelled';this.speech.freeze();}
   report() {return {sessionId:this.id,scope:'first-24-seconds',state:this.state,recipe:this.recipe,jev:this.reply??null,speechEntries:this.speech.snapshot(),events:this.events,rawPoints:this.motion.raw,displayPoints:this.motion.display,cancelled:this.cancelled};}

@@ -35,7 +35,7 @@ describe('最初の24秒',()=>{
     let now=0;const s=new CastSession(()=>now),snapshot=s.freeze();
     expect(s.receive({...reply(snapshot,{}),sessionId:'other'})).toBe(false);
     expect(s.receive({...reply(snapshot,{}),inputRevision:2})).toBe(false);
-    now=15700;expect(s.receive(reply(snapshot,{}))).toBe(false);
+    now=15900;expect(s.receive(reply(snapshot,{}))).toBe(false);
     const other=new CastSession(()=>0),o=other.freeze();other.cancel();expect(other.receive(reply(o,{}))).toBe(false);expect(other.accepting).toBe(false);
   });
 });
