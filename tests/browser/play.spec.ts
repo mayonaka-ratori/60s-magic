@@ -56,10 +56,17 @@ test('60秒を最後まで遊び、七つの雷と、印を囲んだ盾と、と
   await expect(page.locator('#step-release')).toHaveClass('active',{timeout:10000});
   await page.waitForTimeout(2600);await page.screenshot({path:'test-results/11-final-blow.png'});
   // 60秒で結果。魔法名はとどめの回だけ57秒に出るので、そこまで待つ。
-  await expect(page.locator('#result')).toBeVisible({timeout:12000});await expect(page.locator('#spell-name')).toHaveText('氷の壁');
+  await expect(page.locator('#result')).toBeVisible({timeout:12000});// 見出しの魔法名は、とどめの回のもの。形は描いた線で変わるので、属性までを見る。
+  await expect(page.locator('#spell-name')).toContainText('光の');
   await expect(page.locator('#spell-list')).toContainText('7つの雷の連弾');
   await expect(page.locator('#spell-list')).toContainText('とどめ');
-  await expect(page.locator('#spell-description')).toContainText('弾き返した');
+  await expect(page.locator('#spell-list')).toContainText('弾き返した');
+  // 三件とも術式の絵を出す。
+  await expect(page.locator('#spell-list canvas')).toHaveCount(3);
+  // 確認番号は6桁。保存の状態の一行も出す。届いていないものを「登録しました」と書かない。
+  await expect(page.locator('#confirm-number')).toHaveText(/^\d{6}$/);
+  await expect(page.locator('#save-state')).toHaveText('この画面でだけ見られます');
+  await expect(page.locator('#qr-slot')).toHaveText('持ち帰りの準備中');
   await expect(page.locator('#spell')).toHaveAttribute('data-visible','false');await expect(page.locator('#result-spell')).toBeVisible();
   await expect(page.locator('#transcript')).toContainText('文字で入力');await page.screenshot({path:'test-results/05-result.png'});
   await page.locator('[data-feedback="yes"]').click();await page.locator('#record').click();
@@ -72,6 +79,7 @@ test('60秒を最後まで遊び、七つの雷と、印を囲んだ盾と、と
   expect(defend.guard.rings).toBeGreaterThanOrEqual(1);expect(defend.guard.moved).toBe(false);
   expect(defend.events.find((e:{name:string})=>e.name==='recipe-locked').observedMs).toBeLessThan(33250);
   expect(record.scope).toBe('full-60-seconds');expect(record.rounds.length).toBe(3);
+  expect(record.confirmCode).toMatch(/^\d{6}$/);
   expect(finish.rawPoints.filter((p:{t:number})=>p.t>=40000&&p.t<49000).length).toBeGreaterThan(20);
   expect(finish.events.find((e:{name:string})=>e.name==='recipe-locked').observedMs).toBeLessThan(51250);
   expect(record.feedback).toBe('yes');expect(errors).toEqual([]);

@@ -11,7 +11,10 @@ test('画面全体の二筆が収まり、縦画面の結果からもう一度�
   await page.screenshot({path:'test-results/wide-cast.png'});
   await expect(page.locator('#result')).toBeVisible({timeout:46000});
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:'test-results/cast-mobile-result.png'});
-  const shape=await page.locator('#result-spell').boundingBox();expect(shape!.width).toBe(140);
+  // 縦長の魔導書では、術式が一番上に正方形で横いっぱいに出る。
+  const shape=await page.locator('#result-spell').boundingBox();
+  expect(Math.round(shape!.width)).toBe(Math.round(shape!.height));
+  expect(shape!.width).toBeGreaterThan(300);
   await page.locator('#again').click();await expect(page.locator('#hud')).toBeVisible();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
   await expect(page.locator('#spell')).toHaveAttribute('data-phase','input');
   await expect(page.locator('#world')).not.toHaveClass(/spell-finished/);
