@@ -38,6 +38,8 @@ export class MagicCanvas {
   calm = false;
   /** 合成（後処理）が動いているか。動いている間はcanvas内の色ずれを飛ばす。 */
   private compositeActive = false;
+  /** 背景を暗くする放射グラデーション。中心と濃さと大きさが同じ間は作り直さない。 */
+  private darkenGradient: { key: string; gradient: CanvasGradient } | null = null;
   preset: EffectPreset;
   constructor(readonly canvas: HTMLCanvasElement, preset?: EffectPreset | string | null) {
     this.ctx = canvas.getContext('2d')!;
@@ -98,9 +100,13 @@ export class MagicCanvas {
     c.globalAlpha = lit;
     // 背景を暗くする。術式の周りは明るいまま残す。
     if (this.state.darken > .003) {
-      const g = c.createRadialGradient(origin.x, origin.y, 40, origin.x, origin.y, Math.max(w, h) * .8);
-      g.addColorStop(0, 'rgba(4,6,14,0)'); g.addColorStop(1, `rgba(4,6,14,${this.state.darken})`);
-      c.fillStyle = g; c.fillRect(-40, -40, w + 80, h + 80);
+      const darken = Math.round(this.state.darken * 100) / 100, key = `${Math.round(origin.x)}:${Math.round(origin.y)}:${darken}:${w}:${h}`;
+      if (this.darkenGradient?.key !== key) {
+        const g = c.createRadialGradient(origin.x, origin.y, 40, origin.x, origin.y, Math.max(w, h) * .8);
+        g.addColorStop(0, 'rgba(4,6,14,0)'); g.addColorStop(1, `rgba(4,6,14,${darken})`);
+        this.darkenGradient = { key, gradient: g };
+      }
+      c.fillStyle = this.darkenGradient.gradient; c.fillRect(-40, -40, w + 80, h + 80);
     }
     c.globalCompositeOperation = 'lighter'; c.lineCap = 'round'; c.lineJoin = 'round';
     const nodes = getNodes(points, 5);

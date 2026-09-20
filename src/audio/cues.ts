@@ -1,4 +1,4 @@
-export const soundCues=[
+const soundCues=[
   {name:'trace',at:6000},{name:'chant',at:11000},{name:'build',at:14750},
   {name:'complete',at:16000},{name:'release',at:17000},{name:'impact',at:18500},{name:'settle',at:22000},
 ] as const;

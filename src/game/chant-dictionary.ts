@@ -22,7 +22,7 @@ const ROWS=[
 const vowelOf=(letter:string)=>{const row=ROWS.findIndex(value=>value.includes(letter));return row<0?'':VOWELS[row];};
 
 /** 聞き取りの揺れを外した、比べるためのかな。濁点と伸ばす音の書き方だけを直し、文字数は変えない。 */
-export function soundKey(text:string) {
+function soundKey(text:string) {
   const plain=hiragana(text.normalize('NFKC')).normalize('NFD').replace(/[゙゚]/g,'').normalize('NFC');
   let out='';
   for(const letter of plain)out+=letter==='ー'?(vowelOf(out.at(-1)??'')||'ー'):letter;

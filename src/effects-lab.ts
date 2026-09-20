@@ -72,7 +72,8 @@ const sides: Side[] = ['a', 'b'].map(side => {
   const magic = new MagicCanvas(el<HTMLCanvasElement>(`magic-${side}`), value(`preset-${side}`));
   magic.setCalm(calmMode);
   const knight = new Knight(el<HTMLCanvasElement>(`knight-${side}`));
-  el(`preset-${side}`).addEventListener('change', () => { magic.setPreset(value(`preset-${side}`)); ms = Math.min(ms, 13500); });
+  knight.setPreset(magic.preset);
+  el(`preset-${side}`).addEventListener('change', () => { magic.setPreset(value(`preset-${side}`)); knight.setPreset(magic.preset); ms = Math.min(ms, 13500); });
   return { magic, knight, layers: [frame.querySelector('.lab-backdrop')!, el(`knight-${side}`)], meter: el<HTMLOutputElement>(`meter-${side}`), frames: [], lastShake: ['', ''] };
 });
 
@@ -138,3 +139,4 @@ function renderSides(dt = 0) {
   }
 }
 void Promise.all(sides.map(s => s.knight.ready)).then(() => { resize(); requestAnimationFrame(animate); });
+window.addEventListener('pagehide', event => { if (!event.persisted) for (const s of sides) s.knight.dispose(); });

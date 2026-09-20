@@ -12,7 +12,7 @@ export const SPEECH_LIMIT_MS=15400;
 /** Jevの返事を受け取れる最後の時刻。確定の手前で必ず打ち切る。 */
 export const REPLY_LIMIT_MS=15900;
 /** 魔法を確定する時刻。 */
-export const LOCK_MS=16000;
+const LOCK_MS=16000;
 
 export function phaseAt(ms:number):Phase {
   if(ms<0)return 'ready';if(ms<6000)return 'draw';if(ms<11000)return 'build';if(ms<14000)return 'chant';

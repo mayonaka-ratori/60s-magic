@@ -29,5 +29,4 @@ export class SpeechBook {
     }
     return this.snapshot();
   }
-  text() {return this.snapshot().map(e=>e.text).join('、');}
 }

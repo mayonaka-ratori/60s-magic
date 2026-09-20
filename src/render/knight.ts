@@ -102,6 +102,11 @@ export class Knight {
   // 白いシルエットと属性色の影を作る使い回しの小さなcanvas。毎コマ作り直さない。
   private stencil=document.createElement('canvas');
   private stencilContext:CanvasRenderingContext2D|null;
+  // 輪郭の発光を半分の大きさで組み立てる作業用のcanvas。8方向の重ねをここで済ませ、表の面へは1回だけ写す。
+  private rim=document.createElement('canvas');
+  private rimContext:CanvasRenderingContext2D|null;
+  /** 見た目の設定。色はここから取る。 */
+  private preset:EffectPreset=getPreset(null);
   private trail:Array<{x:number;y:number;scale:number;rot:number}>=[];
   private cssSize='';
   target={x:.5,y:.32};
@@ -110,6 +115,7 @@ export class Knight {
     this.source.width=this.source.height=16;
     this.view=canvas.getContext('2d');
     this.stencilContext=this.stencil.getContext('2d');
+    this.rimContext=this.rim.getContext('2d');
     // 描いた絵をそのまま取り出すため、描画面を残す設定にする。
     this.engine=new Engine(this.source,true,{alpha:true,premultipliedAlpha:false,preserveDrawingBuffer:true});
     this.scene=new Scene(this.engine);
@@ -254,6 +260,7 @@ export class Knight {
     this.engine.setSize(width,height);
     // 残像と輪郭は形しか使わないので、半分の大きさで足りる。
     this.stencil.width=Math.max(1,Math.round(width/2));this.stencil.height=Math.max(1,Math.round(height/2));
+    this.rim.width=this.stencil.width;this.rim.height=this.stencil.height;
     // 背景の一枚絵と同じ拡大率で騎士を見せる。横長の画面では背景が広がる分だけ寄る。
     const cover=Math.max(1,cssWidth/cssHeight/BACKDROP_RATIO);
     this.camera.fov=2*Math.atan(TAN/cover);
@@ -281,7 +288,7 @@ export class Knight {
       context.translate(foot.x+spot.x+dx,foot.y+spot.y+dy);context.rotate(spot.rot);
       context.scale(spot.scale,spot.scale);context.translate(-foot.x,-foot.y);
     };
-    const main=getPreset(null).palettes[recipe?.element??'neutral'].main;
+    const main=this.preset.palettes[recipe?.element??'neutral'].main;
     context.setTransform(1,0,0,1,0,0);context.globalAlpha=1;context.globalCompositeOperation='source-over';
     context.clearRect(0,0,w,h);
     place();context.drawImage(this.source,0,0,w,h);
@@ -294,13 +301,13 @@ export class Knight {
     // 輪郭の発光と残像は本体の後ろへ回す。
     context.globalCompositeOperation='destination-over';
     if(pose.rim>0) {
-      const glow=this.paintStencil(main),step=2.6*unit;
-      if(glow) {
-        context.globalAlpha=.35*pose.rim;
-        for(let i=0;i<8;i++) {
-          const angle=i*Math.PI/4;
-          place(Math.cos(angle)*step,Math.sin(angle)*step);context.drawImage(glow,0,0,w,h);
-        }
+      const glow=this.paintStencil(main),rim=this.rimContext;
+      if(glow&&rim) {
+        // 半分の大きさで8方向に重ね、一枚の輪郭の絵にしてから表の面へ1回だけ写す。全画面の描き写しが8回から1回に減る。
+        const rw=this.rim.width,rh=this.rim.height,step=2.6*unit/2;
+        rim.setTransform(1,0,0,1,0,0);rim.globalCompositeOperation='source-over';rim.clearRect(0,0,rw,rh);rim.globalAlpha=.35;
+        for(let i=0;i<8;i++){const angle=i*Math.PI/4;rim.drawImage(glow,Math.cos(angle)*step,Math.sin(angle)*step);}
+        context.globalAlpha=pose.rim;place();context.drawImage(this.rim,0,0,w,h);
       }
     }
     if(pose.ghost>0&&this.trail.length) {
@@ -320,12 +327,14 @@ export class Knight {
   }
   /** 控えめモード。白飛びを消し、残像と輪郭の発光を弱める。 */
   setCalm(calm:boolean){this.calm=calm;}
+  /** 見た目の設定。色の組をここから取る。 */
+  setPreset(preset:EffectPreset){this.preset=preset;}
   /** amount は入力の量（0〜1）。同じ魔法でも、たくさん描いて唱えたほど反応が強くなる。 */
   render(ms:number,active:boolean,recipe:Recipe|null,amount=0,power?:number) {
     // 表示の大きさが変わっていたら、描く前に合わせ直す。
     const size=`${Math.max(1,this.canvas.clientWidth)}x${Math.max(1,this.canvas.clientHeight)}`;
     if(size!==this.cssSize)this.resize();
-    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe,amount),this.calm);
+    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe,amount,this.preset),this.calm);
     const p=blendPose(pose.weights);
     this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7);
     this.root.position.y=p.crouch+pose.breath*4;

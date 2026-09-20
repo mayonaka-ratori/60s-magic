@@ -17,7 +17,7 @@ export const RELEASE_AT = 17, IMPACT_AT = 18.5;
 /** 命中で世界を止める長さ（秒）。弱、強、とどめの三段。 */
 export const HIT_STOPS = { weak: .06, strong: .09, finish: .2 };
 /** 完全な暗転の始まりと終わり（秒）。終わりがそのまま放出の閃光につながる。 */
-export const BLACKOUT_FROM = 16.92, BLACKOUT_TO = RELEASE_AT;
+const BLACKOUT_FROM = 16.92, BLACKOUT_TO = RELEASE_AT;
 /** 衝撃の強さが1秒で減る量。 */
 const SHOCK_FADE = 1.6;
 /** 揺れの速さ（1秒あたりの波の数）。 */

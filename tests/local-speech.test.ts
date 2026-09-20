@@ -21,6 +21,7 @@ function setup(recognize=vi.fn(async()=>({text:'氷よ壁となれ',processingMs
   return {socket,backend,recognize};
 }
 afterEach(()=>vi.useRealTimers());
+const text=(b:SpeechBook)=>b.snapshot().map(e=>e.text).join('、');
 describe('ローカル音声認識の受付',()=>{
   it('同じ発話の途中結果を更新し、最後に一度だけ確定する',async()=>{
     const {socket,recognize}=setup();
@@ -31,7 +32,7 @@ describe('ローカル音声認識の受付',()=>{
     expect(recognize.mock.calls.length).toBeGreaterThanOrEqual(3);
     expect(new Set(entries.map(e=>e.id)).size).toBe(1);expect(entries.at(-1).final).toBe(true);expect(entries.at(-1).source).toBe('local');
     expect(entries.at(-1).startMs).toBe(1000);expect(entries.at(-1).endMs).toBe(2400);
-    const book=new SpeechBook();entries.forEach(e=>book.add(e));expect(book.text()).toBe('氷よ壁となれ');socket.close();
+    const book=new SpeechBook();entries.forEach(e=>book.add(e));expect(text(book)).toBe('氷よ壁となれ');socket.close();
   });
   it('早い発話の後に間が空いても、最後の発話まで受け付ける',async()=>{
     const {socket,recognize}=setup();socket.audio(1000);socket.audio(13000);socket.audio(13900);socket.end();await vi.advanceTimersByTimeAsync(1);
@@ -102,7 +103,7 @@ describe('確定が間に合わないときの扱い',()=>{
     const book=new SpeechBook();
     book.add({id:0,revision:1,startMs:1000,endMs:6000,text:'氷よ',final:false,stability:0.5,source:'local'});
     book.add({id:0,revision:2,startMs:1000,endMs:11000,text:'氷よ壁となれ',final:false,stability:0.5,source:'local'});
-    expect(book.text()).toBe('');
+    expect(text(book)).toBe('');
     expect(book.freeze().map(e=>e.text)).toEqual(['氷よ壁となれ']);expect(book.usedFallback).toBe(true);
   });
   it('Googleの途中結果は確定前に採用しない',()=>{

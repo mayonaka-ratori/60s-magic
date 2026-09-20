@@ -26,7 +26,7 @@ export type SpellState = {
   previous: null;
   enemy: { attackKind: 'none'; encounterMode: 'exhibition_success' };
 };
-export const BLENDS = ['amplify', 'burst', 'sustain'] as const;
+const BLENDS = ['amplify', 'burst', 'sustain'] as const;
 export type Blend = typeof BLENDS[number];
 export type Answer = { type?: string; choice?: string; probabilities?: Record<string, number>; confidence?: number; score?: number; noul?: number };
 export type JevReply = { sessionId: string; castId: string; inputRevision: number; model?: string; answers?: Record<string, Answer>; status: string };

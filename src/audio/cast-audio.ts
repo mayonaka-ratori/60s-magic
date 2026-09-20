@@ -7,6 +7,8 @@ import { intensityOf, getPreset, type EffectPreset } from '../render/effects/pre
 const RECORDING_END_MS=14750;
 /** 詠唱中に曲を下げる量。仕様の6〜10dBの中を取る。 */
 const DUCK_DB=8;
+/** 使い回す雑音の長さ（秒）。いちばん長い雑音（0.8秒）より長くしておく。 */
+const NOISE_SECONDS=1;
 
 /** 合成音の厚みに使う派手さ。入力の量（たくさん描き、たくさん唱えたか）も見る。時刻は変えない。 */
 export function soundIntensity(recipe:Recipe|null,preset:EffectPreset=getPreset(null),amount=0) {
@@ -113,10 +115,18 @@ export class CastAudio {
     gain.gain.setValueAtTime(0,at);gain.gain.linearRampToValueAtTime(level,at+.012);gain.gain.exponentialRampToValueAtTime(.0001,at+duration);
     osc.connect(gain);gain.connect(this.sfx!);this.track(osc,[gain],duration);
   }
-  private noise(duration:number,level:number,startFrequency:number,endFrequency:number) {
-    const ctx=this.context!,buffer=ctx.createBuffer(1,Math.ceil(ctx.sampleRate*duration),ctx.sampleRate),data=buffer.getChannelData(0);
+  private noiseBuffer:AudioBuffer|null=null;
+  /** 雑音の元は一度だけ作り、以後は使い回す。命中のたびに数万個の乱数を詰め直さない。 */
+  private noiseSource(){
+    const ctx=this.context!;
+    if(this.noiseBuffer&&this.noiseBuffer.sampleRate===ctx.sampleRate)return this.noiseBuffer;
+    const buffer=ctx.createBuffer(1,Math.ceil(ctx.sampleRate*NOISE_SECONDS),ctx.sampleRate),data=buffer.getChannelData(0);
     // 同じ演出は同じ音になるよう、乱数の開始値を固定する。
     let seed=12345;for(let i=0;i<data.length;i++){seed=(Math.imul(seed,1664525)+1013904223)|0;data[i]=(seed/2147483648)*.65;}
+    this.noiseBuffer=buffer;return buffer;
+  }
+  private noise(duration:number,level:number,startFrequency:number,endFrequency:number) {
+    const ctx=this.context!,buffer=this.noiseSource();
     const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),at=ctx.currentTime;
     source.buffer=buffer;filter.type='bandpass';filter.Q.value=.65;filter.frequency.setValueAtTime(startFrequency,at);filter.frequency.exponentialRampToValueAtTime(endFrequency,at+duration);
     gain.gain.setValueAtTime(0,at);gain.gain.linearRampToValueAtTime(level,at+.008);gain.gain.exponentialRampToValueAtTime(.0001,at+duration);
@@ -158,5 +168,5 @@ export class CastAudio {
       samples:this.bank.report,credits:this.bank.manifest.credits,events:[...this.events],
     };
   }
-  dispose(){this.stop();void this.context?.close();this.context=null;this.master=null;this.music=null;this.sfx=null;this.duck=null;}
+  dispose(){this.stop();void this.context?.close();this.context=null;this.noiseBuffer=null;this.master=null;this.music=null;this.sfx=null;this.duck=null;}
 }

@@ -36,7 +36,8 @@ export const POST_FROM = 16.9, POST_TO = 21;
 /** 衝撃波の輪が出ている長さ（秒）。命中から0.3〜0.6秒の範囲に収める。 */
 export const RIPPLE_SECONDS = .45;
 /** ブルームの常時の強さと、放出や命中で上げるときの倍率。 */
-export const BLOOM_BASE = .18, BLOOM_PEAK = 5, BLOOM_RELEASE = 3;
+export const BLOOM_BASE = .18;
+const BLOOM_PEAK = 5, BLOOM_RELEASE = 3;
 /** 控えめモードのときの倍率の上限。全画面の白飛びを抑えるため、放出も命中もここまでに留める。 */
 export const BLOOM_CALM_PEAK = 1.6;
 /** ブルームを切る目安のfpsと、戻す目安のfps。 */
@@ -64,7 +65,8 @@ export function bloomWeightAt(t: number, calm = false) {
 }
 
 /** 合成そのものを諦める目安。最初の90コマは慣らし、その後24fps未満が60コマ続いたら止めて元の層へ戻す。 */
-export const GIVE_UP_FPS = 24, GIVE_UP_WARMUP = 90, GIVE_UP_FRAMES = 60;
+const GIVE_UP_FPS = 24;
+export const GIVE_UP_WARMUP = 90, GIVE_UP_FRAMES = 60;
 /**
  * 合成をやめるかどうか。時刻とブルームの状態も見る（画面には触らない計算だけ）。
  * - 山場（16.9〜21秒）の間は判定を止める。命中の途中で合成が消えると絵が一瞬で変わってしまうため。

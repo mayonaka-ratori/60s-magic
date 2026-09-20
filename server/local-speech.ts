@@ -12,10 +12,10 @@ export type LocalSpeechJobRecord = {id:number;at:string;audioMs:number;queuedMs:
 /** setup:speech が作るPython環境の場所。WindowsとMac/Linuxで置き場所が違う。 */
 export const defaultSpeechPython=()=>resolve(process.platform==='win32'?'.venv-speech/Scripts/python.exe':'.venv-speech/bin/python');
 /** 認識モデルの名前。speech/download_model.py の default_preset と同じ決まり。 */
-export const defaultSpeechPreset=()=>process.env.LOCAL_SPEECH_MODEL_ID
+const defaultSpeechPreset=()=>process.env.LOCAL_SPEECH_MODEL_ID
   ||(process.platform==='darwin'&&process.arch==='arm64'?'kotoba-v2.0-mlx'
     :process.platform==='win32'?'kotoba-v2.0':'small');
-export const defaultSpeechModelDir=()=>resolve('.local-speech/models',defaultSpeechPreset());
+const defaultSpeechModelDir=()=>resolve('.local-speech/models',defaultSpeechPreset());
 /** 画面に出す名前。動かし方の違い（末尾の -mlx）は名前に含めない。 */
 export const speechModelName=(preset:string)=>{
   const base=preset.endsWith('-mlx')?preset.slice(0,-4):preset;
@@ -60,8 +60,8 @@ export class LocalSpeech {
         const device=typeof message.device==='string'?message.device:this.status.device;
         const notice=device==='cpu'?'このPCで音声を認識できます（CPUで動作中。遅れることがあります）'
           :device==='gpu'?'このPCで音声を認識できます（MacのGPUで動作中）':'このPCで音声を認識できます';
-        this.status={...this.status,state:'ready',device,model:typeof message.model==='string'?message.model:this.status.model,
-          preset:typeof message.preset==='string'?message.preset:this.status.preset,engine:typeof message.engine==='string'?message.engine:undefined,
+        const preset=typeof message.preset==='string'?message.preset:this.status.preset??defaultSpeechPreset();
+        this.status={...this.status,state:'ready',device,model:speechModelName(preset),preset,engine:typeof message.engine==='string'?message.engine:undefined,
           computeType:message.computeType,threads:message.threads??null,loadMs:Math.round(performance.now()-this.startedAt),message:notice};return;
       }
       if(message.type==='unavailable'){this.fail(message.reason);return;}

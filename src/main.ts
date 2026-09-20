@@ -1,7 +1,5 @@
 import './style.css';
-import './cast-style.css';
 import { CastSession, REPLY_LIMIT_MS, SPEECH_LIMIT_MS, SPEECH_WAIT_MS } from './game/session';
-import { summarizeMotion } from './game/motion';
 import { ELEMENT_LABELS, PURPOSE_LABELS, FORM_LABELS, type Phase } from './game/types';
 import { HandCamera } from './input/camera';
 import { VoiceInput } from './input/voice';
@@ -51,7 +49,7 @@ const CALM_KEY='calm-mode';
 const calmForced=new URLSearchParams(location.search).get('calm')==='1'||matchMedia('(prefers-reduced-motion: reduce)').matches;
 const calmSaved=(()=>{try{return localStorage.getItem(CALM_KEY)==='1';}catch{return false;}})();
 let calmMode=calmForced||calmSaved;
-const overlay=new ScreenOverlay(el('app'),{world:el('world'),knight:el('knight'),spell:el('spell')});
+const overlay=new ScreenOverlay(el('app'),{world:el('world')});
 const healthBar=new HealthBar(el('health'));
 const sound=new CastAudio();
 const soundToggle=document.createElement('button');soundToggle.id='sound-toggle';soundToggle.className='sound-toggle';soundToggle.textContent='音を消す';el('hud').append(soundToggle);
@@ -202,7 +200,7 @@ function updateUi() {
     handoff:['最初の魔法を、放った','描いた形は、この後も残ります'],
   };
   const label=labels[phase];if(label){el('instruction').textContent=label[0];el('hint').textContent=label[1];}
-  if(t>=2&&t<6&&!summarizeMotion(session.motion.raw).hasMovement)el('hint').textContent=mode==='pointer'?'画面を押したまま、少し動かそう':'片手を少し動かそう';
+  if(t>=2&&t<6&&!session.motion.hasMovement)el('hint').textContent=mode==='pointer'?'画面を押したまま、少し動かそう':'片手を少し動かそう';
   if(mode==='camera'&&t<14&&!cursors.length&&performance.now()-lastHandAt>800)el('hint').textContent='手を画面の前に戻そう。描いた線は消えません';
   const heard=voice?session.speech.latest():null;
   if(heard&&heard.source!=='typed'&&t<16)el('voice-label').textContent=`聞き取り：「${heard.text.slice(-40)}」${heard.final?'':'（途中）'}`;

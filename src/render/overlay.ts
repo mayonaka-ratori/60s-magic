@@ -21,7 +21,7 @@ export const VIGNETTE_BASE = .25;
 /** ビネットの一番濃いとき。 */
 export const VIGNETTE_PEAK = .6;
 /** ビネットが一番濃くなる darken の値。 */
-export const VIGNETTE_FULL_AT = .35;
+const VIGNETTE_FULL_AT = .35;
 /** グレインの濃さ。 */
 export const GRAIN_OPACITY = .03;
 
@@ -109,7 +109,7 @@ function makeNoiseUrl(size = 64) {
   return canvas.toDataURL('image/png');
 }
 
-type Layers = { world: HTMLElement; knight: HTMLElement; spell: HTMLElement };
+type Layers = { world: HTMLElement };
 /** 画面に今出している透明度。まだ一度も書いていないものは null。 */
 type Shown = { flash: number | null; vignette: number | null; grain: number | null; black: number | null };
 

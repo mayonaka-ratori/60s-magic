@@ -11,6 +11,7 @@ function state(text=''):SpellState {
   if(text)s.speech.add({id:1,revision:1,startMs:11000,endMs:13999,text,final:true,stability:1,source:'typed'});
   return s.freeze();
 }
+const text=(b:SpeechBook)=>b.snapshot().map(e=>e.text).join('、');
 const reply=(s:SpellState,answers:JevReply['answers']):JevReply=>({sessionId:s.sessionId,castId:s.castId,inputRevision:s.inputRevision,status:'ok',model:'test-model',answers});
 describe('最初の24秒',()=>{
   it('全ての受付と演出の境目を固定する',()=>{
@@ -56,12 +57,12 @@ describe('詠唱の受付',()=>{
   it('途中の更新を重複させず、別の発話は加え、確定後は変えない',()=>{
     const book=new SpeechBook();
     const base={id:1,revision:1,startMs:10,endMs:1000,text:'雷',final:false,stability:.5,source:'google' as const};
-    book.add(base);expect(book.text()).toBe('');book.add({...base,revision:2,text:'雷よ',final:true});
+    book.add(base);expect(text(book)).toBe('');book.add({...base,revision:2,text:'雷よ',final:true});
     book.add({...base,revision:1,text:'氷'});book.add({...base,id:2,startMs:12000,endMs:13990,text:'七つに分かれろ',final:true});
-    expect(book.text()).toBe('雷よ、七つに分かれろ');book.freeze();book.add({...base,id:3,final:true});expect(book.snapshot()).toHaveLength(2);
+    expect(text(book)).toBe('雷よ、七つに分かれろ');book.freeze();book.add({...base,id:3,final:true});expect(book.snapshot()).toHaveLength(2);
   });
   it('受付外に話した文字は使わない',()=>{
-    const b=new SpeechBook();b.add({id:1,revision:1,startMs:14000,endMs:15000,text:'氷',final:true,stability:1,source:'google'});expect(b.text()).toBe('');
+    const b=new SpeechBook();b.add({id:1,revision:1,startMs:14000,endMs:15000,text:'氷',final:true,stability:1,source:'google'});expect(text(b)).toBe('');
   });
 });
 describe('形と言葉を魔法へ反映する',()=>{

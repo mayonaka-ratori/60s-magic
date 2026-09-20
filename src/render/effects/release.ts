@@ -31,7 +31,7 @@ export function bodyPoint(f: Frame, i: number, travelRaw: number, time: number):
 }
 
 /** 属性ごとの本体の形。芯は白、縁は属性色の二重で描く。pal で色だけ二色目に替えられる。 */
-export function drawBody(f: Frame, x: number, y: number, size: number, element: Element, alpha: number, time: number, index: number, pal: Palette = f.palette) {
+function drawBody(f: Frame, x: number, y: number, size: number, element: Element, alpha: number, time: number, index: number, pal: Palette = f.palette) {
   const c = f.c;
   glow(f, x, y, size, alpha * .9, pal.main, pal.core);
   if (element === 'ice') {
