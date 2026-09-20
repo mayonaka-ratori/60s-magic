@@ -112,8 +112,12 @@ export const KNEEL_AT=FINAL_BLOW_AT+.9;
 export const KNEEL_RAMP=.8;
 /** 手前へ倒れ始める時刻と、倒れきる時刻（秒）。 */
 export const FALL_FROM=KNEEL_AT+KNEEL_RAMP,FALL_TO=FALL_FROM+.7;
-/** 倒れるときに足元を軸に回す角（ラジアン）と、視点へ近づく距離。 */
-export const FALL_TURN=1.2,FALL_NEAR=.6;
+/**
+ * 倒れるときに足元を軸に回す角（ラジアン）と、視点へ近づく距離。
+ * 近づけすぎると兜の上面だけが画面いっぱいの黒い形になり、何が映っているか分からなくなる。
+ * 倒れた体の一番上が画面の縦の真ん中より下へ来る程度に抑える。
+ */
+export const FALL_TURN=1,FALL_NEAR=.25;
 /** 防御の姿勢へ移り始める時刻（秒）。一回目の受け渡しの始まり。 */
 export const GUARD_FROM=FIRST.handoff/1000;
 /** 防御の回の姿勢の順。at の時刻から ramp 秒かけて、その姿勢へ移る。 */
@@ -160,6 +164,21 @@ export const droppedAt=(t:number):DropKey[]=>FINISH_DROPS.filter(drop=>t>=drop.a
 
 /** 落ちる速さ（1秒あたり）と、床で跳ね返るときに残る割合。 */
 export const GRAVITY=9.8,BOUNCE=.34;
+/** 部品の飛び出し方。回り（spin）と、床で止まる高さ（floor）も一緒に持つ。 */
+export type Throw={vx:number;vy:number;vz:number;spin:number;floor:number};
+/**
+ * 部品ごとの飛び出し方。入力では変えない。
+ * 盾と剣は手前（zの負の向き＝視点の側）へ飛ばさない。視点へ寄せると、
+ * 床に落ちた盾や剣が画面いっぱいに映ってしまう。足元の左右へ落として床で止める。
+ */
+export const FINISH_THROWS:Record<DropKey,Throw>={
+  shoulderSpike:{vx:-1.1,vy:1.6,vz:-.5,spin:6,floor:0},
+  shield:{vx:1.15,vy:.8,vz:.35,spin:3,floor:.1},
+  horn:{vx:.9,vy:1.9,vz:-.45,spin:7,floor:0},
+  chestPlate:{vx:-.4,vy:1.4,vz:-.6,spin:5,floor:0},
+  core:{vx:0,vy:0,vz:0,spin:0,floor:0},
+  sword:{vx:-1.05,vy:.55,vz:.3,spin:2.6,floor:.07},
+};
 /**
  * 落ちた部品の動き。落ち始めからの秒数と、落ち始めの高さ、飛び出す速さから、
  * ずれと回りを出す。重力で落ち、床（高さ0）で1回だけ跳ねて止まる。ばらばらにはしない。
@@ -306,7 +325,7 @@ export class Knight {
   private trail:KnightTransform[]=[];
   /** とどめの回で落ちる部品。落ちた後は親から外し、重力で床まで落として止める。 */
   private parts:Array<{key:DropKey;at:number;node:TransformNode;home:TransformNode|null;
-    pos:Vector3;rot:Vector3;scale:Vector3;spot:TransformNode;v:{vx:number;vy:number;vz:number;spin:number};
+    pos:Vector3;rot:Vector3;scale:Vector3;spot:TransformNode;v:Throw;floor:number;
     dropped:boolean;start:Vector3;startRot:Vector3}>=[];
   /** 今落ちている部品。毎コマの分岐で使う。 */
   private down=new Set<DropKey>();
@@ -685,12 +704,13 @@ export class Knight {
     for(const mesh of this.scene.meshes)if(mesh!==this.core&&mesh.name!=='兜の目')glow.addExcludedMesh(mesh as Mesh);
 
     // とどめの回で落ちる部品を登録する。落ちる速さは部品ごとに決め打ちで、入力では変えない。
-    this.addPart('shoulderSpike',swordSpike,{vx:-1.1,vy:1.6,vz:-1.3,spin:6});
-    this.addPart('shield',this.shieldArm,{vx:1.5,vy:1.2,vz:-1.5,spin:4});
-    this.addPart('horn',this.horns[1],{vx:.9,vy:1.9,vz:-1.1,spin:7});
-    if(this.chestPlate)this.addPart('chestPlate',this.chestPlate,{vx:-.4,vy:1.4,vz:-1.7,spin:5});
-    this.addPart('core',this.core,{vx:0,vy:0,vz:0,spin:0});
-    this.addPart('sword',this.swordArm,{vx:-1,vy:.5,vz:-.7,spin:3.2});
+    // 腕は体に残し、盾と剣は取り付けの節ごと落とす。腕まで外すと体が円錐に見える。
+    this.addPart('shoulderSpike',swordSpike);
+    this.addPart('shield',mount);
+    this.addPart('horn',this.horns[1]);
+    if(this.chestPlate)this.addPart('chestPlate',this.chestPlate);
+    this.addPart('core',this.core);
+    this.addPart('sword',sword);
 
     this.resize();
     this.ready=this.scene.whenReadyAsync(true).then(()=>{this.scene.render();});
@@ -699,12 +719,12 @@ export class Knight {
    * 落ちる部品を一つ登録する。落ちた後にどこへ戻すかと、傷あとを描く位置の印も一緒に作る。
    * 印は部品と同じ所に置いた見えない節で、部品が落ちた後も傷あとの場所を指し続ける。
    */
-  private addPart(key:DropKey,node:TransformNode,v:{vx:number;vy:number;vz:number;spin:number}) {
-    const at=FINISH_DROPS.find(drop=>drop.key===key)!.at;
+  private addPart(key:DropKey,node:TransformNode) {
+    const at=FINISH_DROPS.find(drop=>drop.key===key)!.at,v=FINISH_THROWS[key],floor=v.floor;
     const spot=new TransformNode('傷あとの位置',this.scene);
     spot.parent=node.parent;spot.position.copyFrom(node.position);
     this.parts.push({key,at,node,home:node.parent as TransformNode|null,
-      pos:node.position.clone(),rot:node.rotation.clone(),scale:node.scaling.clone(),spot,v,
+      pos:node.position.clone(),rot:node.rotation.clone(),scale:node.scaling.clone(),spot,v,floor,
       dropped:false,start:node.position.clone(),startRot:node.rotation.clone()});
   }
   /**
@@ -735,8 +755,9 @@ export class Knight {
         this.core.setEnabled(gone<1);
         continue;
       }
-      const m=debrisMotion(dt,part.start.y,part.v);
-      part.node.position.set(part.start.x+m.x,m.y,part.start.z+m.z);
+      // 大きい部品は、節の真ん中が床に来ると床へめり込む。止まる高さを部品ごとに上げておく。
+      const m=debrisMotion(dt,part.start.y-part.floor,part.v);
+      part.node.position.set(part.start.x+m.x,m.y+part.floor,part.start.z+m.z);
       part.node.rotation.set(part.startRot.x+m.rot,part.startRot.y,part.startRot.z+m.rot*.6);
     }
   }
@@ -869,8 +890,9 @@ export class Knight {
     this.body.rotation.z=Math.sin(t*.55)*.012*live;
     this.head.rotation.x=p.head;
     this.head.rotation.y=Math.sin(t*.31)*.06*live;
-    if(!this.down.has('sword'))this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live,0,-p.swordOut);
-    if(!this.down.has('shield'))this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);
+    // 腕は最後まで体に残るので、盾と剣を落とした後も姿勢を当て続ける。
+    this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live,0,-p.swordOut);
+    this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);
     // 一回目の締め切りからの蓄積で核が明るくなり、命中では前から強く照らす。弱点が出たら脈打つ。
     // とどめの回は、明滅の速さを回の表から作った coreBlink に任せる。
     const charge=active?clamp((ms-FIRST.inputEnd)/4500):0;
