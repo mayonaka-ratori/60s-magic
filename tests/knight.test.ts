@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { knightPose, guardPose, GUARD_FROM, reactionPower, knightTransform, knightMatrix, knightPoint,
-  FINISH_DROPS, droppedAt, debrisMotion, coreBlink } from '../src/render/knight';
+  FINISH_DROPS, droppedAt, debrisMotion, coreBlink, FINISH_THROWS, FALL_TURN, FALL_NEAR } from '../src/render/knight';
 import { getPreset } from '../src/render/effects/presets';
 import type { Recipe } from '../src/game/types';
 
@@ -257,5 +257,56 @@ describe('一回目と防御の姿勢は変わらない', () => {
   });
   it('40秒までは部品が一つも落ちない', () => {
     for (let t = 0; t <= 40; t += .1) expect(droppedAt(t)).toEqual([]);
+  });
+});
+
+/**
+ * 落ちた盾と剣の行き先。手前（視点の側）へ寄せると画面いっぱいに映るので、
+ * 足元の左右へ落として床で止める。
+ */
+describe('盾と剣は足元の左右へ落ちる', () => {
+  it('手前へは飛ばさない', () => {
+    for (const key of ['shield', 'sword'] as const) {
+      const v = FINISH_THROWS[key];
+      // zの負の向きが視点の側。盾と剣はそちらへ動かさない。
+      expect(v.vz).toBeGreaterThanOrEqual(0);
+      // 横へ流す量のほうが大きい。盾は右、剣は左。
+      expect(Math.abs(v.vx)).toBeGreaterThan(Math.abs(v.vz));
+    }
+    expect(FINISH_THROWS.shield.vx).toBeGreaterThan(0);
+    expect(FINISH_THROWS.sword.vx).toBeLessThan(0);
+  });
+  it('肩の高さから落として、足元の1.5m以内で止まる', () => {
+    // 盾は腕のあたり（高さ約1m）、剣は握りのあたり（高さ約0.8m）から落ちる。
+    for (const [key, height] of [['shield', 1], ['sword', .8]] as const) {
+      const v = FINISH_THROWS[key];
+      const rest = debrisMotion(9, height - v.floor, v);
+      expect(rest.resting).toBe(true);
+      expect(rest.y).toBe(0);
+      expect(Math.abs(rest.x)).toBeLessThan(1.5);
+      expect(Math.abs(rest.z)).toBeLessThan(.5);
+    }
+  });
+  it('床で止まる高さを持てる', () => {
+    expect(FINISH_THROWS.shield.floor).toBeGreaterThan(0);
+    expect(FINISH_THROWS.sword.floor).toBeGreaterThan(0);
+    // 小さい部品は床に置いたままでよい。
+    expect(FINISH_THROWS.horn.floor).toBe(0);
+  });
+});
+
+describe('倒れ込みの深さ', () => {
+  it('回す角と近づける量は控えめにする', () => {
+    // 近づけすぎると兜の上面だけの黒い形が画面いっぱいになる。
+    expect(FALL_TURN).toBeLessThanOrEqual(1);
+    expect(FALL_NEAR).toBeLessThanOrEqual(.3);
+    expect(FALL_TURN).toBeGreaterThan(.8);
+    expect(FALL_NEAR).toBeGreaterThan(.1);
+  });
+  it('倒れた体の一番上が視点より下へ来る', () => {
+    // 足元を軸に回した後、膝をついた分（crouch）だけ下がる。
+    // 騎士の高さは2.93m、視点の高さは約0.95m。
+    const top = 2.93 * Math.cos(FALL_TURN) - .92;
+    expect(top).toBeLessThan(.95);
   });
 });
