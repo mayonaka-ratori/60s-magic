@@ -59,6 +59,7 @@ export class Knight {
   private core:Mesh;
   private armor:StandardMaterial;
   private coreMaterial:StandardMaterial;
+  private eyes:StandardMaterial;
   private burst:PointLight;
   readonly ready:Promise<void>;
   private motion=matchMedia('(prefers-reduced-motion: reduce)');
@@ -86,14 +87,15 @@ export class Knight {
       const m=new StandardMaterial(name,this.scene);
       m.diffuseColor=Color3.FromHexString(color);m.specularColor=new Color3(specular,specular*1.06,specular*1.14);m.specularPower=46;
       // 逆光の縁だけを明るくする。暗い鎧のまま輪郭を見せるための設定。
-      if(rim){m.emissiveColor=new Color3(.23*rim,.34*rim,.48*rim);m.emissiveFresnelParameters=new FresnelParameters({bias:.1,power:2.6,leftColor:Color3.White(),rightColor:Color3.Black()});}
+      if(rim){m.emissiveColor=new Color3(.24*rim,.31*rim,.4*rim);m.emissiveFresnelParameters=new FresnelParameters({bias:.1,power:2.6,leftColor:Color3.White(),rightColor:Color3.Black()});}
       return m;
     };
-    this.armor=material('鎧','#28313e',.3,1);
-    const plate=material('当て板','#1e2732',.22,.8);
-    const cloth=material('布','#1a2130',.05,.45);cloth.backFaceCulling=false;
+    this.armor=material('鎧','#353c46',.32,1);
+    const plate=material('当て板','#272d37',.24,.8);
+    const cloth=material('布','#161a22',.05,.4);cloth.backFaceCulling=false;
     const hollow=material('隙間','#0b0f16',.02);hollow.emissiveColor=new Color3(.52,.23,.07);
-    const trim=material('金の縁','#8f7b46',.55,.7);
+    this.eyes=hollow;
+    const trim=material('金の縁','#94804a',.55,.7);
     const steel=material('刃と縁','#9aa3ae',.7,1.2);
     this.coreMaterial=material('胸の核','#2a2418',.1);this.coreMaterial.emissiveColor=Color3.FromHexString('#6f542e');
 
@@ -110,21 +112,25 @@ export class Knight {
       mesh.parent=parent;mesh.position.set(x,y,z);mesh.rotation.y=Math.PI/sides;mesh.material=mat;return mesh;
     };
 
-    // 脚。腿、膝当て、脛当て、具足の4つで、腰布の下から見える部分だけを作る。
+    // 脚。左右で前後と開きを変え、まっすぐ立たせない。
     for(const side of [-1,1]) {
-      cone('腿',this.root,side*.2,.98,0,.32,.26,.78);
-      cone('膝当て',this.root,side*.2,.57,-.02,.3,.27,.13,6,plate);
-      cone('脛当て',this.root,side*.2,.32,0,.26,.2,.44);
-      box('具足',this.root,side*.2,.09,-.08,.28,.18,.48,plate);
+      const back=side<0?-.07:.09,open=side*.05;
+      const leg=new TransformNode('脚',this.scene);leg.parent=this.root;leg.position.set(side*.22,0,back);leg.rotation.z=open;
+      cone('腿',leg,0,.98,0,.32,.26,.78);
+      cone('膝当て',leg,0,.57,-.02,.3,.27,.13,6,plate);
+      const shin=cone('脛当て',leg,side*.02,.32,0,.28,.23,.44);shin.rotation.z=-open*1.4;
+      const boot=box('具足',leg,side*.03,.09,-.09,.31,.19,.52,plate);boot.rotation.y=-side*.2;
     }
     // 腰布と帯。脚の付け根を隠し、上半身との境を金の帯で切る。
     const skirt=cone('腰布',this.root,0,1.15,0,.58,.98,.94,8,cloth);skirt.rotation.y=Math.PI/8;
     const hem=cone('裾の縁',this.root,0,.7,0,.96,1.02,.06,8,trim);hem.rotation.y=Math.PI/8;
+    // 腰布の正面に金の帯を一本。布の傾きに合わせて少しだけ寝かせる。
+    const front=box('腰布の帯',this.root,0,1.1,-.38,.12,.94,.025,trim);front.rotation.x=.19;
     cone('帯',this.root,0,1.56,0,.56,.6,.12,8,trim);
     cone('腹',this.root,0,1.7,0,.5,.54,.2,6,plate);
 
     this.body=new TransformNode('上半身',this.scene);this.body.parent=this.root;this.body.position.y=1.72;
-    cone('胸',this.body,0,.3,0,.78,.5,.64);
+    cone('胸',this.body,0,.3,0,.74,.5,.64);
     // 胸当てと金の線。核を頂点にしたV字で、狙う場所を分かりやすくする。
     cone('胸当て',this.body,0,.34,-.2,.5,.34,.5,6,plate);
     for(const side of [-1,1]) {
@@ -135,9 +141,9 @@ export class Knight {
     cone('喉当て',this.body,0,.68,-.01,.3,.38,.2,6,plate);
 
     // 背中のマント。半分だけの角柱を後ろへ回し、肩から裾へ広げる。
-    const cape=MeshBuilder.CreateCylinder('マント',{diameterTop:.72,diameterBottom:1.26,height:1.34,tessellation:10,arc:.5},this.scene);
+    const cape=MeshBuilder.CreateCylinder('マント',{diameterTop:.72,diameterBottom:1.3,height:1.38,tessellation:6,arc:.5},this.scene);
     // 半円は手前から時計回りに作られるため、半回転させて背中側へ回す。
-    cape.parent=this.body;cape.position.set(0,-.04,.08);cape.rotation.y=Math.PI;cape.material=cloth;
+    cape.parent=this.body;cape.position.set(0,-.06,.09);cape.rotation.set(-.05,Math.PI,0);cape.material=cloth;
 
     this.head=new TransformNode('首',this.scene);this.head.parent=this.body;this.head.position.y=.78;
     cone('兜',this.head,0,.17,0,.42,.52,.46);
@@ -149,34 +155,38 @@ export class Knight {
     }
     cone('頭頂の先',this.head,0,.34,-.04,0,.13,.14,6,plate);
 
+    // 腕は肩と肘の2段。肘を少し前へ曲げ、手の位置から剣と盾を下げる。
     const arm=(name:string,side:number)=>{
       const node=new TransformNode(name,this.scene);
-      node.parent=this.body;node.position.set(side*.36,.34,0);
+      node.parent=this.body;node.position.set(side*.38,.32,0);
       // 肩当ては半球。外側へ小さな棘を付けて、正面から見た幅を出す。
-      const pauldron=MeshBuilder.CreateSphere('肩当て',{diameter:.48,segments:8,slice:.6},this.scene);
-      pauldron.parent=node;pauldron.position.set(side*.04,.02,0);pauldron.scaling.set(1,.85,1.05);pauldron.material=this.armor;
-      const spike=cone('肩の棘',node,side*.2,.06,0,0,.13,.2,6,plate);spike.rotation.z=-side*1.1;
-      cone('上腕',node,side*.02,-.24,0,.22,.18,.44,6,plate);
-      cone('肘当て',node,side*.03,-.48,0,.21,.2,.1);
-      cone('前腕',node,side*.04,-.72,0,.2,.16,.42);
-      return node;
+      const pauldron=MeshBuilder.CreateSphere('肩当て',{diameter:.46,segments:6,slice:.6},this.scene);
+      pauldron.parent=node;pauldron.position.set(side*.03,.03,0);pauldron.scaling.set(1,.85,1.05);pauldron.material=this.armor;
+      const spike=cone('肩の棘',node,side*.19,.07,0,0,.13,.2,6,plate);spike.rotation.z=-side*1.1;
+      cone('上腕',node,side*.01,-.23,0,.2,.17,.42,6,plate);
+      const elbow=new TransformNode(name+'の肘',this.scene);
+      elbow.parent=node;elbow.position.set(side*.02,-.46,0);elbow.rotation.x=.26;
+      cone('肘当て',elbow,0,0,0,.2,.19,.1);
+      cone('前腕',elbow,side*.01,-.24,0,.19,.15,.42);
+      return [node,elbow];
     };
-    this.swordArm=arm('剣を持つ腕',-1);
-    const sword=new TransformNode('剣',this.scene);sword.parent=this.swordArm;sword.position.set(-.06,-.94,-.05);sword.rotation.z=-.3;
+    const [swordShoulder,swordHand]=arm('剣を持つ腕',-1);this.swordArm=swordShoulder;
+    const sword=new TransformNode('剣',this.scene);sword.parent=swordHand;sword.position.set(-.04,-.46,-.03);sword.rotation.z=-.26;
     cone('握り',sword,0,.07,0,.07,.075,.2,6,plate);
     cone('柄頭',sword,0,.19,0,.09,.05,.08,6,trim);
     box('鍔',sword,0,-.04,0,.42,.07,.1,trim);
     const blade=cone('刃',sword,0,-.72,0,.15,.02,1.3,4,steel);blade.scaling.z=.32;blade.rotation.y=Math.PI/4;
-    this.shieldArm=arm('盾を持つ腕',1);
+    const [shieldShoulder,shieldHand]=arm('盾を持つ腕',1);this.shieldArm=shieldShoulder;
     // 盾は四角柱を平たくし、縦へ伸ばした凧形。金の縁と中央の飾りを重ねる。
-    const mount=new TransformNode('盾の取り付け',this.scene);mount.parent=this.shieldArm;mount.position.set(.19,-.5,-.3);mount.rotation.set(0,-.2,.06);
+    const mount=new TransformNode('盾の取り付け',this.scene);mount.parent=shieldHand;mount.position.set(.2,-.22,-.26);mount.rotation.set(-.26,-.2,.06);
     const shield=new TransformNode('盾',this.scene);shield.parent=mount;shield.rotation.x=Math.PI/2;
     const face=MeshBuilder.CreateCylinder('盾の面',{diameter:.82,height:.09,tessellation:4},this.scene);
     face.parent=shield;face.scaling.set(.94,1,1.3);face.material=this.armor;
     const edge=MeshBuilder.CreateCylinder('盾の縁',{diameter:.9,height:.05,tessellation:4},this.scene);
     edge.parent=shield;edge.position.y=.012;edge.scaling.set(.94,1,1.3);edge.material=trim;
-    const boss=MeshBuilder.CreateCylinder('盾の飾り',{diameterTop:.07,diameterBottom:.17,height:.1,tessellation:6},this.scene);
-    boss.parent=shield;boss.position.y=-.07;boss.rotation.x=Math.PI;boss.material=trim;
+    const band=box('盾の帯',shield,0,-.05,0,.1,.03,.96,trim);band.scaling.z=1;
+    const boss=MeshBuilder.CreateCylinder('盾の飾り',{diameterTop:.07,diameterBottom:.19,height:.12,tessellation:6},this.scene);
+    boss.parent=shield;boss.position.y=-.08;boss.rotation.x=Math.PI;boss.material=trim;
 
     // 影は一枚の面に濃淡を描いて置く。光源の影計算は使わない。
     const texture=new DynamicTexture('影の濃さ',{width:128,height:128},this.scene,false);
@@ -208,15 +218,24 @@ export class Knight {
   render(ms:number,active:boolean,recipe:Recipe|null) {
     const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose);
     const p=blendPose(pose.weights);
+    // 待機の間もわずかに体と腕を動かし、首をゆっくり振る。動きを減らす設定では止める。
+    const live=this.motion.matches?0:1,t=ms/1000;
+    const shake=pose.flash*.028;
     this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7);
     this.root.position.y=p.crouch+pose.breath*4;
-    this.body.rotation.x=p.body;
+    this.root.position.x=Math.sin(ms*.13)*shake;
+    this.root.rotation.z=Math.sin(ms*.09)*shake;
+    this.body.rotation.x=p.body+Math.sin(t*.42+1)*.008*live;
+    this.body.rotation.z=Math.sin(t*.55)*.012*live;
     this.head.rotation.x=p.head;
-    this.swordArm.rotation.set(p.swordSwing,0,-p.swordOut);
-    this.shieldArm.rotation.set(p.shieldSwing,0,p.shieldOut);
+    this.head.rotation.y=Math.sin(t*.31)*.06*live;
+    this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live,0,-p.swordOut);
+    this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);
     // 14秒からの蓄積で核が明るくなり、命中では前から強く照らす。
     const charge=active?clamp((ms-14000)/4500):0,glow=.22+charge*.5+pose.flash*1.5;
     this.coreMaterial.emissiveColor.set(.42+glow,.32+glow*.86,.17+glow*.7);
+    const blink=.82+Math.sin(t*1.7)*.18*live+pose.flash*.6;
+    this.eyes.emissiveColor.set(.52*blink,.23*blink,.07*blink);
     // 色は魔法の属性のままだと鎧まで染まるため、白へ寄せて使う。
     this.burst.diffuse=Color3.Lerp(Color3.FromHexString(recipe?colors[recipe.element]:colors.neutral),new Color3(1,1,1),.4);
     this.burst.intensity=charge*.35+pose.flash*4;
