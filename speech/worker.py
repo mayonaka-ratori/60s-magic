@@ -46,19 +46,41 @@ def transcribe(model, audio, hotwords):
     return ''.join(segment.text for segment in parts).strip()
 
 
+def create_model():
+    """NVIDIAのGPUがあればGPU、なければCPU（Macなど）で読み込む。"""
+    requested = os.environ.get('LOCAL_SPEECH_DEVICE', 'auto')
+    if requested not in ('auto', 'cuda', 'cpu'):
+        raise ValueError('LOCAL_SPEECH_DEVICE は auto、cuda、cpu のいずれかを設定してください')
+    threads = max(1, min(8, os.cpu_count() or 4))
+    candidates = []
+    if requested in ('auto', 'cuda'):
+        candidates.append(('cuda', 'int8_float16'))
+    if requested in ('auto', 'cpu'):
+        candidates.append(('cpu', 'int8'))
+    last_error = None
+    for device, compute_type in candidates:
+        try:
+            model = WhisperModel(str(MODEL_DIR), device=device, compute_type=compute_type,
+                                 cpu_threads=threads, num_workers=1, local_files_only=True)
+            return model, device, compute_type
+        except Exception as error:
+            last_error = error
+            print(f'{device} では読み込めませんでした: {error}', file=sys.stderr, flush=True)
+    raise RuntimeError('認識モデルを読み込めませんでした') from last_error
+
+
 def main():
     try:
-        model = WhisperModel(str(MODEL_DIR), device='cuda', compute_type='int8_float16',
-                             cpu_threads=4, num_workers=1, local_files_only=True)
+        model, device, compute_type = create_model()
         hotwords, vocabulary = load_hints(model.hf_tokenizer)
-        # 読み込み・GPUの初回処理は24秒が始まる前に終える。
+        # 読み込みと初回処理は24秒が始まる前に終える。
         warmup = np.zeros(16000, dtype=np.float32)
         segments, _ = model.transcribe(warmup, language='ja', beam_size=1,
                                       condition_on_previous_text=False, without_timestamps=True)
         list(segments)
         transcribe(model, warmup, hotwords)
-        send({'type': 'ready', 'model': 'kotoba-whisper-v2.0', 'device': 'cuda',
-              'computeType': 'int8_float16', 'vocabulary': vocabulary})
+        send({'type': 'ready', 'model': 'kotoba-whisper-v2.0', 'device': device,
+              'computeType': compute_type, 'vocabulary': vocabulary})
     except Exception as error:
         print(f'ローカル音声認識の起動に失敗しました: {error}', file=sys.stderr, flush=True)
         send({'type': 'unavailable', 'reason': 'ローカル音声認識を起動できませんでした。接続の確認をご覧ください。'})

@@ -47,7 +47,7 @@
 ```
 npm ci                 # 依存するソフトを入れる
 npm run setup:assets   # 手の認識に使うファイルを取得する
-npm run setup:speech   # PC内の音声認識を準備する（Windows、NVIDIA GPU、uvが必要）
+npm run setup:speech   # PC内の音声認識を準備する（uvが必要。NVIDIA GPUがなければCPUで動く）
 npm run dev            # 開発用に起動する（http://localhost:5173）
 npm test               # 単体の試験
 npm run build          # 型の確認とビルド

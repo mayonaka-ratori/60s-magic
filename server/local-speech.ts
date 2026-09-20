@@ -7,6 +7,9 @@ export type LocalSpeechResult = {text:string;processingMs:number};
 export type LocalSpeechStatus = {state:'missing'|'loading'|'ready'|'error';message:string;model:string;device:string};
 type Job = {id:number;pcm:Buffer;resolve:(value:LocalSpeechResult)=>void;reject:(reason:Error)=>void};
 
+/** setup:speech が作るPython環境の場所。WindowsとMac/Linuxで置き場所が違う。 */
+export const defaultSpeechPython=()=>resolve(process.platform==='win32'?'.venv-speech/Scripts/python.exe':'.venv-speech/bin/python');
+
 /** モデルは一度だけ読み込む。音声は子プロセスの標準入力へ渡し、保存しない。 */
 export class LocalSpeech {
   private process:ChildProcessWithoutNullStreams|null=null;
@@ -16,8 +19,8 @@ export class LocalSpeech {
   private serial=0;
   private owner:object|null=null;
   private disposed=false;
-  private status:LocalSpeechStatus={state:'missing',message:'npm run setup:speech で音声認識を準備してください',model:'kotoba-whisper-v2.0',device:'cuda'};
-  constructor(private python=process.env.LOCAL_SPEECH_PYTHON||resolve('.venv-speech/Scripts/python.exe'),private model=process.env.LOCAL_SPEECH_MODEL||resolve('.local-speech/models/kotoba-v2.0')) {}
+  private status:LocalSpeechStatus={state:'missing',message:'npm run setup:speech で音声認識を準備してください',model:'kotoba-whisper-v2.0',device:process.platform==='win32'?'cuda':'cpu'};
+  constructor(private python=process.env.LOCAL_SPEECH_PYTHON||defaultSpeechPython(),private model=process.env.LOCAL_SPEECH_MODEL||resolve('.local-speech/models/kotoba-v2.0')) {}
   getStatus(){return {...this.status};}
   start() {
     if(this.process||this.disposed)return;
@@ -27,12 +30,14 @@ export class LocalSpeech {
       windowsHide:true,stdio:'pipe',env:{...process.env,LOCAL_SPEECH_MODEL:this.model,PYTHONIOENCODING:'utf-8',HF_HUB_OFFLINE:'1',HF_HUB_DISABLE_TELEMETRY:'1'},
     });
     this.process=child;
-    this.timer=setTimeout(()=>this.fail('音声認識の準備が時間内に終わりませんでした。アプリを起動し直してください。'),60000);
+    // CPUだけのPCでは読み込みに時間がかかるため、長めに待つ。
+    this.timer=setTimeout(()=>this.fail('音声認識の準備が時間内に終わりませんでした。アプリを起動し直してください。'),180000);
     createInterface({input:child.stdout}).on('line',line=>{
       let message;try{message=JSON.parse(line);}catch{return;}
       if(message.type==='ready') {
         if(this.timer)clearTimeout(this.timer);this.timer=null;
-        this.status={...this.status,state:'ready',message:'このPCで音声を認識できます'};return;
+        const device=typeof message.device==='string'?message.device:this.status.device;
+        this.status={...this.status,state:'ready',device,message:device==='cpu'?'このPCで音声を認識できます（CPUで動作中。遅れることがあります）':'このPCで音声を認識できます'};return;
       }
       if(message.type==='unavailable'){this.fail(message.reason);return;}
       if(message.type==='result'&&this.active?.id===message.id) {
