@@ -11,7 +11,8 @@ import type { Point, Recipe } from '../src/game/types';
 import {
   FINISH_HOLD, FINISH_INHERITED, FINISH_PASS, FINISH_RING, FINISH_SETTLE, SPELL_LINE_WIDTH,
   drawFinish, finishBoost, finishHitPlan, finishHitTimes, finishTravel, holdTime,
-  inheritedSpot, passStrokeWidth, passThrough, ringLayout, ringPassAt, ringStrokeWidth, settleFade,
+  inheritedSpot, passExitScale, passStrokeWidth, passThrough, ringLayout, ringPassAt, ringStrokeWidth,
+  settleFade, spellRadius,
 } from '../src/render/effects/finish';
 
 const finishBeat = beatOf(ROUNDS[2]);
@@ -48,42 +49,73 @@ const frame = (t: number, over: Partial<Frame> = {}, spell: Partial<Recipe> = {}
 });
 
 describe('術式が視界を通り抜ける', () => {
-  it('1倍から8倍へ、前半の0.1秒で6倍まで広がる', () => {
-    expect(passThrough(-.01)).toBeNull();
-    expect(passThrough(FINISH_PASS.seconds)).toBeNull();
-    expect(passThrough(0)!.scale).toBeCloseTo(1, 6);
-    expect(passThrough(FINISH_PASS.fast)!.scale).toBeCloseTo(FINISH_PASS.fastScale, 6);
-    expect(passThrough(FINISH_PASS.seconds - .001)!.scale).toBeCloseTo(FINISH_PASS.scale, 1);
-    // 速く始めて遅く終わる。前半で全体の7割より先まで進む。
-    expect(passThrough(FINISH_PASS.fast / 2)!.scale).toBeGreaterThan(1 + (FINISH_PASS.fastScale - 1) * .7);
-    let 前 = 0;
-    for (let time = 0; time < FINISH_PASS.seconds; time += .005) { const now = passThrough(time)!.scale; expect(now).toBeGreaterThanOrEqual(前); 前 = now; }
+  // 試験に使う画面と、本人の術式の大きさ。画面の高さの4割ほどの術式を想定する。
+  const w = 1280, h = 720, 半分 = Math.hypot(w, h) / 2;
+  const 半径 = spellRadius(points, w, h, { x: 320, y: 520 });
+  const 抜ける倍率 = passExitScale(w, h, 半径);
+  /** その時刻の、術式の外周までの長さ（画素）。 */
+  const 外周 = (time: number, calm = false) => 半径 * passThrough(time, 抜ける倍率, calm)!.scale;
+
+  it('広げる倍率は、画面の大きさと術式の大きさから決まる', () => {
+    expect(半径).toBeGreaterThan(0);
+    expect(抜ける倍率 * 半径).toBeCloseTo(半分, 6);
+    // 大きく描いた人ほど倍率は小さく、小さく描いた人ほど大きくなる。下限は2倍。
+    expect(passExitScale(w, h, 半径 * 2)).toBeLessThan(抜ける倍率);
+    expect(passExitScale(w, h, 半分)).toBe(FINISH_PASS.minScale);
+    expect(passExitScale(w, h, 半分 * 4)).toBe(FINISH_PASS.minScale);
   });
-  it('濃さは0.06秒だけ1.0のまま、そこから0へ抜ける', () => {
-    expect(passThrough(0)!.alpha).toBe(1);
-    expect(passThrough(FINISH_PASS.hold - .001)!.alpha).toBeCloseTo(1, 3);
-    expect(passThrough(FINISH_PASS.hold + .05)!.alpha).toBeLessThan(1);
-    expect(passThrough(FINISH_PASS.seconds - .001)!.alpha).toBeLessThan(.01);
+  it('0.10秒ではまだ画面の中に見え、0.20秒で画面の外へ出る', () => {
+    expect(passThrough(-.01, 抜ける倍率)).toBeNull();
+    expect(passThrough(FINISH_PASS.seconds, 抜ける倍率)).toBeNull();
+    expect(passThrough(0, 抜ける倍率)!.scale).toBeCloseTo(1, 6);
+    // 52.10秒（発動から0.10秒）ではまだ外周が画面の対角線の半分より内側。
+    expect(外周(.1)).toBeLessThan(半分);
+    // 52.20秒で抜けきる。
+    expect(外周(FINISH_PASS.reach)).toBeGreaterThanOrEqual(半分 - 1e-6);
+    // 残りの0.05秒でさらに1.3倍まで広がる。
+    expect(外周(FINISH_PASS.seconds - .001)).toBeGreaterThan(半分 * (FINISH_PASS.overshoot - .01));
+  });
+  it('最初はゆっくり、後半で速く広がる', () => {
+    const 前半 = 外周(.1) - 外周(0), 後半 = 外周(.2) - 外周(.1);
+    expect(後半).toBeGreaterThan(前半 * 2);
+    let 前 = 0;
+    for (let time = 0; time < FINISH_PASS.seconds; time += .005) {
+      const now = passThrough(time, 抜ける倍率)!.scale;
+      expect(now).toBeGreaterThanOrEqual(前); 前 = now;
+    }
+  });
+  it('濃さは0.15秒だけ1.0のまま、そこから0へ抜ける', () => {
+    const 濃さ = (time: number) => passThrough(time, 抜ける倍率)!.alpha;
+    expect(濃さ(0)).toBe(1);
+    expect(濃さ(.1)).toBe(1);
+    expect(濃さ(FINISH_PASS.hold - .001)).toBeCloseTo(1, 3);
+    expect(濃さ(FINISH_PASS.hold + .05)).toBeLessThan(1);
+    expect(濃さ(FINISH_PASS.seconds - .001)).toBeLessThan(.02);
+  });
+  it('控えめモードでは抜けきる倍率の半分までにする。長さは同じ', () => {
+    expect(passThrough(FINISH_PASS.reach, 抜ける倍率, true)!.scale)
+      .toBeCloseTo(1 + (抜ける倍率 - 1) * FINISH_PASS.calmShare, 6);
+    expect(外周(.1, true)).toBeLessThan(外周(.1));
+    expect(passThrough(FINISH_PASS.seconds, 抜ける倍率, true)).toBeNull();
   });
   it('線は今の術式の2倍より細くならず、広げるほど太くなる', () => {
-    const 太さ = (scale: number) => passStrokeWidth(720, 1.5, scale);
+    const 太さ = (scale: number) => passStrokeWidth(h, 1.5, scale);
     expect(太さ(1)).toBeGreaterThanOrEqual(SPELL_LINE_WIDTH * 2);
-    expect(太さ(1)).toBeGreaterThanOrEqual(720 * FINISH_PASS.width);
-    expect(太さ(FINISH_PASS.scale)).toBeGreaterThan(太さ(1));
+    expect(太さ(1)).toBeGreaterThanOrEqual(h * FINISH_PASS.width);
+    expect(太さ(抜ける倍率)).toBeGreaterThan(太さ(1));
     // 派手さが小さくても、画面の高さに対する下限は割らない。
-    expect(passStrokeWidth(720, 0, 1)).toBeGreaterThanOrEqual(SPELL_LINE_WIDTH * 2);
+    expect(passStrokeWidth(h, 0, 1)).toBeGreaterThanOrEqual(SPELL_LINE_WIDTH * 2);
   });
   it('広げた術式の線と光が、濃いまま描かれる', () => {
-    const log: string[] = [];
-    drawFinish(frame(finishBeat.release + .02, { c: stubContext(log) }));
-    const 太さ = log.filter(line => line.startsWith('lineWidth=')).map(line => Number(line.slice(10)));
-    const 濃さ = log.filter(line => line.startsWith('globalAlpha=')).map(line => Number(line.slice(12)));
-    expect(Math.max(...太さ)).toBeGreaterThanOrEqual(SPELL_LINE_WIDTH * 2);
-    expect(Math.max(...濃さ)).toBeGreaterThanOrEqual(.9);
-  });
-  it('控えめモードでは8倍ではなく4倍までにする', () => {
-    expect(passThrough(FINISH_PASS.seconds - .001, true)!.scale).toBeCloseTo(FINISH_PASS.calmScale, 1);
-    expect(passThrough(.05, true)!.scale).toBeLessThan(passThrough(.05)!.scale);
+    // 濃さを保つ間（0.15秒まで）は濃いまま、そのあとは薄れていく。
+    for (const [time, 下限] of [[.02, .9], [.1, .9], [.18, .5]] as const) {
+      const log: string[] = [];
+      drawFinish(frame(finishBeat.release + time, { c: stubContext(log) }));
+      const 太さ = log.filter(line => line.startsWith('lineWidth=')).map(line => Number(line.slice(10)));
+      const 濃さ = log.filter(line => line.startsWith('globalAlpha=')).map(line => Number(line.slice(12)));
+      expect(Math.max(...太さ), `${time}秒`).toBeGreaterThanOrEqual(SPELL_LINE_WIDTH * 2);
+      expect(Math.max(...濃さ), `${time}秒`).toBeGreaterThanOrEqual(下限);
+    }
   });
   it('発動の全画面の白は0.85まで上がり、0.17秒で戻る。ほかの回は上げない', () => {
     const 白 = (t: number, beat = finishBeat, calm = false) => screenState(t, 2, presets.vivid, 'attack', 0, 0, calm, beat).flash;
