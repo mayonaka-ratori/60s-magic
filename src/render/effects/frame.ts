@@ -24,7 +24,14 @@ export type Frame = {
   live: LiveInput; points: Point[]; cursors: XY[];
   /** 一度だけ実行する。粒の発生などに使う */
   once: (key: string, run: () => void) => void;
+  /** 控えめモード。粒と火花を3分の1にし、脈動をゆっくりにする */
+  calm: boolean;
 };
+
+/** 控えめモードのときだけ数を3分の1にする。粒や火花の個数の式に掛けて使う。 */
+export function few(f: Frame, n: number) { return f.calm ? n / 3 : n; }
+/** 控えめモードのときだけ脈動の速さを半分にする。 */
+export function slow(f: Frame, speed: number) { return f.calm ? speed / 2 : speed; }
 
 /** 同じ番号と種で同じ値を返す、0〜1の決まった乱数。 */
 export function noise(i: number, seed = 0) {

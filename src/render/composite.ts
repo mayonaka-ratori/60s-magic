@@ -37,6 +37,8 @@ export const POST_FROM = 16.9, POST_TO = 21;
 export const RIPPLE_SECONDS = .45;
 /** ブルームの常時の強さと、放出や命中で上げるときの倍率。 */
 export const BLOOM_BASE = .18, BLOOM_PEAK = 5, BLOOM_RELEASE = 3;
+/** 控えめモードのときの倍率の上限。全画面の白飛びを抑えるため、放出も命中もここまでに留める。 */
+export const BLOOM_CALM_PEAK = 1.6;
 /** ブルームを切る目安のfpsと、戻す目安のfps。 */
 export const FPS_DROP = 55, FPS_BACK = 58;
 
@@ -54,18 +56,26 @@ export function rippleAt(t: number, impactAt = IMPACT_AT, life = RIPPLE_SECONDS)
   return { radius: .06 + p * .82, width: .18 * (1 - p * .62), strength: .028 * (1 - p) * (1 - p) };
 }
 
-/** ブルームの強さ。放出で3倍、命中で5倍まで上がり、0.4秒ほどで元へ戻る。 */
-export function bloomWeightAt(t: number) {
+/** ブルームの強さ。放出で3倍、命中で5倍まで上がり、0.4秒ほどで元へ戻る。控えめモードでは1.6倍までに抑える。 */
+export function bloomWeightAt(t: number, calm = false) {
+  const peak = calm ? BLOOM_CALM_PEAK : BLOOM_PEAK, release = calm ? BLOOM_CALM_PEAK : BLOOM_RELEASE;
   let boost = 1;
-  if (t >= RELEASE_AT) boost = Math.max(boost, 1 + (BLOOM_RELEASE - 1) * Math.max(0, 1 - (t - RELEASE_AT) / .4));
-  if (t >= IMPACT_AT) boost = Math.max(boost, 1 + (BLOOM_PEAK - 1) * Math.max(0, 1 - (t - IMPACT_AT) / .4));
+  if (t >= RELEASE_AT) boost = Math.max(boost, 1 + (release - 1) * Math.max(0, 1 - (t - RELEASE_AT) / .4));
+  if (t >= IMPACT_AT) boost = Math.max(boost, 1 + (peak - 1) * Math.max(0, 1 - (t - IMPACT_AT) / .4));
   return BLOOM_BASE * boost;
 }
 
 /** 合成そのものを諦める目安。最初の90コマは慣らし、その後24fps未満が60コマ続いたら止めて元の層へ戻す。 */
 export const GIVE_UP_FPS = 24, GIVE_UP_WARMUP = 90, GIVE_UP_FRAMES = 60;
-export function giveUpDecision(fps: number, lowFrames: number, frames: number) {
+/**
+ * 合成をやめるかどうか。時刻とブルームの状態も見る（画面には触らない計算だけ）。
+ * - 山場（16.9〜21秒）の間は判定を止める。命中の途中で合成が消えると絵が一瞬で変わってしまうため。
+ * - 先にブルームを切る段を挟む。ブルームが付いている間はやめず、切れてもなお遅いときだけやめる。
+ */
+export function giveUpDecision(fps: number, lowFrames: number, frames: number, t: number, bloomOn: boolean) {
+  if (postHeavyActive(t)) return { lowFrames, giveUp: false };
   if (frames <= GIVE_UP_WARMUP || !Number.isFinite(fps) || fps <= 0) return { lowFrames: 0, giveUp: false };
+  if (bloomOn) return { lowFrames: 0, giveUp: false };
   const next = fps < GIVE_UP_FPS ? lowFrames + 1 : 0;
   return { lowFrames: next, giveUp: next >= GIVE_UP_FRAMES };
 }
@@ -93,10 +103,13 @@ export function layerMotion(screen: { shakeX: number; shakeY: number; rotate: nu
 
 /** 合成の設定。URLの指定から作る。?bloom=1 は速さに関わらずブルームを出し続ける（見え方の確認用）。 */
 export type CompositeSettings = { enabled: boolean; scale: number | null; keepBloom: boolean };
+/** ?scale= で受け付ける粗さの範囲。小さすぎると解像度が跳ね上がって固まるので下限を置く。 */
+export const SCALE_MIN = .5, SCALE_MAX = 4;
 export function compositeSettings(search: string): CompositeSettings {
   const params = new URLSearchParams(search);
   const scale = Number(params.get('scale'));
-  return { enabled: params.get('composite') !== '0', scale: Number.isFinite(scale) && scale > 0 ? Math.min(scale, 4) : null, keepBloom: params.get('bloom') === '1' };
+  const level = Number.isFinite(scale) && scale > 0 ? Math.min(Math.max(scale, SCALE_MIN), SCALE_MAX) : null;
+  return { enabled: params.get('composite') !== '0', scale: level, keepBloom: params.get('bloom') === '1' };
 }
 
 // ------------------------------------------------------------------
@@ -113,7 +126,7 @@ export type CompositeFrame = {
   t: number;
   /** 命中の位置（画面の左上を0とした0〜1） */
   target: { x: number; y: number };
-  /** 控えめモード。色収差と歪みを切る。 */
+  /** 控えめモード。色収差と歪みを切り、ブルームの倍率も抑える。 */
   calm: boolean;
 };
 
@@ -153,52 +166,72 @@ export class Composite {
     try { return new Composite(canvas, sources, settings); } catch { return null; }
   }
 
+  /** WebGLの文脈が失われたときの受け口。復帰は狙わず、そのまま元のHTMLの層へ戻す。 */
+  private onContextLost = () => this.stop();
+
   private constructor(private canvas: HTMLCanvasElement, private sources: CompositeSources, settings: CompositeSettings) {
     registerCompositeShaders();
     this.keepBloom = settings.keepBloom;
-    this.engine = new Engine(canvas, true, { alpha: false, stencil: false, antialias: false, preserveDrawingBuffer: false });
-    this.scaleLevel = settings.scale ?? 1 / Math.min(devicePixelRatio || 1, 1.5);
-    this.engine.setHardwareScalingLevel(this.scaleLevel);
-    this.scene = new Scene(this.engine);
-    this.scene.clearColor = new Color4(0, 0, 0, 1);
-    this.scene.autoClear = true;
-    this.camera = new FreeCamera('合成の視点', new Vector3(0, 0, -100), this.scene);
-    this.camera.setTarget(Vector3.Zero());
-    this.camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
-    this.camera.minZ = 1; this.camera.maxZ = 400;
-    // 揺れ、傾き、寄りは板ごとではなくこの親にまとめてかける。演出の板だけは外に置いて動かさない。
-    this.shake = new TransformNode('画面の揺れ', this.scene);
-    this.boards = {
-      world: this.board('背景の板', 40, 0),
-      knight: this.board('騎士の板', 30, 1),
-      spell: this.board('術式の板', 20, 2, Engine.ALPHA_ADD),
-      magic: this.board('演出の板', 10, 3, Engine.ALPHA_COMBINE, false),
-    };
-    this.pipeline = new DefaultRenderingPipeline('合成の後処理', false, this.scene, [this.camera]);
-    this.pipeline.samples = 1;
-    this.pipeline.fxaaEnabled = false;
-    this.pipeline.bloomEnabled = true;
-    this.pipeline.bloomScale = .5;
-    this.pipeline.bloomThreshold = .72;
-    this.pipeline.bloomKernel = 48;
-    this.pipeline.bloomWeight = BLOOM_BASE;
-    this.pipeline.chromaticAberrationEnabled = false;
-    this.pipeline.grainEnabled = false;
-    this.pipeline.imageProcessing.vignetteEnabled = false;
-    this.shockwave = new PostProcess('衝撃波の歪み', SHOCKWAVE_SHADER,
-      ['center', 'radius', 'ringWidth', 'strength', 'aspect'], null, 1, null, Texture.BILINEAR_SAMPLINGMODE, this.engine, false);
-    this.shockwave.onApply = effect => {
-      const ripple = this.ripple ?? { radius: 0, width: .0001, strength: 0 };
-      // 後処理の座標は下が0。命中の位置は上が0なので裏返して渡す。
-      effect.setFloat2('center', this.center.x, 1 - this.center.y);
-      effect.setFloat('radius', ripple.radius);
-      effect.setFloat('ringWidth', ripple.width);
-      effect.setFloat('strength', ripple.strength);
-      effect.setFloat('aspect', this.aspect);
-    };
-    this.setPost(false);
-    this.resize();
+    const engine = new Engine(canvas, false, { alpha: false, stencil: false, antialias: false, preserveDrawingBuffer: false });
+    this.engine = engine;
+    try {
+      this.scaleLevel = settings.scale ?? 1 / Math.min(devicePixelRatio || 1, 1.5);
+      this.engine.setHardwareScalingLevel(this.scaleLevel);
+      this.scene = new Scene(this.engine);
+      this.scene.clearColor = new Color4(0, 0, 0, 1);
+      this.scene.autoClear = true;
+      this.camera = new FreeCamera('合成の視点', new Vector3(0, 0, -100), this.scene);
+      this.camera.setTarget(Vector3.Zero());
+      this.camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
+      this.camera.minZ = 1; this.camera.maxZ = 400;
+      // 揺れ、傾き、寄りは板ごとではなくこの親にまとめてかける。演出の板だけは外に置いて動かさない。
+      this.shake = new TransformNode('画面の揺れ', this.scene);
+      this.boards = {
+        world: this.board('背景の板', 40, 0),
+        knight: this.board('騎士の板', 30, 1),
+        spell: this.board('術式の板', 20, 2, Engine.ALPHA_ADD),
+        magic: this.board('演出の板', 10, 3, Engine.ALPHA_COMBINE, false),
+      };
+      this.pipeline = new DefaultRenderingPipeline('合成の後処理', false, this.scene, [this.camera]);
+      this.pipeline.samples = 1;
+      this.pipeline.fxaaEnabled = false;
+      this.pipeline.bloomEnabled = true;
+      this.pipeline.bloomScale = .5;
+      this.pipeline.bloomThreshold = .72;
+      this.pipeline.bloomKernel = 48;
+      this.pipeline.bloomWeight = BLOOM_BASE;
+      this.pipeline.chromaticAberrationEnabled = false;
+      this.pipeline.grainEnabled = false;
+      this.pipeline.imageProcessing.vignetteEnabled = false;
+      this.shockwave = new PostProcess('衝撃波の歪み', SHOCKWAVE_SHADER,
+        ['center', 'radius', 'ringWidth', 'strength', 'aspect'], null, 1, null, Texture.BILINEAR_SAMPLINGMODE, this.engine, false);
+      this.shockwave.onApply = effect => {
+        const ripple = this.ripple ?? { radius: 0, width: .0001, strength: 0 };
+        // 後処理の座標は下が0。命中の位置は上が0なので裏返して渡す。
+        effect.setFloat2('center', this.center.x, 1 - this.center.y);
+        effect.setFloat('radius', ripple.radius);
+        effect.setFloat('ringWidth', ripple.width);
+        effect.setFloat('strength', ripple.strength);
+        effect.setFloat('aspect', this.aspect);
+      };
+      this.setPost(false);
+      this.resize();
+      this.setActive(false);
+      // 文脈が失われたら静止画が最前面に残ってしまうので、やめる経路へつなぐ。
+      canvas.addEventListener('webglcontextlost', this.onContextLost);
+    } catch (error) {
+      // 作りかけで投げると文脈が居座るので、ここで捨ててから投げ直す。
+      try { engine.dispose(); } catch { /* 片付けの失敗は気にしない */ }
+      throw error;
+    }
+  }
+
+  /** 合成をやめて元のHTMLの層へ戻す。遅すぎたときと、WebGLの文脈が失われたときの両方から呼ぶ。 */
+  private stop() {
+    if (this.gaveUp) return;
+    this.gaveUp = true;
     this.setActive(false);
+    this.canvas.dataset.gaveUp = 'true';
   }
 
   /** 板を一枚作る。z が小さいほど手前。order は重ねる順（小さいほど奥）。 */
@@ -285,7 +318,7 @@ export class Composite {
     this.heavy = on;
     // 外の時間帯は後処理を一つも通さない（1コマぶんの塗りをまるごと省く）。
     this.pipeline.imageProcessingEnabled = on;
-    this.pipeline.bloomEnabled = on && this.bloomOn;
+    this.pipeline.bloomEnabled = on && (this.keepBloom || this.bloomOn);
     this.pipeline.chromaticAberrationEnabled = on;
     // 確認用。後処理が効いている間だけ on にする。
     this.canvas.dataset.post = on ? 'on' : 'off';
@@ -304,10 +337,12 @@ export class Composite {
     }
     this.lastFrameAt = now;
     this.frames++;
-    // 遅すぎるPCでは合成を止めて、段階1〜3の状態（HTMLの層）へ戻す。
-    const slow = giveUpDecision(this.fps, this.lowFrames, this.frames);
+    // ブルームの入り切りは毎コマ決める。遅いときはまずブルームが切れ、それでも追いつかないときだけ合成をやめる。
+    this.bloomOn = bloomDecision(this.bloomOn, this.fps);
+    // 遅すぎるPCでは合成を止めて、段階1〜3の状態（HTMLの層）へ戻す。山場の間は止めない。
+    const slow = giveUpDecision(this.fps, this.lowFrames, this.frames, frame.t, this.bloomOn);
     this.lowFrames = slow.lowFrames;
-    if (slow.giveUp) { this.gaveUp = true; this.setActive(false); this.canvas.dataset.gaveUp = 'true'; return; }
+    if (slow.giveUp) { this.stop(); return; }
     if (!this.worldDrawn) this.drawWorld();
     const state = this.sources.knight.dataset.state ?? '';
     if (shouldUploadKnight(state, this.knightState, frame.t, this.frames)) this.upload(this.boards.knight, this.sources.knight);
@@ -331,9 +366,9 @@ export class Composite {
     const heavy = postHeavyActive(frame.t);
     this.setPost(heavy);
     if (heavy) {
-      const bloom = this.keepBloom || bloomDecision(this.bloomOn, this.fps);
-      if (bloom !== this.bloomOn) { this.bloomOn = bloom; this.pipeline.bloomEnabled = bloom; }
-      this.pipeline.bloomWeight = bloomWeightAt(frame.t);
+      // ?bloom=1 のときは速さに関わらず出し続ける（見え方の確認用）。
+      this.pipeline.bloomEnabled = this.keepBloom || this.bloomOn;
+      this.pipeline.bloomWeight = bloomWeightAt(frame.t, frame.calm);
       // 色収差は命中後0.5秒だけ。値は画面全体の効果から受け取る。控えめモードでは出さない。
       const chromatic = frame.calm ? 0 : frame.screen.chromatic;
       this.pipeline.chromaticAberration.aberrationAmount = chromatic * 6;
@@ -353,6 +388,7 @@ export class Composite {
   }
 
   dispose() {
+    this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
     this.setActive(false);
     this.shockwave.dispose();
     this.scene.dispose();

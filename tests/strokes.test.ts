@@ -88,6 +88,25 @@ describe('輪が閉じた判定', () => {
     const tiny = path([...Array(30)].map((_, i) => [.5 + (i % 2) * .005, .5] as [number, number]));
     expect(ringClosure(tiny, 1000, 1000)).toBeNull();
   });
+  it('行って戻るだけの直線は、始点に帰っても輪にしない', () => {
+    const out: [number, number][] = [...Array(20)].map((_, i) => [.3 + i * .02, .5]);
+    const back: [number, number][] = [...out].reverse();
+    expect(ringClosure(path([...out, ...back]), 1000, 1000)).toBeNull();
+    // わずかに膨らんだだけの往復も輪にしない。
+    const thin: [number, number][] = back.map(([x, y]) => [x, y + .004] as [number, number]);
+    expect(ringClosure(path([...out, ...thin]), 1000, 1000)).toBeNull();
+  });
+  it('円や三角のように面を囲む線は輪と認める', () => {
+    expect(ringClosure(circle(40), 1000, 1000)).not.toBeNull();
+    const corners: [number, number][] = [[.5, .3], [.7, .65], [.3, .65], [.5, .3]];
+    const triangle: [number, number][] = [];
+    for (let i = 0; i < corners.length - 1; i++)
+      for (let k = 0; k < 10; k++)
+        triangle.push([corners[i][0] + (corners[i + 1][0] - corners[i][0]) * k / 10,
+          corners[i][1] + (corners[i + 1][1] - corners[i][1]) * k / 10] as [number, number]);
+    triangle.push(corners[0]);
+    expect(ringClosure(path(triangle), 1000, 1000)).not.toBeNull();
+  });
   it('短辺の4%より広い隙間があれば閉じていない', () => {
     const open = circle(40, .2, .5, .5, .9);
     expect(ringClosure(open, 1000, 1000)).toBeNull();

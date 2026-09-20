@@ -15,6 +15,16 @@ describe('反応の強さ', () => {
     expect(strong).toBeGreaterThan(.9);
     expect(reactionPower(null)).toBeGreaterThan(0);
   });
+  it('同じ魔法でも入力の量が多いほど反応が強い', () => {
+    const quiet = reactionPower(recipe({}));
+    const busy = reactionPower(recipe({}), 1);
+    expect(busy).toBeGreaterThan(quiet);
+    expect(busy - quiet).toBeCloseTo(.3, 2);
+    expect(reactionPower(recipe({}), 0)).toBe(quiet);
+    expect(reactionPower(null, 1)).toBeGreaterThan(reactionPower(null));
+    // 0〜1の範囲は超えない。
+    expect(reactionPower(recipe({ count: 7, area: 1, concentration: 1 }), 1)).toBeLessThanOrEqual(1);
+  });
   it('弱いと怯むだけ、強いと大きく崩れて戻りも遅い', () => {
     const weak = knightPose(18600, true, false, 'attack', .1);
     const strong = knightPose(18600, true, false, 'attack', 1);
@@ -44,6 +54,18 @@ describe('反応の強さ', () => {
     expect(knightPose(18810, true).ghost).toBe(0);
     expect(knightPose(19000, true).rim).toBeGreaterThan(0);
     expect(knightPose(19110, true).rim).toBe(0);
+  });
+  it('控えめモードでは白飛びが出ず、残像と輪郭の光は3分の1になる', () => {
+    for (const ms of [18510, 18560, 18610, 18640]) {
+      expect(knightPose(ms, true, false, 'attack', 1, true).flashAlpha).toBe(0);
+      expect(knightPose(ms, true, false, 'attack', 1).flashAlpha).toBeGreaterThan(0);
+    }
+    const calm = knightPose(18700, true, false, 'attack', 1, true);
+    const loud = knightPose(18700, true, false, 'attack', 1);
+    expect(calm.ghost).toBeCloseTo(loud.ghost / 3, 5);
+    expect(knightPose(19000, true, false, 'attack', 1, true).rim).toBeCloseTo(knightPose(19000, true, false, 'attack', 1).rim / 3, 5);
+    // 控えめでないときの見た目は変えない。
+    expect(loud.ghost).toBeGreaterThan(0);
   });
   it('動きを減らす設定では回転も移動も0にする', () => {
     const quiet = knightPose(18600, true, true, 'attack', 1);

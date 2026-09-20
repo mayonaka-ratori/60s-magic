@@ -43,7 +43,14 @@ export function tipSpeed(stroke: readonly Point[], w = 1, h = 1, windowMs = 120)
 export const speedRatio = (speed: number, slow = .25, fast = 1.4) =>
   Math.min(1, Math.max(0, (speed - slow) / Math.max(1e-6, fast - slow)));
 
-/** 輪が閉じたか。始点の近くへ戻り、点が足りていて、途中で十分離れていれば、中心と大きさを返す。 */
+/** 輪と認めるのに要る面積。差し渡しの二乗に対する割合で、細長い輪は通し、往復の線は落とす。 */
+const MIN_AREA = .12;
+
+/**
+ * 輪が閉じたか。始点の近くへ戻り、点が足りていて、途中で十分離れていて、
+ * さらに囲んだ面積が広がっていれば、中心と大きさを返す。
+ * 面積を見るのは、行って戻るだけの直線も始点へ帰ってくるため。往復の線は囲む面積がほぼ0になる。
+ */
 export function ringClosure(stroke: readonly Point[], w = 1, h = 1, near = .04, minPoints = 20) {
   if (stroke.length < minPoints) return null;
   const { sx, sy } = unit(w, h);
@@ -56,6 +63,13 @@ export function ringClosure(stroke: readonly Point[], w = 1, h = 1, near = .04, 
   }
   // 始点の周りで震えただけの線は輪にしない。
   if (far < near * 2.5) return null;
+  // 囲んだ面積（靴ひも公式）。円なら far の二乗の約0.79倍、正三角形でも約0.43倍になり、往復の直線はほぼ0。
+  let twice = 0;
+  for (let i = 0; i < stroke.length; i++) {
+    const a = stroke[i], b = stroke[(i + 1) % stroke.length];
+    twice += (a.x * sx) * (b.y * sy) - (b.x * sx) * (a.y * sy);
+  }
+  if (Math.abs(twice) / 2 < far * far * MIN_AREA) return null;
   return { center: { x: cx / stroke.length, y: cy / stroke.length } as Vec, size: far };
 }
 

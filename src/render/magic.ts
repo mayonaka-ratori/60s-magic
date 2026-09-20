@@ -4,7 +4,7 @@ import { fitSpell, smoothStroke } from './spell-layout';
 import { getPreset, intensityOf, rgba, type EffectPreset } from './effects/presets';
 import { GlowSprites } from './effects/sprites';
 import { ParticlePool } from './effects/particles';
-import { screenState, effectTime, hitStopOf, RELEASE_AT, type ScreenState } from './effects/screen';
+import { screenState, effectTime, hitStopOf, RELEASE_AT, IMPACT_AT, type ScreenState } from './effects/screen';
 import { drawParticles, type Frame, type XY } from './effects/frame';
 import { drawCharge } from './effects/charge';
 import { drawRelease, drawTravel } from './effects/release';
@@ -15,6 +15,8 @@ import { emptyLive, type LiveInput } from '../game/live-input';
 
 /** 属性ごとの主色。術式の線と結果の縮小図が使う。 */
 export const colors: Record<Element, string> = Object.fromEntries(Object.entries(getPreset(null).palettes).map(([k, v]) => [k, v.main])) as Record<Element, string>;
+/** canvas内の色ずれを出す長さ（秒）。命中からこの時間だけ。 */
+const CHROMATIC_WINDOW = .2;
 const still: ScreenState = { shakeX: 0, shakeY: 0, flash: 0, darken: 0, chromatic: 0, hitStop: 0, rotate: 0, zoom: 1, blackout: 0, saturate: 1 };
 /** 魔法が確定する前に部品へ渡す仮のレシピ。無属性の球。 */
 const pending: Recipe = { version: 'recipe-1', element: 'neutral', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .5, area: .5, duration: .5, concentration: .5,
@@ -34,6 +36,8 @@ export class MagicCanvas {
   private state: ScreenState = still;
   /** 控えめモード。揺れと閃光と停止を抑える。 */
   calm = false;
+  /** 合成（後処理）が動いているか。動いている間はcanvas内の色ずれを飛ばす。 */
+  private compositeActive = false;
   preset: EffectPreset;
   constructor(readonly canvas: HTMLCanvasElement, preset?: EffectPreset | string | null) {
     this.ctx = canvas.getContext('2d')!;
@@ -54,9 +58,14 @@ export class MagicCanvas {
   effectMsOf(ms: number, recipe: Recipe | null, amount = 0) {
     const t = ms / 1000;
     if (t < 17) return ms;
-    return effectTime(t, hitStopOf(this.preset, intensityOf(recipe, this.preset, amount), amount, this.calm)) * 1000;
+    return effectTime(t, hitStopOf(this.preset, intensityOf(recipe, this.preset, amount), this.calm)) * 1000;
   }
   setCalm(calm: boolean) { this.calm = calm; }
+  /**
+   * 合成の後処理が動いているかを知らせる。true の間は、この canvas の中では色をずらさない。
+   * 後処理側にも色収差があり、二重にかかると輪郭が濁るため。合成を使わない時は false を渡す。
+   */
+  setCompositeActive(active: boolean) { this.compositeActive = active; }
   get particleCount() { return this.pool.count; }
   resize() {
     const rect = this.canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio, 1.5);
@@ -72,7 +81,8 @@ export class MagicCanvas {
     if (t < this.lastRaw - .05) this.reset();
     this.lastRaw = t;
     const preset = this.preset, palette = preset.palettes[recipe?.element ?? 'neutral'], intensity = intensityOf(recipe, preset, live.amount), accent = recipe?.accent ? preset.palettes[recipe.accent] : null;
-    this.state = screenState(t, intensity, preset, recipe?.purpose ?? null, 0, live.amount, this.calm);
+    // 入力の量は派手さ（intensityOf）の中だけで効かせる。画面の効果には派手さだけを渡す。
+    this.state = screenState(t, intensity, preset, recipe?.purpose ?? null, 0, 0, this.calm);
     const te = effectTime(t, this.state.hitStop), dt = this.lastEffect < 0 ? 0 : clamp(te - this.lastEffect, 0, .05);
     this.lastEffect = te; this.lastEffectMs = te * 1000;
     // 放出直前の暗転の間は、粒も光も見せない。
@@ -116,7 +126,7 @@ export class MagicCanvas {
       // 手の跡に小さな光を残す。
       if (dt > 0 && this.pool.random() < .6) this.pool.spawn({ x: p.x * w, y: p.y * h, vx: (this.pool.random() - .5) * 20, vy: -10 - this.pool.random() * 20, life: .5 + this.pool.random() * .5, size: 1 + this.pool.random() * 1.2, drag: .5, color: palette.main, core: palette.core, kind: 0 });
     }
-    const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, target: hit, accent, live, points, cursors,
+    const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, target: hit, accent, live, points, cursors, calm: this.calm,
       once: (key, run) => { if (!this.fired.has(key)) { this.fired.add(key); run(); } } };
     c.globalAlpha = fade;
     // 描いている間の即時反応。動きと言葉に、その場で光が応える。
@@ -131,10 +141,11 @@ export class MagicCanvas {
       this.sprites.draw(c, origin.x, origin.y, 5 + charge * 11, palette.core, palette.main, .4 + charge * .3);
     }
     this.pool.update(dt);
-    drawParticles({ c, sprites: this.sprites, pool: this.pool, preset, palette } as Frame, fade);
+    drawParticles({ c, sprites: this.sprites, pool: this.pool, preset, palette, calm: this.calm } as Frame, fade);
     c.restore();
     // 色のずれ。命中の直後だけ、自分の絵を左右にずらして薄く重ねる。
-    if (this.state.chromatic >= .5) {
+    // 合成が動いている間は後処理側に任せて飛ばす。合成なしでも命中から CHROMATIC_WINDOW 秒だけに絞る。
+    if (!this.compositeActive && this.state.chromatic >= .5 && t >= IMPACT_AT && t - IMPACT_AT <= CHROMATIC_WINDOW) {
       c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = .28;
       const d = this.state.chromatic, cw = this.canvas.width, ch = this.canvas.height;
       c.drawImage(this.canvas, 0, 0, cw, ch, -d, 0, w, h); c.drawImage(this.canvas, 0, 0, cw, ch, d, 0, w, h); c.restore();

@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { presets, getPreset, intensityOf, increase, mixHue, lighten } from '../src/render/effects/presets';
 import { hitDelay } from '../src/render/effects/release';
-import { screenState, effectTime, hitStopOf, shockAt, wobble } from '../src/render/effects/screen';
+import { screenState, effectTime, hitStopOf, shockAt, wobble, HIT_STOPS, IMPACT_AT } from '../src/render/effects/screen';
 import { ParticlePool } from '../src/render/effects/particles';
+import { drawImpact } from '../src/render/effects/impact';
+import { type Frame } from '../src/render/effects/frame';
 import { ELEMENTS, type Recipe } from '../src/game/types';
 
 const recipe = (over: Partial<Recipe> = {}): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
@@ -64,6 +66,45 @@ describe('粒の置き場', () => {
     const a = new ParticlePool(2), b = new ParticlePool(2); a.reseed(9); b.reseed(9);
     expect(a.random()).toBe(b.random());
   });
+  it('上限ちょうどまでしか出ず、設定ごとの上限は命中の粒より多い', () => {
+    const pool = new ParticlePool(presets.max.maxParticles);
+    for (let i = 0; i < presets.max.maxParticles + 400; i++) pool.spawn({ life: 1 });
+    expect(pool.count).toBe(presets.max.maxParticles);
+    // 8連弾の命中で出る約1400個が横取りされずに収まる。控えめは据え置き。
+    expect(presets.max.maxParticles).toBe(1500);
+    expect(presets.vivid.maxParticles).toBe(900);
+    expect(presets.calm.maxParticles).toBe(250);
+    const room = new ParticlePool(presets.max.maxParticles);
+    for (let i = 0; i < 1394; i++) room.spawn({ life: 1 });
+    expect(room.count).toBe(1394);
+  });
+  it('空いた場所を使い回し、生きている粒は横取りしない', () => {
+    const pool = new ParticlePool(3);
+    const first = pool.spawn({ x: 1, life: 1 }), short = pool.spawn({ x: 2, life: .1 }), third = pool.spawn({ x: 3, life: 1 });
+    expect(pool.count).toBe(3);
+    pool.update(.2);
+    expect(pool.count).toBe(2); expect(short.alive).toBe(false);
+    // 空いたのは2番目の場所。次の粒はそこに入り、1番目と3番目はそのまま残る。
+    const next = pool.spawn({ x: 4, life: 1 });
+    expect(next).toBe(pool.items[1]); expect(next.x).toBe(4);
+    expect(pool.count).toBe(3); expect(first.x).toBe(1); expect(third.x).toBe(3);
+  });
+  it('消えては出るを繰り返しても、空きがある限り生きた粒は減らない', () => {
+    const pool = new ParticlePool(40);
+    for (let round = 0; round < 30; round++) {
+      for (let i = 0; i < 12; i++) {
+        const before = pool.count;
+        pool.spawn({ life: .1 + (i % 4) * .1 });
+        expect(pool.count).toBe(Math.min(40, before + 1));
+      }
+      pool.update(.15);
+      expect(pool.count).toBe(pool.items.filter(p => p.alive).length);
+    }
+    pool.update(10); expect(pool.count).toBe(0);
+    // 全部消えた後もまた上限ちょうどまで出せる。
+    for (let i = 0; i < 60; i++) pool.spawn({ life: 1 });
+    expect(pool.count).toBe(40);
+  });
   it('吸い込み先に届いた粒は消える', () => {
     const pool = new ParticlePool(1); pool.spawn({ x: 100, y: 0, pull: 4000, px: 0, py: 0, life: 5 });
     for (let i = 0; i < 100; i++) pool.update(.03);
@@ -123,12 +164,29 @@ describe('揺れ、寄り、暗転', () => {
     expect(sat(19.2)).toBeGreaterThan(sat(18.6));
     expect(sat(20.5)).toBeCloseTo(1, 3);
   });
-  it('命中の停止は弱60ms、強90ms、とどめ200msの三段', () => {
+  it('命中の停止は弱60ms、強90ms、とどめ200msの三段で、とどめは派手さが3のときだけ', () => {
     expect(hitStopOf(presets.vivid, .5)).toBeCloseTo(.06);
     expect(hitStopOf(presets.vivid, 2)).toBeCloseTo(.09);
-    expect(hitStopOf(presets.vivid, 2.8, 1)).toBeCloseTo(.2);
-    expect(hitStopOf(presets.calm, 3, 1)).toBe(0);
-    expect(hitStopOf(presets.max, 3, 1, true)).toBe(0);
+    expect(hitStopOf(presets.vivid, 2.8)).toBeCloseTo(.09);
+    expect(hitStopOf(presets.vivid, 3)).toBeCloseTo(.2);
+    expect(hitStopOf(presets.calm, 3)).toBe(0);
+    expect(hitStopOf(presets.max, 3, true)).toBe(0);
+  });
+  it('入力の量は派手さだけに効き、停止と暗転と揺れには二重にかからない', () => {
+    // 線をたくさん描いただけ（量1、レシピは最小）では、とどめの停止まで届かない。
+    const simple = recipe({ count: 1, area: 0, concentration: 0 });
+    const full = intensityOf(simple, presets.vivid, 1);
+    expect(full).toBeLessThan(3);
+    expect(hitStopOf(presets.vivid, full)).toBeLessThan(HIT_STOPS.finish);
+    // screenState の6番目の引数（昔の入力の量）は、もう何にも効かない。
+    const withAmount = screenState(16.5, 1, presets.vivid, 'attack', 0, 1);
+    const without = screenState(16.5, 1, presets.vivid, 'attack', 0, 0);
+    expect(withAmount.darken).toBe(without.darken);
+    expect(withAmount.hitStop).toBe(without.hitStop);
+    const swing = (amount: number) => { const s = screenState(17.05, 1, presets.vivid, 'attack', 0, amount); return Math.abs(s.shakeX) + Math.abs(s.shakeY); };
+    expect(swing(1)).toBe(swing(0));
+    // 量は派手さを通して停止に効く。派手さが3に届いたときだけとどめになる。
+    expect(hitStopOf(presets.vivid, intensityOf(recipe({ count: 8, area: 1, concentration: 1 }), presets.vivid, 1))).toBeCloseTo(HIT_STOPS.finish);
   });
 });
 
@@ -164,5 +222,40 @@ describe('属性ごとの消え方', () => {
     for (let i = 0; i < 60; i++) pool.update(.03);
     const shard = pool.items[0];
     expect(shard.y).toBeCloseTo(50, 5); expect(shard.vy).toBe(0); expect(Math.abs(shard.vx)).toBeLessThan(.01);
+  });
+});
+
+describe('控えめモードは部品にも届く', () => {
+  /** 描く命令を受け流すだけの仮のcanvas。どの命令も自分を返すので、gradient も使える。 */
+  const stubContext = () => {
+    const held: Record<string, unknown> = {};
+    const fake: unknown = new Proxy(held, {
+      get: (target, key: string) => (key in target ? target[key] : () => fake),
+      set: (target, key: string, value) => { target[key] = value; return true; },
+    });
+    return fake as CanvasRenderingContext2D;
+  };
+  /** 命中の部品だけを呼ぶための仮の Frame。光の絵は描かず、粒の数だけを見る。 */
+  const frame = (calm: boolean, pool: ParticlePool): Frame => ({
+    c: stubContext(), w: 1280, h: 720, t: IMPACT_AT + .01, dt: .016,
+    sprites: { draw: () => {} } as unknown as Frame['sprites'], pool,
+    preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
+    recipe: recipe(), locked: true, origin: { x: 200, y: 500 }, target: { x: 900, y: 360 },
+    accent: null, live: { words: [], amount: 0, voice: 0 }, points: [], cursors: [], calm,
+    once: (_key, run) => run(),
+  });
+  const impactParticles = (calm: boolean) => {
+    const pool = new ParticlePool(2000); pool.reseed(7);
+    drawImpact(frame(calm, pool));
+    return pool.count;
+  };
+  it('控えめのとき、命中で出る粒が減る', () => {
+    const normal = impactParticles(false), calm = impactParticles(true);
+    expect(normal).toBeGreaterThan(0);
+    expect(calm).toBeLessThan(normal);
+    expect(calm).toBeCloseTo(normal / 3, -1);
+  });
+  it('控えめでないときの数は変わらない', () => {
+    expect(impactParticles(false)).toBe(Math.round(increase(presets.vivid.impactParticles, 1.5, .5)));
   });
 });

@@ -10,7 +10,9 @@ import { MagicCanvas, colors } from './render/magic';
 import { chantDictionary } from './game/chant-dictionary';
 import { CastAudio } from './audio/cast-audio';
 import { Diagnostics } from './game/diagnostics';
-import { liveInput, emptyLive } from './game/live-input';
+import { liveInput, emptyLive, wordless, type LiveInput } from './game/live-input';
+import { resetLiveWords } from './game/live-words';
+import { resetInputAmount, speechKey } from './game/input-amount';
 import { ScreenOverlay } from './render/overlay';
 import { HealthBar } from './render/health-bar';
 
@@ -157,7 +159,7 @@ async function begin(isDemo=false) {
     }
     countingDown=false;show('countdown',false);
   }
-  session=new CastSession(undefined,id);diag?.rebase(session.startMs);diag?.log('24秒を開始');voice?.start(performance.now()-session.startMs);
+  resetLiveWords();resetInputAmount();liveKey='';liveBase=emptyLive;session=new CastSession(undefined,id);diag?.rebase(session.startMs);diag?.log('24秒を開始');voice?.start(performance.now()-session.startMs);
   sound.start(!!voice);
   el('app').dataset.screen='playing';
   endedInput=false;requested=false;resultShown=false;preparing=false;feedback=null;serviceNotice='';lastHandAt=performance.now();lastCameraLatency=0;frameIntervals.length=0;
@@ -267,6 +269,10 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&(preparing
 window.addEventListener('resize',()=>{stage.resize();magic.resize();if(resultShown)drawResult();});
 window.addEventListener('pagehide',()=>{clearInterval(statusTimer);cleanup();});
 
+/** 魔法が発動する時刻。ここから後は言葉を演出へ渡さない。 */
+const RELEASE_MS=17000;
+/** 前のコマで計算した、いまの入力。発話と点の数が同じなら作り直さない。 */
+let liveKey='',liveBase:LiveInput=emptyLive;
 function animate(now:number) {
   requestAnimationFrame(animate);
   if(session&&!resultShown){frameIntervals.push(now-lastFrame);if(frameIntervals.length>4000)frameIntervals.shift();diag?.frame(now-lastFrame);}
@@ -294,9 +300,17 @@ function animate(now:number) {
     if(now-lastUi>80){updateUi();lastUi=now;}
   }
   const ms=session?Math.min(24000,session.elapsed):countingDown?0:now;
-  if(session&&!resultShown)sound.update(ms,session.recipe,magic.preset);
   // 描いている間の言葉と動きを、確定前から演出へ渡す。
-  const live=session&&!resultShown?liveInput(session.motion.raw,session.speech.live(),voice?.level??0):emptyLive;
+  // 言葉の読み直しは重いので、発話と点の数が変わった時だけ計算し、それ以外は前の結果を使う。
+  let live=emptyLive;
+  if(session&&!resultShown) {
+    const entries=session.speech.live(),key=`${session.motion.raw.length}:${speechKey(entries)}`;
+    if(key!==liveKey){liveKey=key;liveBase=liveInput(session.motion.raw,entries,0);}
+    // 発動より後は言葉を使わないので空にする。入力の量はそのまま残す。声の大きさは毎コマ入れ直す。
+    const base=ms>=RELEASE_MS?wordless(liveBase):liveBase;
+    live={...base,voice:voice?.level??0};
+  }
+  if(session&&!resultShown)sound.update(ms,session.recipe,magic.preset,live.amount);
   stage.render(session?.motion.display??[],ms,session?.recipe??null,voice?.level??0,cursors,!session&&!countingDown,live);
   // 閃光、ビネット、グレイン、暗転、背景の彩度はHTMLの層で出す。
   overlay.update(magic.screen,magic.preset.palettes[session?.recipe?.element??'neutral'],calmMode);

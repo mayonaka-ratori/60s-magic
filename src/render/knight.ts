@@ -15,7 +15,7 @@ import { GlowLayer } from '@babylonjs/core/Layers/glowLayer';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
 import { colors } from './magic';
-import { getPreset } from './effects/presets';
+import { getPreset, intensityOf, type EffectPreset } from './effects/presets';
 import type { Recipe } from '../game/types';
 
 const smooth=(x:number)=>{const p=clamp(x);return p*p*(3-2*p);};
@@ -25,14 +25,19 @@ const mix=(a:string,b:string,r:number)=>{
   return `rgb(${Math.round(ar+(br-ar)*r)},${Math.round(ag+(bg-ag)*r)},${Math.round(ab+(bb-ab)*r)})`;
 };
 
-/** 入力の量から反応の強さ（0〜1）を出す。個数、範囲、収束が大きいほど大きく崩れる。 */
-export function reactionPower(recipe:Recipe|null|undefined) {
-  if(!recipe)return .45;
+/**
+ * 魔法から反応の強さ（0〜1）を出す。個数、範囲、収束が大きいほど大きく崩れる。
+ * 入力の量（たくさん描き、たくさん唱えたか）は派手さの計算を通して足す。最大で0.3ほど強くなる。
+ */
+export function reactionPower(recipe:Recipe|null|undefined,amount=0,preset:EffectPreset=getPreset(null)) {
+  const target=recipe??null;
+  const fromInput=clamp(intensityOf(target,preset,amount)-intensityOf(target,preset))*.5;
+  if(!recipe)return clamp(.45+fromInput);
   const many=clamp((recipe.count-1)/5),wide=clamp((recipe.area-.2)/.8),focus=clamp(recipe.concentration);
-  return clamp(.16+many*.42+wide*.22+focus*.26);
+  return clamp(.16+many*.42+wide*.22+focus*.26+fromInput);
 }
 
-export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45) {
+export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45,calm=false) {
   const t=(ms-18500)/1000;
   const hit=active?smooth(t/.09)*(1-smooth((t-.62)/.2)):0;
   const recover=active?smooth((t-.62)/.2)*(1-smooth((t-1.65)/.65)):0;
@@ -52,8 +57,9 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
     strength,push:reduced?0:push,collapse:reduced?0:collapse,
     // 打撃の向きに合わせ、右へのけぞる。単位は度。
     spin:reduced?0:push*(1.4+strength*2.6)+collapse*3.4,
-    flashAlpha:step<0?0:(.85-step*.2)*(.5+strength*.5),flashTint:step===1?1:0,
-    ghost:struck&&t<.3?1-t/.3:0,rim:struck&&t<.6?1-smooth(t/.6):0};
+    // 控えめモードでは白飛びを出さず、残像と輪郭の発光を3分の1にする。
+    flashAlpha:calm||step<0?0:(.85-step*.2)*(.5+strength*.5),flashTint:step===1?1:0,
+    ghost:(struck&&t<.3?1-t/.3:0)*(calm?1/3:1),rim:(struck&&t<.6?1-smooth(t/.6):0)*(calm?1/3:1)};
 }
 
 // 待機・ひるむ・構えを戻すの3姿勢。角度だけを並べ、weightsで混ぜる。
@@ -99,6 +105,7 @@ export class Knight {
   private trail:Array<{x:number;y:number;scale:number;rot:number}>=[];
   private cssSize='';
   target={x:.5,y:.32};
+  private calm=false;
   constructor(private canvas:HTMLCanvasElement) {
     this.source.width=this.source.height=16;
     this.view=canvas.getContext('2d');
@@ -311,11 +318,14 @@ export class Knight {
     this.trail.push(spot);if(this.trail.length>4)this.trail.shift();
     return spot;
   }
-  render(ms:number,active:boolean,recipe:Recipe|null,power?:number) {
+  /** 控えめモード。白飛びを消し、残像と輪郭の発光を弱める。 */
+  setCalm(calm:boolean){this.calm=calm;}
+  /** amount は入力の量（0〜1）。同じ魔法でも、たくさん描いて唱えたほど反応が強くなる。 */
+  render(ms:number,active:boolean,recipe:Recipe|null,amount=0,power?:number) {
     // 表示の大きさが変わっていたら、描く前に合わせ直す。
     const size=`${Math.max(1,this.canvas.clientWidth)}x${Math.max(1,this.canvas.clientHeight)}`;
     if(size!==this.cssSize)this.resize();
-    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe));
+    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe,amount),this.calm);
     const p=blendPose(pose.weights);
     this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7);
     this.root.position.y=p.crouch+pose.breath*4;

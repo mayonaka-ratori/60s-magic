@@ -2,7 +2,7 @@ import { clamp } from '../../game/motion';
 import type { Element } from '../../game/types';
 import { increase, type Palette } from './presets';
 import { RELEASE_AT, IMPACT_AT } from './screen';
-import { glow, line, edged, mixOf, noise, ease, type Frame, type XY } from './frame';
+import { few, glow, line, edged, mixOf, noise, ease, type Frame, type XY } from './frame';
 
 export const ARRIVAL = IMPACT_AT - RELEASE_AT;
 
@@ -65,7 +65,7 @@ export function drawRelease(f: Frame) {
   if (time < 0) return;
   const violent = r.purpose === 'attack', mix = mixOf(f), pal0 = mix.pal;
   f.once('release', () => {
-    const n = Math.round(increase(preset.impactParticles, intensity, .7) * .35), dirX = g.x - o.x, dirY = g.y - o.y, d = Math.hypot(dirX, dirY) || 1;
+    const n = Math.round(few(f, increase(preset.impactParticles, intensity, .7) * .35)), dirX = g.x - o.x, dirY = g.y - o.y, d = Math.hypot(dirX, dirY) || 1;
     for (let i = 0; i < n; i++) {
       const spread = (f.pool.random() - .5) * 2.2, speed = 120 + f.pool.random() * 420 * (1 + intensity * .3);
       const ax = dirX / d * Math.cos(spread) - dirY / d * Math.sin(spread), ay = dirX / d * Math.sin(spread) + dirY / d * Math.cos(spread);
@@ -105,7 +105,8 @@ export function drawTravel(f: Frame) {
   const { c, t, origin: o, target: g, preset, intensity, recipe: r } = f;
   const time = t - RELEASE_AT;
   if (time < 0 || time > 7) return;
-  const travel = clamp(time / ARRIVAL), fade = (1 - clamp((time - 3.2 - r.duration) / 2.8)) * (1 - clamp((time - 4) / 2));
+  // 頭打ちにしない。弾ごとの遅れを引いた後に bodyPoint が0〜1へ丸めるので、遅れて届く弾も騎士まで進む。
+  const travel = time / ARRIVAL, fade = (1 - clamp((time - 3.2 - r.duration) / 2.8)) * (1 - clamp((time - 4) / 2));
   if (fade <= 0) return;
   const radius = 24 + r.area * 70 + intensity * 10, focus = .7 + r.concentration * .6, mix = mixOf(f), pal0 = mix.pal;
   c.strokeStyle = pal0.main; c.fillStyle = pal0.main;
