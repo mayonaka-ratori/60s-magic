@@ -2,7 +2,7 @@ import { MotionRecorder, summarizeMotion } from './motion';
 import { SpeechBook } from './speech-book';
 import { affirmativeText, explicitCount, makeRecipe } from './recipe';
 import type { JevReply, Phase, Recipe, SpellState } from './types';
-import { readChant } from './chant-dictionary';
+import { readChant, type ChantCorrection } from './chant-dictionary';
 
 // 16秒の確定は仕様の決まりなので動かさない。その手前をどう割るかだけを決める。
 /** 14秒で入力を締めたあと、声の最後の文字を待てる時間。画面側の打ち切りに合わせる。 */
@@ -32,6 +32,8 @@ export class CastSession {
   frozen=false;
   locked=false;
   cancelled=false;
+  /** 辞書の読みへ寄せた言葉。元の聞き取りは state.speech.rawTranscript に残る。 */
+  corrections:ChantCorrection[]=[];
   constructor(private clock:()=>number=()=>performance.now(), id=crypto.randomUUID()) {this.startMs=clock();this.id=id;}
   tick() {
     if(this.cancelled)return;
@@ -46,6 +48,7 @@ export class CastSession {
     const entries=this.speech.freeze();
     const text=entries.map(e=>e.text).join('、');
     const chant=readChant(text);
+    this.corrections=chant.corrections;
     const motion=summarizeMotion(this.motion.raw);
     this.state={schemaVersion:'spell-state-2',sessionId:this.id,castId:'cast-01',inputRevision:1,phase:'free',
       currentTask:'自分の線と言葉から最初の魔法を作り、目の前の騎士へ作用させる',
@@ -73,5 +76,5 @@ export class CastSession {
     this.events.push({name:'recipe-locked',atMs:LOCK_MS,observedMs:this.clock()-this.startMs});
   }
   cancel() {this.cancelled=true;this.phase='cancelled';this.speech.freeze();}
-  report() {return {sessionId:this.id,scope:'first-24-seconds',state:this.state,recipe:this.recipe,jev:this.reply??null,speechEntries:this.speech.snapshot(),events:this.events,rawPoints:this.motion.raw,displayPoints:this.motion.display,cancelled:this.cancelled};}
+  report() {return {sessionId:this.id,scope:'first-24-seconds',state:this.state,recipe:this.recipe,jev:this.reply??null,speechEntries:this.speech.snapshot(),corrections:this.corrections,events:this.events,rawPoints:this.motion.raw,displayPoints:this.motion.display,cancelled:this.cancelled};}
 }

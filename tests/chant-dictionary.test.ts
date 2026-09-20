@@ -34,3 +34,31 @@ describe('難しい詠唱の言葉',()=>{
     expect(chantDictionary.entries.every(e=>e.reading&&e.term&&e.group)).toBe(true);
   });
 });
+
+describe('聞き取りの揺れを辞書へ寄せる',()=>{
+  it('伸ばす音と濁点の書き方が違っても同じ言葉として読む',()=>{
+    expect(readChant('らいてーよ、敵をうがて').normalized).toBe('雷霆よ、敵を穿て');
+    expect(readChant('くれんよ、七つの魔弾となれ').normalized).toBe('紅蓮よ、七つの魔弾となれ');
+    expect(readChant('ひょうしょおよ、しょうへきとなれ').normalized).toBe('氷晶よ、障壁となれ');
+    expect(makeRecipe(cast('らいてーよ、七つに分かれろ')).element).toBe('lightning');
+  });
+  it('どこを寄せたかを残し、元の聞き取りは変えない',()=>{
+    expect(readChant('らいてーよ、敵をうがて').corrections).toEqual([{from:'らいてー',to:'雷霆',reading:'らいてい'}]);
+    expect(readChant('らいていよ、敵をうがて').corrections).toEqual([]);
+    const s=cast('くれんよ、燃やせ');
+    expect(s.speech.rawTranscript).toBe('くれんよ、燃やせ');
+    expect(s.speech.normalizedTranscript).toBe('紅蓮よ、燃やせ');
+  });
+  it('文字数が変わる聞き違いや、音そのものが違うものには寄せない',()=>{
+    for(const text of ['ふんかれろ','らいてよ','ごくへんよ','されんよ','ならくじを引こう'])
+      expect(readChant(text).normalized).toBe(text);
+  });
+  it('漢字で書かれた普通の言葉は動かさない',()=>{
+    for(const text of ['効果がある','評価する','高価な品','公開した'])expect(readChant(text).normalized).toBe(text);
+  });
+  it('四文字までは書き方の揺れだけを直す',()=>{
+    // 「ぐれん」と「くれん」は濁点だけの違い。「されん」は音そのものが違う。
+    expect(readChant('くれんよ').normalized).toBe('紅蓮よ');
+    expect(readChant('されんよ').normalized).toBe('されんよ');
+  });
+});

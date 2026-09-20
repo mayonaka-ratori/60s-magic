@@ -243,7 +243,7 @@ function animate(now:number) {
     // 声の最後の文字が届いたら、待たずにJevへ送る。届かないときだけ15.1秒まで待つ。
     if(!requested&&current.elapsed>=14100&&(!voice||voice.settled||current.elapsed>=SPEECH_LIMIT_MS)){
       requested=true;const state=current.freeze();voice?.disconnect();requestAbort=new AbortController();const abort=requestAbort;
-      const record=diag;record?.log('入力を確定',{atMs:Math.round(current.elapsed),speechStatus:state.speech.status,transcript:state.speech.rawTranscript,usedFallback:current.speech.usedFallback,speechSettled:voice?.settled??null,jevConfigured:status.jev});
+      const record=diag;record?.log('入力を確定',{atMs:Math.round(current.elapsed),speechStatus:state.speech.status,transcript:state.speech.rawTranscript,usedFallback:current.speech.usedFallback,speechSettled:voice?.settled??null,corrections:current.corrections,jevConfigured:status.jev});
       const timeout=setTimeout(()=>abort.abort(),Math.max(0,REPLY_LIMIT_MS-current.elapsed));
       void fetch('/api/interpret',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state),signal:abort.signal})
         .then(r=>{if(!r.ok)throw new Error('接続失敗');return r.json();}).then(reply=>{const accepted=session===current&&current.receive(reply);record?.log('Jevの返事',{status:reply.status,model:reply.model??null,accepted,answers:reply.answers?Object.keys(reply.answers).length:0});})
