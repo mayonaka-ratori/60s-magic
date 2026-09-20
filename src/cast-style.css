@@ -64,7 +64,7 @@ body:not([data-dev]) .dev-only{display:none!important}
 #app[data-deadline=urgent] .top-progress i{background:linear-gradient(90deg,#d96151,#f0a08e);box-shadow:0 0 15px #e8705f}
 
 /* D 発動の瞬間は下の案内を閉じ、魔法名だけを大きく、ゆっくり出す。 */
-.reveal{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:4;
+.reveal{position:absolute;inset:0;display:grid;align-items:end;justify-items:center;padding-bottom:9vh;pointer-events:none;z-index:4;
   opacity:0;transform:scale(1.07);transition:opacity .9s ease,transform 1.4s cubic-bezier(.2,.7,.2,1)}
 .reveal.in{opacity:1;transform:none}
 .reveal span{font-family:'Noto Serif JP',serif;font-size:clamp(34px,4.4vw,84px);letter-spacing:.18em;
@@ -80,3 +80,29 @@ body:not([data-dev]) .dev-only{display:none!important}
 .result.name-only .transcript,.result.name-only .result-actions,.result.name-only .feedback,
 .result.name-only .report-actions{opacity:0}
 .result h2{transition:opacity .7s ease}
+
+/* E 当たった瞬間だけ体力バーを揺らし、効いたことを目で分かるようにする。
+   弱りの度合いは騎士に残る傷あと（knight.ts）で見せ、バーは補助にする。 */
+@keyframes enemy-hit{
+  0%{transform:translateX(-50%) translate(0,0)}
+  18%{transform:translateX(-50%) translate(5px,-2px)}
+  42%{transform:translateX(-50%) translate(-4px,1px)}
+  68%{transform:translateX(-50%) translate(3px,0)}
+  100%{transform:translateX(-50%) translate(0,0)}}
+.enemy-health.hit{animation:enemy-hit .45s ease-out}
+.enemy-health.hit i{box-shadow:0 0 16px #ff9c7e,0 0 4px #fff6}
+.enemy-health i,.enemy-health b{transition:box-shadow .3s}
+@media(prefers-reduced-motion:reduce){.enemy-health.hit{animation:none}}
+
+/* I 画面で読む案内はゴシックにする。明朝は題字と魔法名だけに残す。 */
+.instruction{font-family:'Noto Sans JP','Yu Gothic',sans-serif;letter-spacing:.06em}
+.enemy-health{font-family:'Noto Sans JP','Yu Gothic',sans-serif}
+
+/* F 音の設定はたたんでおく。最初に見せるのは、描き方と「魔法をつくる」だけにする。 */
+.sound-settings{margin:-4px 0 16px}
+.sound-settings summary{display:inline-flex;align-items:center;gap:7px;padding:7px 0;cursor:pointer;
+  font-size:clamp(12px,.85vw,15px);color:#b6c5ce;list-style:none}
+.sound-settings summary::-webkit-details-marker{display:none}
+.sound-settings summary:before{content:'＋';font-size:.85em;color:var(--gold)}
+.sound-settings[open] summary:before{content:'－'}
+.sound-settings .sound-options{margin:4px 0 2px}

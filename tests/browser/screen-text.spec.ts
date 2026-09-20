@@ -6,7 +6,9 @@ const overlaps=(page:Page,where:string)=>page.evaluate(([sel,label])=>{
   const name=(n:Element)=>(n.id?'#'+n.id:'.'+String(n.className).split(' ')[0]);
   const shown=[...document.querySelectorAll(sel)].filter(n=>{
     const style=getComputedStyle(n),box=n.getBoundingClientRect();
-    return style.display!=='none'&&style.visibility!=='hidden'&&Number(style.opacity)>0&&!n.closest('[hidden]')&&box.width>2&&box.height>2;
+    // たたんだ details の中身は見えないが、四角形だけは残るので外す。
+    return style.display!=='none'&&style.visibility!=='hidden'&&Number(style.opacity)>0
+      &&!n.closest('[hidden]')&&!n.closest('details:not([open])')&&box.width>2&&box.height>2;
   });
   const found:string[]=[];
   for(let i=0;i<shown.length;i++)for(let j=i+1;j<shown.length;j++) {

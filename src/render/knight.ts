@@ -1,4 +1,5 @@
 import { clamp } from '../game/motion';
+import { colors } from './magic';
 import type { Recipe } from '../game/types';
 
 const smooth=(x:number)=>{const p=clamp(x);return p*p*(3-2*p);};
@@ -47,7 +48,22 @@ export class Knight {
       c.drawImage(this.image,f.x,0,f.width,836,left,top,f.width*sx,836*sy);c.restore();
       tx+=(x+(f.chestX-f.pivotX)*sx)*weight;ty+=(floor+(f.chestY-790)*sy)*weight;
     }
+    // 当たった場所に魔法の色の傷あとを残す。体力バーを見なくても効いたと分かるようにする。
+    const scar=active&&ms>=18500?Math.max(.38,1.15-(ms-18500)/900):0;
+    if(scar>0&&tx) {
+      const color=recipe?colors[recipe.element]:colors.neutral,r=44*plateScale;
+      c.save();c.globalCompositeOperation='lighter';
+      const glow=c.createRadialGradient(tx,ty,0,tx,ty,r);
+      glow.addColorStop(0,color+'cc');glow.addColorStop(.45,color+'55');glow.addColorStop(1,color+'00');
+      c.globalAlpha=Math.min(1,scar);c.fillStyle=glow;
+      c.beginPath();c.arc(tx,ty,r,0,Math.PI*2);c.fill();
+      c.globalAlpha=Math.min(1,scar*.9);c.strokeStyle=color;c.lineWidth=2.4*plateScale;c.lineCap='round';
+      c.beginPath();c.moveTo(tx-r*.44,ty-r*.34);c.lineTo(tx+r*.32,ty+r*.36);
+      c.moveTo(tx-r*.12,ty+r*.42);c.lineTo(tx+r*.4,ty-r*.24);c.stroke();
+      c.restore();
+    }
     this.target={x:tx/w,y:ty/h};this.canvas.dataset.state=pose.state;
+    this.canvas.dataset.scar=scar>0?'1':'0';
     this.canvas.classList.toggle('spell-finished',active&&ms>=23500);
   }
 }

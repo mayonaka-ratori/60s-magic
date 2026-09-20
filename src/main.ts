@@ -17,7 +17,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <section class="welcome" id="welcome"><div class="chapter">第一幕 / 最初の魔法</div><h1><span>その手で描く。</span><span>その言葉で放つ。</span></h1><p class="intro">自由に描いた線が、ひとつの魔法になる。<br>手を動かしながら、好きな言葉を唱えてください。<br>形に正解はありません。小さな動きでも大丈夫。</p>
     <fieldset class="mode-options"><legend>描き方を選ぶ</legend><label class="mode-option"><input type="radio" name="mode" value="camera"><strong>手で描く</strong><small>カメラを使う・片手でも</small></label><label class="mode-option"><input type="radio" name="mode" value="pointer" checked><strong>マウスで試す</strong><small>画面を押したまま動かす</small></label></fieldset>
     <label class="voice-option"><input type="checkbox" id="use-voice">マイクで唱える <span id="voice-availability"></span></label>
-    <div class="sound-options"><label><input id="use-sound" type="checkbox" checked>効果音</label><label for="sound-volume">音量</label><input id="sound-volume" type="range" min="0" max="100" value="25" aria-label="効果音の音量"><output id="sound-volume-value">25%</output><button id="test-sound" type="button">音を試す</button></div>
+    <details class="sound-settings"><summary>音の設定</summary><div class="sound-options"><label><input id="use-sound" type="checkbox" checked>効果音</label><label for="sound-volume">音量</label><input id="sound-volume" type="range" min="0" max="100" value="25" aria-label="効果音の音量"><output id="sound-volume-value">25%</output><button id="test-sound" type="button">音を試す</button></div></details>
     <button class="primary" id="start">魔法をつくる <span class="arrow" aria-hidden="true">↗</span></button><div class="welcome-actions"><button class="text-button" id="demo">見本の動きを見る</button><button class="text-button" id="chant-words">詠唱の言葉を見る</button><button class="text-button dev-only" id="settings">接続の確認</button></div>
     <p class="dev-only"><a class="text-button" href="/?view=look">新しい背景・騎士・術式を見る ↗</a></p>
     <p class="notice" id="notice" role="status"></p><p class="privacy" id="privacy">カメラの映像はこのPC内で処理します。音声認識の設定を確認しています。</p>
@@ -33,10 +33,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <div class="loading" id="loading">魔法の準備をしています…</div>`;
 
 const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
+const ATTRACT_AFTER_MS=30000;
 // 確認用の表示。遊ぶ人には出さず、?dev=1 を付けたときだけ出す。
 const devView=new URLSearchParams(location.search).has('dev');
 if(devView)document.body.dataset.dev='1';
 const show=(id:string,visible:boolean)=>{el(id).hidden=!visible;};
+el('app').dataset.screen='ready';
 const magic=new MagicCanvas(el<HTMLCanvasElement>('magic'));
 const timerValue=el('timer').querySelector('b')!;
 const sound=new CastAudio();
@@ -52,11 +54,12 @@ const resultCanvas=document.createElement('canvas');resultCanvas.id='result-spel
 const resultMagic=new MagicCanvas(resultCanvas);
 let session:CastSession|null=null,camera:HandCamera|null=null,voice:VoiceInput|null=null;
 let cursors:Array<{x:number;y:number}>=[],lastHandAt=0,mode='pointer',demo=false,preparing=false;
-let endedInput=false,requested=false,resultShown=false,lastUi=0,feedback:string|null=null,revealed=false;
+let endedInput=false,requested=false,resultShown=false,lastUi=0,feedback:string|null=null,revealed=false,damaged=false;
 let requestAbort:AbortController|null=null;
+let idleSince=performance.now(),attract=false;
 let status:{jev:boolean;speech:boolean;handModel:boolean;model:string;speechProvider:'local'|'google'|'off';localSpeech:{state:string;message:string;model:string;device:string}|null}={jev:false,speech:false,handModel:false,model:'',speechProvider:'local',localSpeech:null};
 let serviceNotice='',prepareVersion=0;
-const frameIntervals:number[]=[];let lastFrame=performance.now();
+const frameIntervals:number[]=[],inputLags:number[]=[];let lastFrame=performance.now(),pendingInputAt=0;
 
 async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json());}catch{serviceNotice='接続を確認できません。PC内の規則で遊べます。';status.speech=false;}
   el('voice-availability').textContent=status.speech?(status.speechProvider==='local'?'（このPCで聞き取ります）':'（Googleで聞き取ります）'):status.localSpeech?.state==='loading'?'（準備中です）':'（いまは使えません）';
@@ -66,16 +69,21 @@ async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json
 void readStatus();
 const statusTimer=setInterval(()=>{if(!session&&!preparing)void readStatus();},3000);
 
+function markActive(){idleSince=performance.now();}
+for(const name of ['pointerdown','pointermove','keydown','wheel'])window.addEventListener(name,markActive,{passive:true});
+// 見本の再生中に誰かが触ったら、すぐ止めてタイトルへ戻す。
+window.addEventListener('pointerdown',()=>{if(attract&&session&&demo)toReady();});
+
 function cleanup(){sound.stop();camera?.dispose();camera=null;voice?.dispose();voice=null;requestAbort?.abort();requestAbort=null;cursors=[];}
 function toReady(message='') {
-  el('app').dataset.screen='ready';
+  el('app').dataset.screen='ready';attract=false;markActive();
   prepareVersion++;session?.cancel();cleanup();session=null;preparing=false;
   show('welcome',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);show('reveal',false);
   revealed=false;el('reveal').classList.remove('in');el('deadline').style.opacity='0';el('app').dataset.deadline='';el('result').classList.remove('name-only');
   el<HTMLButtonElement>('start').disabled=false;el<HTMLButtonElement>('demo').disabled=false;el('notice').textContent=message;
 }
 async function begin(isDemo=false) {
-  if(preparing)return;preparing=true;const version=++prepareVersion;
+  if(preparing)return;preparing=true;markActive();const version=++prepareVersion;
   void sound.prepare();
   cleanup();session=null;demo=isDemo;mode=(document.querySelector<HTMLInputElement>('input[name="mode"]:checked')?.value??'pointer');
   el<HTMLButtonElement>('start').disabled=true;el<HTMLButtonElement>('demo').disabled=true;el('notice').textContent='準備しています…';
@@ -85,7 +93,7 @@ async function begin(isDemo=false) {
       if(!status.handModel)throw new Error(devView?'手の認識ファイルがありません。接続の確認から準備方法をご覧ください。':'いまは手で描けません。「マウスで試す」で遊べます。');
       const input=new HandCamera((hands,timestamp)=>{
         if(version!==prepareVersion)return;
-        cursors=hands;if(hands.length)lastHandAt=timestamp;
+        cursors=hands;if(hands.length){lastHandAt=timestamp;if(!pendingInputAt)pendingInputAt=performance.now();}
         if(session?.accepting)for(const hand of hands)session.motion.add(hand.x,hand.y,timestamp-session.startMs,hand.id);
       },message=>{serviceNotice=message;});camera=input;await input.prepare();
       if(version!==prepareVersion){input.dispose();return;}
@@ -104,7 +112,7 @@ async function begin(isDemo=false) {
   session=new CastSession(undefined,id);voice?.start(performance.now()-session.startMs);
   sound.start(!!voice);
   el('app').dataset.screen='playing';
-  endedInput=false;requested=false;resultShown=false;preparing=false;feedback=null;serviceNotice='';revealed=false;el('reveal').classList.remove('in');show('reveal',false);el('deadline').style.opacity='0';el('app').dataset.deadline='';lastHandAt=performance.now();frameIntervals.length=0;
+  endedInput=false;requested=false;resultShown=false;preparing=false;inputLags.length=0;pendingInputAt=0;feedback=null;serviceNotice='';revealed=false;damaged=false;el('reveal').classList.remove('in');show('reveal',false);el('deadline').style.opacity='0';el('app').dataset.deadline='';const bar=document.querySelector<HTMLElement>('.enemy-health')!;bar.classList.remove('hit');delete bar.dataset.hit;lastHandAt=performance.now();frameIntervals.length=0;
   show('welcome',false);show('result',false);show('hud',true);show('timer',true);show('bottom-hud',true);show('demo-tag',demo);show('recognized',false);
   show('input-panel',!voice&&!demo);show('meter',!!voice);show('voice-label',!!voice&&!demo);
   el('service-notice').textContent='';
@@ -122,6 +130,7 @@ const pointer=(event:PointerEvent)=>{
   if(!session?.accepting||mode!=='pointer'||demo||!pointerDown)return;
   const rect=magic.canvas.getBoundingClientRect(),x=(event.clientX-rect.left)/rect.width,y=(event.clientY-rect.top)/rect.height;
   session.motion.add(x,y,performance.now()-session.startMs);cursors=[{x,y}];
+  if(!pendingInputAt)pendingInputAt=event.timeStamp||performance.now();
 };
 magic.canvas.addEventListener('pointerdown',event=>{pointerDown=true;magic.canvas.setPointerCapture(event.pointerId);pointer(event);});
 magic.canvas.addEventListener('pointermove',pointer);
@@ -154,12 +163,17 @@ function updateUi() {
   const label=labels[phase];if(label){el('instruction').textContent=label[0];el('hint').textContent=label[1];}
   if(t>=2&&t<6&&!summarizeMotion(session.motion.raw).hasMovement)el('hint').textContent=mode==='pointer'?'画面を押したまま、少し動かそう':'片手を少し動かそう';
   if(mode==='camera'&&t<14&&!cursors.length&&performance.now()-lastHandAt>800)el('hint').textContent='手を画面の前へ。描いた線は残っています';
+  if(phase==='chant'&&!session.speech.snapshot().length)el('hint').textContent='たとえば「雷よ、七つに分かれろ」';
   el('service-notice').textContent=serviceNotice;
   if(t>=14)show('voice-label',false);
   showReveal(t);
   el('step-input').classList.toggle('active',t<14);el('step-complete').classList.toggle('active',t>=14&&t<17);el('step-release').classList.toggle('active',t>=17);
   el<HTMLInputElement>('chant').disabled=t>=14;show('input-panel',!voice&&!demo&&t<14);
-  if(t>=18.5)el('health').style.width='70%';
+  if(t>=18.5&&!damaged) {
+    damaged=true;el('health').style.width='70%';
+    const bar=document.querySelector<HTMLElement>('.enemy-health')!;bar.classList.add('hit');bar.dataset.hit='1';
+    setTimeout(()=>bar.classList.remove('hit'),700);
+  }
   if(session.locked&&session.recipe&&t>=16&&t<17){show('recognized',true);el('recognized').textContent=[ELEMENT_LABELS[session.recipe.element],session.recipe.count>1?`${session.recipe.count}つ`:PURPOSE_LABELS[session.recipe.purpose]].join('　・　');}
   else show('recognized',false);
   const level=voice?.level??0;
@@ -169,8 +183,9 @@ function updateUi() {
 // 17秒で下の案内を閉じ、魔法名を画面の中央へゆっくり出す。22.5秒で引く。
 function showReveal(t:number) {
   const name=session?.recipe?.name;
-  if(t>=17&&t<23.2&&name) {
-    if(!revealed){revealed=true;el('reveal-name').textContent=name;show('reveal',true);show('bottom-hud',false);
+  if(t>=17)show('bottom-hud',false);
+  if(t>=17.6&&t<23.2&&name) {
+    if(!revealed){revealed=true;el('reveal-name').textContent=name;show('reveal',true);
       requestAnimationFrame(()=>requestAnimationFrame(()=>el('reveal').classList.add('in')));}
     if(t>=22.5)el('reveal').classList.remove('in');
   } else if(revealed&&t>=23.2){show('reveal',false);}
@@ -186,13 +201,18 @@ function finish() {
   el('spell-name').textContent=r.name;el('spell-description').textContent=`${ELEMENT_LABELS[r.element]}の${PURPOSE_LABELS[r.purpose]}。${r.count>1?`${r.count}つの`:''}${FORM_LABELS[r.form]}のかたち。`;
   el('transcript').textContent=session.state?.speech.rawTranscript?`「${session.state.speech.rawTranscript}」${session.state.speech.status==='typed'?'（文字で入力）':''}`:'詠唱なし。描いた線から魔法をつくりました。';
   el('app').dataset.screen='result';show('hud',false);show('timer',false);drawResult();
+  // 自動で流した見本は、余韻を見せてからタイトルへ戻す。本人が遊んだ結果は消さない。
+  if(attract)setTimeout(()=>{if(attract)toReady();},8000);
 }
 
 function drawResult(){if(session?.recipe)resultMagic.thumbnail(session.motion.display,colors[session.recipe.element],{width:magic.canvas.clientWidth,height:magic.canvas.clientHeight});}
 
 function report() {
-  const sorted=[...frameIntervals].sort((a,b)=>a-b);
-  return {...session?.report(),mode:demo?'demo':mode,feedback,audio:sound.snapshot,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:sorted[Math.floor(sorted.length*0.99)]??null,cameraProcessingMs:camera?.latencyMs??null,note:'手を動かしてから表示されるまでの遅れは未計測。カメラ処理時間とは別。'}};
+  const sorted=[...frameIntervals].sort((a,b)=>a-b),lags=[...inputLags].sort((a,b)=>a-b);
+  const at=(list:number[],ratio:number)=>list.length?list[Math.min(list.length-1,Math.floor(list.length*ratio))]:null;
+  return {...session?.report(),mode:demo?'demo':mode,feedback,audio:sound.snapshot,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:at(sorted,0.99),cameraProcessingMs:camera?.latencyMs??null,
+    inputToDrawMs:{median:at(lags,0.5),p95:at(lags,0.95),samples:lags.length},
+    note:'inputToDrawMsは、入力を受け取った時刻から、その入力を含む描画を終えるまでの時間。0.1秒以内を目安にする。'}};
 }
 document.querySelectorAll<HTMLButtonElement>('[data-feedback]').forEach(button=>button.addEventListener('click',()=>{feedback=button.dataset.feedback??null;document.querySelectorAll('[data-feedback]').forEach(b=>b.classList.toggle('selected',b===button));}));
 el('download').addEventListener('click',()=>{
@@ -216,6 +236,9 @@ window.addEventListener('pagehide',()=>{clearInterval(statusTimer);cleanup();});
 
 function animate(now:number) {
   requestAnimationFrame(animate);
+  if(el('app').dataset.screen==='ready'&&!preparing&&el('sheet').hidden&&el('loading').hidden&&now-idleSince>ATTRACT_AFTER_MS) {
+    attract=true;markActive();void begin(true);
+  }
   if(session&&!resultShown){frameIntervals.push(now-lastFrame);if(frameIntervals.length>4000)frameIntervals.shift();}
   lastFrame=now;
   if(session) {
@@ -239,6 +262,7 @@ function animate(now:number) {
   const ms=session?Math.min(24000,session.elapsed):now;
   if(session&&!resultShown)sound.update(ms,session.recipe);
   stage.render(session?.motion.display??[],ms,session?.recipe??null,voice?.level??0,cursors,!session);
+  if(pendingInputAt){inputLags.push(performance.now()-pendingInputAt);if(inputLags.length>3000)inputLags.shift();pendingInputAt=0;}
 }
 requestAnimationFrame(animate);
 void Promise.all([stage.ready,document.fonts.ready]).then(()=>show('loading',false)).catch(()=>{el('loading').textContent='背景と光を読み込めませんでした。再読み込みしてください。';});

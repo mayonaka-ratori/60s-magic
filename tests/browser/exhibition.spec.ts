@@ -1,0 +1,70 @@
+import { test,expect } from '@playwright/test';
+
+test('誰も触らないと見本が自動で流れ、触ると止まってタイトルへ戻る',async({page})=>{
+  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  // 30秒動きがなければ自動で始まる。通りすがりの人へ、何をする遊びかを見せるため。
+  await expect(page.locator('#demo-tag')).toBeVisible({timeout:45000});
+  await expect(page.locator('#hud')).toBeVisible();
+  await page.mouse.click(700,500);
+  await expect(page.locator('#welcome')).toBeVisible();
+  await expect(page.locator('#hud')).toBeHidden();
+});
+
+test('唱える時間になると、まだ何も言っていない人に例を出す',async({page})=>{
+  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
+  await expect(page.locator('#hint')).toHaveText('たとえば「雷よ、七つに分かれろ」',{timeout:16000});
+  // 何か入れた人には出さない。
+  await page.locator('#chant').fill('氷よ、壁となれ');
+  await expect(page.locator('#hint')).not.toHaveText('たとえば「雷よ、七つに分かれろ」',{timeout:4000});
+});
+
+test('当たった瞬間に体力バーが反応し、騎士に魔法の傷あとが残る',async({page})=>{
+  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
+  const 見たもの=new Set<string>();
+  for(let i=0;i<40&&await page.locator('#result').isHidden();i++) {
+    const いま=await page.evaluate(()=>({
+      傷:(document.getElementById('knight') as HTMLElement).dataset.scar,
+      反応:document.querySelector<HTMLElement>('.enemy-health')!.dataset.hit==='1',
+      体力:(document.getElementById('health') as HTMLElement).style.width,
+    }));
+    if(いま.傷==='1')見たもの.add('傷あと');
+    if(いま.反応)見たもの.add('体力バーの反応');
+    if(いま.体力==='70%')見たもの.add('体力が減る');
+    await page.waitForTimeout(450);
+  }
+  for(const 期待 of ['傷あと','体力バーの反応','体力が減る'])
+    expect([...見たもの],`${期待}を見ていない`).toContain(期待);
+});
+
+test('画面で読む文字はゴシック体、明朝は題字と魔法名だけにする',async({page})=>{
+  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  // 音の設定は最初たたんでおく。最初に見せるのは描き方と「魔法をつくる」。
+  await expect(page.locator('#use-sound')).toBeHidden();
+  await page.locator('.sound-settings summary').click();
+  await expect(page.locator('#use-sound')).toBeVisible();
+  await page.locator('#start').click();await expect(page.locator('#bottom-hud')).toBeVisible();
+  const 書体=await page.evaluate(()=>{
+    const f=(s:string)=>getComputedStyle(document.querySelector(s)!).fontFamily.replace(/"/g,'');
+    return {案内:f('#instruction'),敵の名前:f('.enemy-health'),魔法名:f('#reveal span'),題字:f('.brand-name')};
+  });
+  expect(書体.案内,'案内はゴシック').toContain('Noto Sans JP');
+  expect(書体.敵の名前,'敵の名前はゴシック').toContain('Noto Sans JP');
+  expect(書体.魔法名,'魔法名は明朝のまま').toContain('Noto Serif JP');
+  expect(書体.題字,'題字は明朝のまま').toContain('Noto Serif JP');
+});
+
+test('入力から描き終わるまでの時間を記録に残す',async({page})=>{
+  await page.goto('/?dev=1');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
+  for(let i=0;i<5;i++){
+    await page.mouse.move(500+i*40,420+i*20);await page.mouse.down();
+    await page.mouse.move(560+i*40,470+i*20,{steps:3});await page.mouse.up();
+  }
+  await expect(page.locator('#result')).toBeVisible({timeout:30000});
+  await page.locator('#record').click();
+  const 記録=JSON.parse(await page.locator('#sheet-body pre').innerText());
+  expect(記録.measurement.inputToDrawMs.samples).toBeGreaterThan(0);
+  expect(記録.measurement.inputToDrawMs.median).toBeGreaterThan(0);
+});
