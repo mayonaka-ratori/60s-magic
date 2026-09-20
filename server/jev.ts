@@ -21,8 +21,10 @@ export async function evaluateJev(state:SpellState, options:{key?:string;model?:
 export function validState(value:unknown):value is SpellState {
   if(!value||typeof value!=='object')return false;
   const s=value as SpellState;
-  return typeof s.sessionId==='string'&&/^[\w-]{1,80}$/.test(s.sessionId)&&s.castId==='cast-01'&&s.inputRevision===1&&s.phase==='free'&&s.schemaVersion==='spell-state-2'&&
+  return typeof s.sessionId==='string'&&/^[\w-]{1,80}$/.test(s.sessionId)&&(s.castId==='cast-01'||s.castId==='cast-02')&&s.inputRevision===1&&(s.phase==='free'||s.phase==='defend')&&s.schemaVersion==='spell-state-2'&&
     typeof s.speech?.rawTranscript==='string'&&s.speech.rawTranscript.length<=6000&&typeof s.speech.normalizedTranscript==='string'&&s.speech.normalizedTranscript.length<=6000&&
     Array.isArray(s.timedEvents)&&s.timedEvents.length<=100&&typeof s.motion?.hasMovement==='boolean'&&
+    (s.previous===null||(typeof s.previous==='object'&&typeof s.previous.spellId==='string'&&s.previous.spellId.length<=120&&typeof s.previous.name==='string'&&s.previous.name.length<=80&&
+      ['fire','ice','lightning','wind','light','dark','neutral'].includes(s.previous.element)&&['attack','defend','bind','enhance'].includes(s.previous.purpose)&&['orb','beam','wall','dome','wave','swarm'].includes(s.previous.form)))&&
     ['coverageWidth','coverageHeight','closedness','convergence','smoothness'].every(k=>Number.isFinite((s.motion as unknown as Record<string,number>)[k])&&(s.motion as unknown as Record<string,number>)[k]>=0&&(s.motion as unknown as Record<string,number>)[k]<=1);
 }

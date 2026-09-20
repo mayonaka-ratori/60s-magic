@@ -32,28 +32,35 @@ function wordId(entryId: number, key: string, repeat: number) {
  * 言葉ごとの「初めて現れた時刻」。認識の途中結果は同じ発話が何度も伸びて届き、
  * そのたびに発話の終わり時刻が後ろへ動く。そのまま使うと前に出た言葉の反応がやり直されるので、
  * 番号ごとに最初の時刻を覚えてずっと使う。
+ * 鍵に回の開始時刻も入れる。発話の番号は回ごとに数え直すので、入れないと防御の回の言葉が
+ * 一回目の時刻を拾ってしまう。
  */
-const firstHeardAt = new Map<number, number>();
+const firstHeardAt = new Map<string, number>();
 
 /** 覚え書きを消す。新しい一戦を始めるときに呼ぶ。 */
 export function resetLiveWords() { firstHeardAt.clear(); }
 
-function firstHeard(id: number, heard: number) {
-  const known = firstHeardAt.get(id);
+function firstHeard(key: string, heard: number) {
+  const known = firstHeardAt.get(key);
   if (known !== undefined) return known;
-  firstHeardAt.set(id, heard);
+  firstHeardAt.set(key, heard);
   return heard;
 }
 
-/** 音声の記録から、演出が反応すべき言葉を取り出す。語彙は spell-words.ts の表だけを見る。 */
-export function liveWords(entries: readonly SpeechEntry[]): LiveWord[] {
-  // まだ何も聞こえていない間は、前の一戦の覚え書きを捨てる。
-  if (!entries.length) firstHeardAt.clear();
+/**
+ * 音声の記録から、演出が反応すべき言葉を取り出す。語彙は spell-words.ts の表だけを見る。
+ * offsetMs は、その回が始まった時刻。声の時刻は回ごとに0から数え直すので、
+ * 演出が見る戦いの時刻へそろえるために足す。足さないと、防御の回は言葉への反応が
+ * すべて「24秒前の言葉」になり、反応の窓から外れて一つも出なくなる。
+ */
+export function liveWords(entries: readonly SpeechEntry[], offsetMs = 0): LiveWord[] {
+  // まだ何も聞こえていない間は、この回の覚え書きを捨てる。
+  if (!entries.length) for (const key of [...firstHeardAt.keys()]) if (key.startsWith(`${offsetMs}:`)) firstHeardAt.delete(key);
   const found: LiveWord[] = [];
   for (const entry of [...entries].sort((a, b) => a.startMs - b.startMs)) {
     // 詠唱辞書で意味に直してから、否定と言い直しの前半を落とす。「炎ではなく氷」は氷だけが残る。
     const text = affirmativeText(readChant(entry.text ?? '').meaning);
-    const heard = Number.isFinite(entry.endMs) && entry.endMs >= entry.startMs ? entry.endMs : entry.startMs;
+    const heard = (Number.isFinite(entry.endMs) && entry.endMs >= entry.startMs ? entry.endMs : entry.startMs) + offsetMs;
     // 同じ発話の中で同じ語が何度目に出たか。番号を分けるために数える。
     const seen = new Map<string, number>();
     const take = (key: string) => { const n = seen.get(key) ?? 0; seen.set(key, n + 1); return wordId(entry.id, key, n); };
@@ -62,14 +69,14 @@ export function liveWords(entries: readonly SpeechEntry[]): LiveWord[] {
       const count = digits ? explicitCount(digits[0]) : null;
       if (digits && count !== null) {
         const id = take(`count:${count}`);
-        found.push({ id, text: digits[0], element: null, kind: 'count', count, atMs: firstHeard(id, heard), final: entry.final, form: null, purpose: null });
+        found.push({ id, text: digits[0], element: null, kind: 'count', count, atMs: firstHeard(`${offsetMs}:${id}`, heard), final: entry.final, form: null, purpose: null });
         at += digits[0].length; continue;
       }
       // 長い語から順に当てる。重なる意味（「光線」は形と属性）は表の行が持っている。
       const hit = TERMS_BY_LENGTH.find(term => text.startsWith(term.word, at));
       if (hit) {
         const id = take(`${hit.kind}:${hit.word}`);
-        found.push({ id, text: hit.word, element: hit.element ?? null, kind: hit.kind, count: null, atMs: firstHeard(id, heard), final: entry.final, form: hit.form ?? null, purpose: hit.purpose ?? null });
+        found.push({ id, text: hit.word, element: hit.element ?? null, kind: hit.kind, count: null, atMs: firstHeard(`${offsetMs}:${id}`, heard), final: entry.final, form: hit.form ?? null, purpose: hit.purpose ?? null });
         at += hit.word.length; continue;
       }
       at++;

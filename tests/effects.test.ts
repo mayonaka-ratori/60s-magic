@@ -1,3 +1,5 @@
+import { BEATS } from '../src/game/rounds';
+import { AIM } from '../src/game/guard';
 import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest';
 import { presets, getPreset, intensityOf, increase, mixHue, lighten } from '../src/render/effects/presets';
 import { hitDelay } from '../src/render/effects/release';
@@ -294,7 +296,7 @@ describe('控えめモードは部品にも届く', () => {
     sprites: { draw: () => {} } as unknown as Frame['sprites'], pool,
     preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
     recipe: recipe(), locked: true, origin: { x: 200, y: 500 }, target: { x: 900, y: 360 },
-    accent: null, live: { words: [], amount: 0, voice: 0 }, points: [], cursors: [], calm,
+    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0 }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm,
     once: (_key, run) => run(),
   });
   const impactParticles = (calm: boolean) => {
@@ -326,7 +328,7 @@ describe('コマ落ちしても同じ火花', () => {
    */
   const untilImpact = (step: number) => {
     const log: string[] = [], magic = screen(log), spell = recipe({ count: 3 });
-    const at = (t: number) => magic.renderEffects([], t * 1000, spell, 0, [], false, { x: .72, y: .45 }, { x: 320, y: 520 });
+    const at = (t: number) => magic.renderEffects({ points: [], ms: t * 1000, recipe: spell, voice: 0, cursors: [], ready: false, target: { x: .72, y: .45 }, origin: { x: 320, y: 520 } });
     for (let t = 14; t < RELEASE_AT; t += step) at(t);
     for (let t = RELEASE_AT; t < IMPACT_AT; t += 1 / 60) at(t);
     log.length = 0;

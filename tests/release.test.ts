@@ -1,3 +1,5 @@
+import { BEATS } from '../src/game/rounds';
+import { AIM } from '../src/game/guard';
 import { describe, it, expect } from 'vitest';
 import { ARRIVAL, bodyPoint, drawBody, drawRelease, drawTravel, hitDelay } from '../src/render/effects/release';
 import { RELEASE_AT } from '../src/render/effects/screen';
@@ -11,7 +13,7 @@ const recipe = (over: Partial<Recipe> = {}): Recipe => ({ version: 'recipe-1', e
 
 const origin = { x: 100, y: 500 }, target = { x: 700, y: 300 };
 /** bodyPoint が見るぶんだけの仮の Frame。 */
-const frame = (over: Partial<Recipe> = {}) => ({ recipe: recipe(over), origin, target, intensity: 1.5 }) as unknown as Frame;
+const frame = (over: Partial<Recipe> = {}) => ({ recipe: recipe(over), origin, target, intensity: 1.5, beat: BEATS[0] }) as unknown as Frame;
 /** 放出からの経過秒（drawTravel が渡す time）を、そのときの進み具合に直す。 */
 const travelAt = (time: number) => time / ARRIVAL;
 const distanceToTarget = (p: { x: number; y: number }) => Math.hypot(p.x - target.x, p.y - target.y);
@@ -83,7 +85,7 @@ function scene(c: CanvasRenderingContext2D, over: Partial<Recipe>, accent: Palet
     sprites, pool,
     preset: presets.vivid, palette: presets.vivid.palettes[r.element], intensity: 1.5,
     recipe: r, locked: true, origin, target,
-    accent, live: { words: [], amount: 0, voice: 0 }, points: [], cursors: [], calm: false,
+    accent, live: { words: [], amount: 0, voice: 0, rings: 0 }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm: false,
     once: (_key, run) => run() };
 }
 

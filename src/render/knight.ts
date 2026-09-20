@@ -17,14 +17,13 @@ import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
+import { BATTLE_END, ROUNDS } from '../game/rounds';
 import { colors } from './magic';
 import { getPreset, type EffectPreset } from './effects/presets';
 import { smooth } from './effects/frame';
-import { FADE_OUT_AT, IMPACT_AT } from './effects/screen';
+import { IMPACT_AT } from './effects/screen';
 import type { Recipe } from '../game/types';
 
-/** 演出が消え終わる時刻（ミリ秒）。画面全体の効果と同じ値を使う。 */
-const FADE_OUT_MS = FADE_OUT_AT * 1000;
 /** 反応の強さの基準にする設定（派手）。この設定のときの強さは今まで通りにする。 */
 const BASE_PRESET = getPreset(null);
 /** 立体を描く面の粗さ。背景の一枚絵より少しだけ粗く描き、拡大で輪郭をなまらせる。描く点が減るので速さにも効く。 */
@@ -50,8 +49,8 @@ export function reactionPower(recipe:Recipe|null|undefined,amount=0,preset:Effec
   return clamp((.16+many*.42+wide*.22+focus*.26)*gain+fromInput);
 }
 
-export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45,calm=false) {
-  const t=(ms-18500)/1000;
+export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45,calm=false,impactMs=ROUNDS[0].impact) {
+  const t=(ms-impactMs)/1000;
   const hit=active?smooth(t/.09)*(1-smooth((t-.62)/.2)):0;
   const recover=active?smooth((t-.62)/.2)*(1-smooth((t-1.65)/.65)):0;
   const force=purpose==='bind'?.35:purpose==='enhance'?.5:1;
@@ -65,7 +64,7 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
   const collapse=struck?fall*(t<.6?smooth(t/.6):1-smooth((t-.6)/1.2)):0;
   // 白飛びは白、属性色、白の三段で合計0.15秒。
   const step=struck&&t<.15?Math.floor(t/.05):-1;
-  return {weights:[1-hit-recover,hit,recover],lean:reduced?0:hit*force,
+  return {weights:pad([1-hit-recover,hit,recover]),lean:reduced?0:hit*force,
     breath:reduced?0:Math.sin(ms*.0016)*.003,flash,
     // shakeは体の細かい震え。立体のほうを揺らすので、押し戻しや回りとは別に持つ。
     shake:reduced?0:flash*.028,
@@ -78,13 +77,85 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
     ghost:(struck&&t<.3?1-t/.3:0)*(calm?1/3:1),rim:(struck&&t<.6?1-smooth(t/.6):0)*(calm?1/3:1)};
 }
 
-// 待機・ひるむ・構えを戻すの3姿勢。角度だけを並べ、weightsで混ぜる。
+// 姿勢の表。角度だけを並べ、weightsで混ぜる。body と head は、正の値で後ろへ反る。
+// 0〜2 は一回目で使う待機・ひるむ・構えを戻す。3〜7 は防御の回で使う。
 type Pose={body:number;head:number;swordSwing:number;swordOut:number;shieldSwing:number;shieldOut:number;crouch:number};
 const POSES:Pose[]=[
   {body:.04,head:0,swordSwing:.16,swordOut:.1,shieldSwing:-.12,shieldOut:.14,crouch:0},
   {body:.3,head:.24,swordSwing:-.5,swordOut:.55,shieldSwing:-.8,shieldOut:.5,crouch:-.11},
   {body:-.1,head:-.04,swordSwing:-.12,swordOut:-.04,shieldSwing:.16,shieldOut:-.2,crouch:-.03},
+  // 構え。剣を引き、腰を落とし、盾を前へ出す。
+  {body:-.06,head:-.04,swordSwing:-.55,swordOut:.34,shieldSwing:.55,shieldOut:.5,crouch:-.16},
+  // 溜め。剣を頭上まで上げ、体を反らす。
+  {body:.2,head:.12,swordSwing:-2.3,swordOut:.5,shieldSwing:.25,shieldOut:.28,crouch:-.04},
+  // 振り下ろし。踏み込んで前へ斬る。
+  {body:-.4,head:-.22,swordSwing:.95,swordOut:.12,shieldSwing:-.35,shieldOut:.22,crouch:-.24},
+  // 弾かれる。腕ごと押し戻され、上半身が反る。
+  {body:.5,head:.32,swordSwing:-1.15,swordOut:.85,shieldSwing:-.55,shieldOut:.72,crouch:-.02},
+  // 前屈。胸当てが割れて弱点が見える姿勢。
+  {body:-.5,head:-.34,swordSwing:-.12,swordOut:.04,shieldSwing:-.2,shieldOut:.08,crouch:-.32},
 ];
+/** 姿勢の重みを、表の長さにそろえる。足りない分は0。 */
+const pad=(weights:number[])=>{const full=new Array(POSES.length).fill(0);for(let i=0;i<weights.length;i++)full[i]=weights[i];return full;};
+
+// 防御の回の時刻は、回の表（rounds.ts）から作る。表を直したら騎士も一緒に動く。
+const FIRST=ROUNDS[0],DEFEND=ROUNDS[1];
+/** 防御の姿勢へ移り始める時刻（秒）。一回目の受け渡しの始まり。 */
+export const GUARD_FROM=FIRST.handoff/1000;
+/** 防御の回の姿勢の順。at の時刻から ramp 秒かけて、その姿勢へ移る。 */
+const GUARD_STEPS:Array<{at:number;pose:number;ramp:number}>=[
+  {at:0,pose:0,ramp:.5},                        // 待機
+  {at:GUARD_FROM,pose:3,ramp:1},                // 構え
+  {at:DEFEND.start/1000+.2,pose:4,ramp:6},      // 溜め
+  {at:DEFEND.lock/1000,pose:5,ramp:.55},        // 振り下ろし
+  {at:DEFEND.impact/1000,pose:6,ramp:.22},      // 弾かれる
+  {at:DEFEND.impact/1000+2.2,pose:2,ramp:1.1},  // よろめきから構えを戻す
+  {at:DEFEND.handoff/1000,pose:7,ramp:1},       // 前屈して弱点を晒す
+];
+/** 弾き返したとき、騎士が自分の一撃を受ける時刻（秒）。一撃が盾に当たってから0.8秒後。 */
+export const REFLECT_BACK_AT=DEFEND.impact/1000+.8;
+/** 盾に弾かれて兜の角が折れる時刻（ms）。 */
+export const HORN_BREAK_MS=DEFEND.impact+2100;
+/** 胸当てが外れて弱点が見え始める時刻（ms）。 */
+export const WEAKPOINT_MS=DEFEND.handoff;
+
+/**
+ * 防御の回（23秒以降）の姿勢。順に姿勢を移すだけで、入力では変えない。
+ * 「返せ」で弾き返したときだけ、騎士が自分の一撃を受けて短くひるむ。
+ */
+export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase'='block') {
+  const t=ms/1000;
+  let index=0;
+  for(let i=0;i<GUARD_STEPS.length;i++)if(t>=GUARD_STEPS[i].at)index=i;
+  const step=GUARD_STEPS[index],previous=GUARD_STEPS[Math.max(0,index-1)];
+  const u=smooth((t-step.at)/step.ramp);
+  const weights=new Array(POSES.length).fill(0);
+  weights[previous.pose]+=1-u;weights[step.pose]+=u;
+  // 溜めの間は剣が低く脈打つ。毎秒1回まで。
+  const charging=index===2?smooth((t-GUARD_STEPS[2].at)/2):0;
+  // 弾かれた瞬間だけ押し戻される。
+  const hitAt=DEFEND.impact/1000;
+  const repel=t>=hitAt?Math.max(0,1-(t-hitAt)/1.2):0;
+  // 弾き返しでは、戻ってきた一撃を受けて白く光る。
+  const back=style==='reflect'?t-REFLECT_BACK_AT:-1;
+  const struck=back>=0&&back<.7;
+  const stepIndex=struck&&back<.15?Math.floor(back/.05):-1;
+  // 控えめモードでは、白飛びを3分の1にして残像を出さない。動きはもともと止めてある。
+  const soft=reduced?1/3:1,weak=WEAKPOINT_MS/1000;
+  const flash=struck?Math.max(0,1-back/.24)*soft:0;
+  return {weights,lean:reduced?0:repel*.35,
+    breath:reduced?0:Math.sin(ms*.0016)*.003+charging*Math.sin(t*Math.PI*2)*.004,
+    flash,
+    // shakeは体の細かい震え。一回目と同じ作り方にする。
+    shake:reduced?0:flash*.028,
+    state:index>=6?'exposed':index===5?'recover':index===4?'repel':index===3?'swing':index===2?'charge':index===1?'guard':'idle',
+    strength:.5,push:reduced?0:repel*.5+(struck?Math.max(0,1-back/.3)*.3:0),collapse:0,
+    spin:reduced?0:repel*2.2,
+    flashAlpha:stepIndex<0?0:(.85-stepIndex*.2)*.75*soft,flashTint:stepIndex===1?1:0,
+    ghost:reduced||!struck?0:back<.3?1-back/.3:0,
+    // 弱点の輪郭の光は、回の終わりまでに0へ戻す。結果を出したまま待つ間、毎コマ形を塗り直さないため。
+    rim:t>=weak?smooth((t-weak)/.5)*(1-smooth((t-weak-.5)/.5))*.5:struck?1-smooth(back/.6):0};
+}
 const POSE_KEYS=Object.keys(POSES[0]) as Array<keyof Pose>;
 const blendPose=(weights:number[]):Pose=>{
   const result={} as Pose;
@@ -134,6 +205,10 @@ export class Knight {
   private swordArm:TransformNode;
   private shieldArm:TransformNode;
   private core:Mesh;
+  /** 弱点を出すときに動かす胸当てと胸の線、途中で折れる兜の角。 */
+  private chestPlate:Mesh|null=null;
+  private chestLines:Mesh[]=[];
+  private horns:Mesh[]=[];
   private armor:StandardMaterial;
   private coreMaterial:StandardMaterial;
   private eyes:StandardMaterial;
@@ -415,10 +490,13 @@ export class Knight {
 
     this.body=new TransformNode('上半身',this.scene);this.body.parent=this.root;this.body.position.y=1.72;
     // 胸は丸みのある胸当て。前後を薄くして、板ではなく鎧の膨らみに見せる。
-    lathe('胸',this.body,0,.3,0,[[.2,-.33],[.26,-.25],[.31,-.12],[.33,.02],[.31,.14],[.33,.15],[.28,.25],[.16,.31],[0,.33]],this.armor,Mesh.CAP_ALL,16).scaling.z=.78;
+    // 防御の回の終わりに、この胸当てごと前へ外して弱点（核）を見せる。
+    this.chestPlate=lathe('胸',this.body,0,.3,0,[[.2,-.33],[.26,-.25],[.31,-.12],[.33,.02],[.31,.14],[.33,.15],[.28,.25],[.16,.31],[0,.33]],this.armor,Mesh.CAP_ALL,16);
+    this.chestPlate.scaling.z=.78;
     // 金の線。核を頂点にしたV字で、狙う場所を分かりやすくする。
     for(const side of [-1,1]) {
       const line=box('胸の線',this.body,side*.1,.38,-.28,.035,.4,.03,trim);line.rotation.set(-.12,0,side*.42);
+      this.chestLines.push(line);
     }
     this.core=MeshBuilder.CreateSphere('胸の核',{diameter:.15,segments:16},this.scene);
     this.core.parent=this.body;this.core.position.set(0,.2,-.28);this.core.material=this.coreMaterial;
@@ -437,6 +515,7 @@ export class Knight {
     // 兜の角。外へ開きながら後ろへ寝かせる。
     for(const side of [-1,1]) {
       const horn=cone('兜の角',this.head,side*.17,.23,.05,0,.14,.34,6,plate);horn.rotation.set(.45,0,-side*.55);
+      this.horns.push(horn);
     }
     cone('頭頂の先',this.head,0,.32,-.02,0,.11,.13,6,plate);
 
@@ -605,12 +684,25 @@ export class Knight {
   setCalm(calm:boolean){this.calm=calm;}
   /** 見た目の設定（控えめ・派手・最大）。演出canvasと同じものを渡す。 */
   setPreset(preset:EffectPreset){this.preset=preset;}
-  /** amount は入力の量（0〜1）。同じ魔法でも、たくさん描いて唱えたほど反応が強くなる。 */
-  render(ms:number,active:boolean,recipe:Recipe|null,amount=0,power?:number) {
+  /**
+   * amount は入力の量（0〜1）。同じ魔法でも、たくさん描いて唱えたほど反応が強くなる。
+   * guardStyle は防御の回の止め方。一回目の受け渡し以降は、これを使って防御の姿勢へ移る。
+   */
+  render(ms:number,active:boolean,recipe:Recipe|null,amount=0,power?:number,guardStyle:'block'|'reflect'|'erase'|null=null) {
     // 表示の大きさが変わっていたら、描く前に合わせ直す。
     const size=`${Math.max(1,this.canvas.clientWidth)}x${Math.max(1,this.canvas.clientHeight)}`;
     if(size!==this.cssSize)this.resize();
-    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe,amount,this.preset),this.calm);
+    // 一回目の受け渡しからは防御の回の姿勢へ移る。構え、溜め、振り下ろし、弾かれる、前屈の順。
+    const guarding=active&&ms>=GUARD_FROM*1000;
+    const pose=guarding?guardPose(ms,this.motion.matches||this.calm,guardStyle??'block')
+      :knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe,amount,this.preset),this.calm);
+    // 盾に弾かれた勢いで折れる兜の角。止め方によらず、受け止めきった時点で欠ける。
+    if(this.horns[0])this.horns[0].setEnabled(!(active&&ms>=HORN_BREAK_MS));
+    // 弱点。胸当てが前へ外れ、胸の線が左右へ開き、核が大きくなる。
+    const open=active&&ms>=WEAKPOINT_MS?clamp((ms-WEAKPOINT_MS)/700):0;
+    if(this.chestPlate){this.chestPlate.position.z=-.2-open*.45;this.chestPlate.position.y=.34-open*.6;this.chestPlate.rotation.x=open*1.3;}
+    for(let i=0;i<this.chestLines.length;i++)this.chestLines[i].position.x=(i?1:-1)*.11*(1+open*2.4);
+    this.core.scaling.setAll(1+open*1.2);
     const p=blendPose(pose.weights);
     // 待機の間もわずかに体と腕を動かし、首をゆっくり振る。動きを減らす設定では止める。
     const live=this.motion.matches?0:1,t=ms/1000;
@@ -625,8 +717,9 @@ export class Knight {
     this.head.rotation.y=Math.sin(t*.31)*.06*live;
     this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live,0,-p.swordOut);
     this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);
-    // 14秒からの蓄積で核が明るくなり、命中では前から強く照らす。
-    const charge=active?clamp((ms-14000)/4500):0,glow=.22+charge*.5+pose.flash*1.5;
+    // 一回目の締め切りからの蓄積で核が明るくなり、命中では前から強く照らす。弱点が出たら脈打つ。
+    const charge=active?clamp((ms-FIRST.inputEnd)/4500):0;
+    const glow=.22+charge*.5+pose.flash*1.5+open*(.5+.5*Math.sin(ms*.012))*.7;
     this.coreMaterial.emissiveColor.set(.42+glow,.32+glow*.86,.17+glow*.7);
     const blink=.82+Math.sin(t*1.7)*.18*live+pose.flash*.6;
     this.eyes.emissiveColor.set(.52*blink,.23*blink,.07*blink);
@@ -649,7 +742,7 @@ export class Knight {
     this.target={x:hit.x/w,y:hit.y/h};
     this.canvas.dataset.state=pose.state;
     this.canvas.dataset.scar=scar>0?'1':'0';
-    this.canvas.classList.toggle('spell-finished',active&&ms>=FADE_OUT_MS);
+    this.canvas.classList.toggle('spell-finished',active&&ms>=BATTLE_END-500);
   }
   dispose(){this.scene.dispose();this.engine.dispose();}
 }

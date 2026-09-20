@@ -1,6 +1,5 @@
 import { clamp, getNodes } from '../../game/motion';
 import { few, glow, ease, slow, type Frame } from './frame';
-import { CHARGE_AT } from './screen';
 import { along, lastStrokes, ringClosure, spawnCount, speedRatio, tipSpeed, type Vec } from './strokes-math';
 
 /** 筆を置いた輪が広がりきるまで（秒） */
@@ -57,7 +56,7 @@ export function drawStrokeReactions(f: Frame, memory: StrokeMemory) {
   const fresh = current && t * 1000 - current[current.length - 1].t < 250;
 
   // 速く引くほど、筆先から火花が飛ぶ。ゆっくりなら何も出ない。
-  if (fresh && t < CHARGE_AT) {
+  if (fresh && t < f.beat.inputEnd) {
     const { speed, dir } = tipSpeed(current, w, h);
     const ratio = speedRatio(speed);
     if (ratio > 0) {
@@ -116,9 +115,9 @@ export function drawStrokeReactions(f: Frame, memory: StrokeMemory) {
     }
   }
 
-  // 蓄積の間（14〜17秒）は線全体をほんの少し明るくするだけにして、蓄積の演出と重ねすぎない。
-  if (t >= CHARGE_AT) {
-    const alpha = (.06 + amount * .12 + voice * .1) * boost * (1 - clamp((t - 16.6) / .4));
+  // 蓄積の間は線全体をほんの少し明るくするだけにして、蓄積の演出と重ねすぎない。
+  if (t >= f.beat.inputEnd) {
+    const alpha = (.06 + amount * .12 + voice * .1) * boost * (1 - clamp((t - (f.beat.release - .4)) / .4));
     if (alpha > .004) {
       c.globalAlpha = alpha; c.lineWidth = 2.4; c.strokeStyle = palette.main;
       c.beginPath();
