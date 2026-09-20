@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { along, lastStrokes, ringClosure, spawnCount, speedRatio, tipSpeed, unit } from '../src/render/effects/strokes-math';
-import type { Point } from '../src/game/types';
+import { drawStrokeReactions, newStrokeMemory, type StrokeMemory } from '../src/render/effects/strokes';
+import { ParticlePool } from '../src/render/effects/particles';
+import { presets } from '../src/render/effects/presets';
+import type { Frame } from '../src/render/effects/frame';
+import type { Point, Recipe } from '../src/game/types';
 
 /** 試験用の点列を作る。位置を並べ、一定の間隔で時刻を進める。 */
 const path = (xy: [number, number][], from = 0, step = 16, stroke = 1, hand = 0): Point[] =>
@@ -135,5 +139,56 @@ describe('一コマに出す粒の数', () => {
     expect(spawnCount(300, 1 / 60, () => .5, 2)).toBe(2);
     expect(spawnCount(-10, 1 / 60, () => 0)).toBe(0);
     expect(spawnCount(60, 0, () => 0)).toBe(0);
+  });
+});
+
+describe('描く動きへの反応の覚え書き', () => {
+  const recipe = (): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null,
+    defense: .3, area: .5, duration: .5, concentration: .5, enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null,
+    noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null });
+  /** 描く命令を受け流すだけの仮のcanvas。どの命令も自分を返す。 */
+  const stubContext = () => {
+    const held: Record<string, unknown> = {};
+    const fake: unknown = new Proxy(held, {
+      get: (target, key: string) => (key in target ? target[key] : () => fake),
+      set: (target, key: string, value) => { target[key] = value; return true; },
+    });
+    return fake as CanvasRenderingContext2D;
+  };
+  /** 一枚の画面の一コマぶん。粒の置き場と一度きりの覚えは画面ごとに持つ。 */
+  const frame = (points: Point[], t: number, pool: ParticlePool, fired: Set<string>): Frame => ({
+    c: stubContext(), w: 1280, h: 720, t, dt: 1 / 60,
+    sprites: { draw: () => {} } as unknown as Frame['sprites'], pool,
+    preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1,
+    recipe: recipe(), locked: false, origin: { x: 640, y: 500 }, target: { x: 900, y: 360 },
+    accent: null, live: { words: [], amount: 0, voice: 0 }, points, cursors: [], calm: false,
+    once: (key, run) => { if (!fired.has(key)) { fired.add(key); run(); } },
+  });
+  const line = path([[.2, .5], [.3, .5], [.4, .5]]);
+
+  it('画面が二つあっても覚え書きは混ざらない', () => {
+    const a = newStrokeMemory(), b = newStrokeMemory();
+    const poolA = new ParticlePool(50), poolB = new ParticlePool(50);
+    drawStrokeReactions(frame(line, 5, poolA, new Set()), a);
+    expect(a.opened.get(1)).toBe(5);
+    expect(b.opened.size).toBe(0);
+    // 2枚目は自分の時計で筆が置かれたことにする。1枚目の時刻を引き継がない。
+    drawStrokeReactions(frame(line, 5.4, poolB, new Set()), b);
+    expect(b.opened.get(1)).toBe(5.4);
+    expect(a.opened.get(1)).toBe(5);
+    // どちらの画面でも筆を置いた粒が出る。
+    expect(poolA.count).toBeGreaterThan(0);
+    expect(poolB.count).toBe(poolA.count);
+  });
+  it('覚え書きを作り直すと忘れ、時刻が戻ったときも忘れる', () => {
+    const memory: StrokeMemory = newStrokeMemory(), pool = new ParticlePool(50), fired = new Set<string>();
+    drawStrokeReactions(frame(line, 5, pool, fired), memory);
+    expect(memory.opened.size).toBe(1);
+    // 時刻が戻ったら（確認画面のつまみなど）覚え書きを捨てる。
+    drawStrokeReactions(frame(line, 3, pool, fired), memory);
+    expect(memory.opened.size).toBe(0);
+    // 作り直した覚え書きは空。
+    expect(newStrokeMemory().opened.size).toBe(0);
+    expect(newStrokeMemory().lastTime).toBe(-1);
   });
 });

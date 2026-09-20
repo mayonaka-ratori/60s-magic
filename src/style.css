@@ -1,6 +1,7 @@
 @import '@fontsource/noto-sans-jp/400.css';
 @import '@fontsource/noto-sans-jp/500.css';
 @import '@fontsource/noto-serif-jp/400.css';
+@import './overlay.css';
 
 :root{font-family:'Noto Sans JP','Yu Gothic',sans-serif;color:#e8e9e5;background:#080f19;font-synthesis:none;font-weight:400;--muted:#9daeb9;--gold:#d8bd85;--line:#adc4d326;--ink:#0b1420}
 *{box-sizing:border-box}body{margin:0}button,input{font:inherit}button{cursor:pointer}button:disabled{cursor:wait;opacity:.5}button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid #bfeaff;outline-offset:5px}button{border:0}button,summary{-webkit-tap-highlight-color:transparent}button:focus:not(:focus-visible){outline:0}[hidden]{display:none!important}
@@ -16,15 +17,9 @@ h1{font-size:clamp(34px,3.3vw,56px)}h1 span{white-space:nowrap}
 @media(max-width:800px){#app{min-height:580px}header{inset:20px 24px auto}.brand-name{font-size:16px}.welcome{left:6%;width:55vw;top:49%}h1{font-size:35px;margin:16px 0}.intro{font-size:12px;margin-bottom:18px}.mode-options{gap:6px}.mode-option{padding:10px 7px}.mode-option strong{font-size:11px}.mode-option small{font-size:9px;padding-left:0}.privacy{font-size:9px}.input-panel{right:20px;bottom:175px;width:210px}.input-panel p{display:none}.bottom-hud{bottom:27px}.voice-meter,.voice-label{left:24px}.feedback{flex-wrap:wrap}.result{bottom:24px;padding:20px}.result h2{font-size:27px}.steps{gap:10px}}
 @media(max-width:520px){.welcome{width:88vw;top:51%;background:#08111ade;padding:20px}.intro{margin-bottom:12px}h1{font-size:30px;line-height:1.4}.mode-options{margin-bottom:8px}.privacy{margin-top:8px}.brand-name{font-size:15px}.input-panel{bottom:190px;width:190px}.instruction{font-size:22px}.hint{font-size:10px}.voice-label{bottom:164px}.result-actions .primary{min-width:0}.feedback{gap:6px}.result .report-actions{margin-top:0}.timer{font-size:24px}}
 
-/* 画面全体にかかる効果の層（閃光、ビネット、グレイン、放出直前の暗転）。演出canvasより上、見出しやHUDより下。毎コマ変えるのは opacity だけ。 */
-.fx{position:absolute;inset:0;z-index:1;pointer-events:none;opacity:0;will-change:opacity}
-.fx-black{background:#02050a}
-/* 縁を暗くする。中心は素通し。 */
-.fx-vignette{background:radial-gradient(ellipse 72% 78% at 50% 52%,transparent 0%,transparent 38%,#020610 100%)}
-/* 細かいざらつき。灰色の128が「何もしない」なので、overlayで重ねると軽く荒れるだけになる。 */
-.fx-grain{mix-blend-mode:overlay;background-repeat:repeat;background-size:128px 128px}
-/* 閃光。中心が一番明るく、四隅は中心の2割以下。芯にだけ属性の色を少し混ぜる。 */
-.fx-flash{mix-blend-mode:screen;background:radial-gradient(circle closest-side at 50% 50%,var(--fx-core,#ffffff80) 0%,transparent 44%),radial-gradient(circle closest-side at 50% 50%,#fff 0%,#ffffffe6 24%,#ffffff8c 52%,#ffffff33 78%,#ffffff1f 100%)}
+/* 画面全体にかかる効果の層（閃光、ビネット、グレイン、放出直前の暗転）は overlay.css に置き、見比べ画面と共通にしている。 */
+/* 遊んでいる間、縁を暗くするのは演出の層（.fx-vignette）だけにする。固定の層は上下の暗さを薄く残すだけにして、二重に濃くならないようにする。 */
+#app[data-screen=playing] .vignette{opacity:.5}
 /* 演出を控えめにする切り替え。開始画面は音の設定の隣、プレイ中は「音を消す」の隣。 */
 .calm-option{background:none;color:#c6d5df;border:1px solid #a9b8c047;padding:6px 10px;font-size:11px;border-radius:2px}
 .calm-toggle{position:absolute;right:126px;top:158px;pointer-events:auto;background:#081728c9;color:#e1e9ed;border:1px solid #a9b8c04d;padding:7px 12px;font-size:12px}

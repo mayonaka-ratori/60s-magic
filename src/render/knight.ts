@@ -15,10 +15,16 @@ import { GlowLayer } from '@babylonjs/core/Layers/glowLayer';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
 import { colors } from './magic';
-import { getPreset, intensityOf, type EffectPreset } from './effects/presets';
+import { getPreset, type EffectPreset } from './effects/presets';
+import { smooth } from './effects/frame';
+import { FADE_OUT_AT } from './effects/screen';
 import type { Recipe } from '../game/types';
 
-const smooth=(x:number)=>{const p=clamp(x);return p*p*(3-2*p);};
+/** 演出が消え終わる時刻（ミリ秒）。画面全体の効果と同じ値を使う。 */
+const FADE_OUT_MS = FADE_OUT_AT * 1000;
+/** 反応の強さの基準にする設定（派手）。この設定のときの強さは今まで通りにする。 */
+const BASE_PRESET = getPreset(null);
+
 const mix=(a:string,b:string,r:number)=>{
   const read=(hex:string)=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
   const [ar,ag,ab]=read(a),[br,bg,bb]=read(b);
@@ -27,14 +33,16 @@ const mix=(a:string,b:string,r:number)=>{
 
 /**
  * 魔法から反応の強さ（0〜1）を出す。個数、範囲、収束が大きいほど大きく崩れる。
- * 入力の量（たくさん描き、たくさん唱えたか）は派手さの計算を通して足す。最大で0.3ほど強くなる。
+ * 入力の量（たくさん描き、たくさん唱えたか）で最大0.3ほど強くなる。量の効き方は設定で変わらない。
+ * 見た目の設定でも変わる。派手を1とした倍率を掛けるので、最大では大きく、控えめでは小さく崩れる。
+ * 派手のときの値は今まで通り。
  */
 export function reactionPower(recipe:Recipe|null|undefined,amount=0,preset:EffectPreset=getPreset(null)) {
-  const target=recipe??null;
-  const fromInput=clamp(intensityOf(target,preset,amount)-intensityOf(target,preset))*.5;
-  if(!recipe)return clamp(.45+fromInput);
+  const gain=preset.gain/BASE_PRESET.gain;
+  const fromInput=clamp(amount)*.3;
+  if(!recipe)return clamp(.45*gain+fromInput);
   const many=clamp((recipe.count-1)/5),wide=clamp((recipe.area-.2)/.8),focus=clamp(recipe.concentration);
-  return clamp(.16+many*.42+wide*.22+focus*.26+fromInput);
+  return clamp((.16+many*.42+wide*.22+focus*.26)*gain+fromInput);
 }
 
 export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45,calm=false) {
@@ -80,6 +88,33 @@ const blendPose=(weights:number[]):Pose=>{
 const HEIGHT=2.91,FOOT=.714,CROWN=.052,TAN=.3205,BACKDROP_RATIO=1672/941;
 const DEPTH=HEIGHT/((FOOT-.5)*2+(.5-CROWN)*2),CAMERA_Y=(FOOT-.5)*2*DEPTH,CAMERA_Z=-DEPTH/TAN;
 
+/** 騎士をどこへどう置くか。足元の位置、吹き飛びのずれ、縮み、回りを一つにまとめたもの。 */
+export type KnightTransform={x:number;y:number;scale:number;rot:number;footX:number;footY:number};
+
+/**
+ * 姿勢から騎士の置き方を出す。純粋な計算で、描く絵も命中の位置もこの一つだけを見る。
+ * 奥へ（上へ）押されて少し縮み、崩れるときは沈む。回りの軸は足元。
+ * width と height は描く面の大きさ（点の数）、unit は画面1pxあたりの点の数。
+ */
+export function knightTransform(pose:{push:number;collapse:number;strength:number;spin:number},width:number,height:number,unit=1):KnightTransform {
+  return {x:0,y:(-pose.push*(4+pose.strength*7)+pose.collapse*11)*unit,
+    scale:1-pose.push*.03-pose.collapse*.02,rot:pose.spin*Math.PI/180,
+    footX:width/2,footY:height*FOOT};
+}
+
+/** 置き方をcanvasの行列にする。足元を軸に回して縮め、吹き飛びの分だけずらす。 */
+export function knightMatrix(t:KnightTransform) {
+  const cos=Math.cos(t.rot),sin=Math.sin(t.rot);
+  const a=cos*t.scale,b=sin*t.scale,c=-sin*t.scale,d=cos*t.scale;
+  return {a,b,c,d,e:t.footX+t.x-(a*t.footX+c*t.footY),f:t.footY+t.y-(b*t.footX+d*t.footY)};
+}
+
+/** 同じ行列を点へ当てる。胸の核（命中の位置）を動かすのに使う。 */
+export function knightPoint(t:KnightTransform,x:number,y:number) {
+  const m=knightMatrix(t);
+  return {x:m.a*x+m.c*y+m.e,y:m.b*x+m.d*y+m.f};
+}
+
 /** 遺跡の敵。外部の素材を読み込まず、角柱・円錐・半球だけで鎧の形を組む。 */
 export class Knight {
   private engine:Engine;
@@ -102,10 +137,12 @@ export class Knight {
   // 白いシルエットと属性色の影を作る使い回しの小さなcanvas。毎コマ作り直さない。
   private stencil=document.createElement('canvas');
   private stencilContext:CanvasRenderingContext2D|null;
-  private trail:Array<{x:number;y:number;scale:number;rot:number}>=[];
+  private trail:KnightTransform[]=[];
   private cssSize='';
   target={x:.5,y:.32};
   private calm=false;
+  /** 見た目の設定（控えめ・派手・最大）。演出canvasと同じものを外から渡す。 */
+  private preset:EffectPreset=getPreset(null);
   constructor(private canvas:HTMLCanvasElement) {
     this.source.width=this.source.height=16;
     this.view=canvas.getContext('2d');
@@ -268,23 +305,17 @@ export class Knight {
     return this.stencil;
   }
   /** 立体の絵を、吹き飛びと回転、白飛び、残像、輪郭の発光と合わせて表の面へ写す。 */
-  private compose(pose:ReturnType<typeof knightPose>,recipe:Recipe|null) {
-    const context=this.view;if(!context)return null;
-    const w=this.canvas.width,h=this.canvas.height;if(w<2||h<2)return null;
-    const unit=w/Math.max(1,this.canvas.clientWidth||w);
-    const foot={x:w/2,y:h*FOOT};
-    // 奥へ（上へ）押され、少し縮む。崩れるときは沈む。回転は足元を軸にする。
-    const spot={x:0,y:(-pose.push*(4+pose.strength*7)+pose.collapse*11)*unit,
-      scale:1-pose.push*.03-pose.collapse*.02,rot:pose.spin*Math.PI/180};
-    const place=(dx=0,dy=0)=>{
-      context.setTransform(1,0,0,1,0,0);
-      context.translate(foot.x+spot.x+dx,foot.y+spot.y+dy);context.rotate(spot.rot);
-      context.scale(spot.scale,spot.scale);context.translate(-foot.x,-foot.y);
+  private compose(pose:ReturnType<typeof knightPose>,recipe:Recipe|null,spot:KnightTransform,unit:number) {
+    const context=this.view;if(!context)return;
+    const w=this.canvas.width,h=this.canvas.height;if(w<2||h<2)return;
+    // 置き方は knightTransform が出した一つだけを使う。命中の位置も同じものを見る。
+    const place=(t:KnightTransform)=>{
+      const m=knightMatrix(t);context.setTransform(m.a,m.b,m.c,m.d,m.e,m.f);
     };
-    const main=getPreset(null).palettes[recipe?.element??'neutral'].main;
+    const main=this.preset.palettes[recipe?.element??'neutral'].main;
     context.setTransform(1,0,0,1,0,0);context.globalAlpha=1;context.globalCompositeOperation='source-over';
     context.clearRect(0,0,w,h);
-    place();context.drawImage(this.source,0,0,w,h);
+    place(spot);context.drawImage(this.source,0,0,w,h);
     context.setTransform(1,0,0,1,0,0);
     // 白飛び。今描いた騎士の形の上だけを塗る。白、属性色、白の三段。
     if(pose.flashAlpha>0) {
@@ -294,38 +325,35 @@ export class Knight {
     // 輪郭の発光と残像は本体の後ろへ回す。
     context.globalCompositeOperation='destination-over';
     if(pose.rim>0) {
-      const glow=this.paintStencil(main),step=2.6*unit;
+      const glow=this.paintStencil(main),spread=2.6*unit;
       if(glow) {
-        context.globalAlpha=.35*pose.rim;
-        for(let i=0;i<8;i++) {
-          const angle=i*Math.PI/4;
-          place(Math.cos(angle)*step,Math.sin(angle)*step);context.drawImage(glow,0,0,w,h);
-        }
+        // 半分の大きさのcanvasに描いた形を、縁の分だけ広げて1回だけ重ねる。
+        // 拡大のぼけがそのままにじみになるので、8方向に重ねなくても光に見える。濃さは薄くする。
+        context.globalAlpha=.1*pose.rim;
+        place(spot);context.drawImage(glow,-spread,-spread,w+spread*2,h+spread*2);
       }
     }
     if(pose.ghost>0&&this.trail.length) {
       const ghost=this.paintStencil(mix('#ffffff',main,.25));
       if(ghost)for(let i=0;i<3&&i<this.trail.length;i++) {
-        const past=this.trail[this.trail.length-1-i];
         context.globalAlpha=(.3-i*.1)*pose.ghost;
-        context.setTransform(1,0,0,1,0,0);
-        context.translate(foot.x+past.x,foot.y+past.y);context.rotate(past.rot);
-        context.scale(past.scale,past.scale);context.translate(-foot.x,-foot.y);
+        place(this.trail[this.trail.length-1-i]);
         context.drawImage(ghost,0,0,w,h);
       }
     }
     context.setTransform(1,0,0,1,0,0);context.globalAlpha=1;context.globalCompositeOperation='source-over';
     this.trail.push(spot);if(this.trail.length>4)this.trail.shift();
-    return spot;
   }
   /** 控えめモード。白飛びを消し、残像と輪郭の発光を弱める。 */
   setCalm(calm:boolean){this.calm=calm;}
+  /** 見た目の設定（控えめ・派手・最大）。演出canvasと同じものを渡す。 */
+  setPreset(preset:EffectPreset){this.preset=preset;}
   /** amount は入力の量（0〜1）。同じ魔法でも、たくさん描いて唱えたほど反応が強くなる。 */
   render(ms:number,active:boolean,recipe:Recipe|null,amount=0,power?:number) {
     // 表示の大きさが変わっていたら、描く前に合わせ直す。
     const size=`${Math.max(1,this.canvas.clientWidth)}x${Math.max(1,this.canvas.clientHeight)}`;
     if(size!==this.cssSize)this.resize();
-    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe,amount),this.calm);
+    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe,amount,this.preset),this.calm);
     const p=blendPose(pose.weights);
     this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7);
     this.root.position.y=p.crouch+pose.breath*4;
@@ -342,17 +370,14 @@ export class Knight {
     this.scene.render();
     const w=this.engine.getRenderWidth(),h=this.engine.getRenderHeight();
     const projected=Vector3.Project(this.core.getAbsolutePosition(),Matrix.Identity(),this.scene.getTransformMatrix(),this.camera.viewport.toGlobal(w,h));
-    const spot=this.compose(pose,recipe);
-    let targetX=projected.x,targetY=projected.y;
-    // 胸の狙い先も、吹き飛びと回転の分だけ動かす。
-    if(spot) {
-      const footX=w/2,footY=h*FOOT,cos=Math.cos(spot.rot),sin=Math.sin(spot.rot);
-      const dx=(targetX-footX)*spot.scale,dy=(targetY-footY)*spot.scale;
-      targetX=footX+spot.x+dx*cos-dy*sin;targetY=footY+spot.y+dx*sin+dy*cos;
-    }
-    this.target={x:targetX/w,y:targetY/h};
+    const unit=w/Math.max(1,this.canvas.clientWidth||w);
+    // 置き方は一度だけ出し、絵と胸の狙い先の両方に同じものを使う。
+    const spot=knightTransform(pose,w,h,unit);
+    this.compose(pose,recipe,spot,unit);
+    const hit=knightPoint(spot,projected.x,projected.y);
+    this.target={x:hit.x/w,y:hit.y/h};
     this.canvas.dataset.state=pose.state;
-    this.canvas.classList.toggle('spell-finished',active&&ms>=23500);
+    this.canvas.classList.toggle('spell-finished',active&&ms>=FADE_OUT_MS);
   }
   dispose(){this.scene.dispose();this.engine.dispose();}
 }

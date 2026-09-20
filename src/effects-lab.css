@@ -1,5 +1,6 @@
 @import '@fontsource/noto-sans-jp/400.css';
 @import '@fontsource/noto-sans-jp/700.css';
+@import './overlay.css';
 :root{color-scheme:dark}
 body{margin:0;background:#070b12;color:#dfe8f4;font-family:'Noto Sans JP',sans-serif;font-size:13px}
 .lab-page{display:grid;grid-template-rows:auto 1fr auto;height:100dvh;min-height:600px}
@@ -21,6 +22,7 @@ label{display:inline-flex;align-items:center;gap:6px}
 .lab-frame{position:relative;overflow:hidden;background:#050810;border:1px solid #1b2636;border-radius:6px;isolation:isolate}
 .lab-backdrop,.lab-knight,.lab-magic{position:absolute;inset:0;width:100%;height:100%}
 .lab-backdrop{object-fit:cover;object-position:center}
-.lab-preset{position:absolute;top:8px;left:8px;background:#0b111bcc;padding:4px 8px;border-radius:6px}
-.lab-meter{position:absolute;bottom:8px;left:8px;background:#0b111bcc;padding:3px 8px;border-radius:6px;color:#9cb0c8}
+/* 設定名と粒の数は、画面全体の効果の層（.fx）より上に出して読めるようにする。 */
+.lab-preset{position:absolute;z-index:2;top:8px;left:8px;background:#0b111bcc;padding:4px 8px;border-radius:6px}
+.lab-meter{position:absolute;z-index:2;bottom:8px;left:8px;background:#0b111bcc;padding:3px 8px;border-radius:6px;color:#9cb0c8}
 @media(max-width:900px){.lab-layout{grid-template-columns:1fr}#time{width:160px}}

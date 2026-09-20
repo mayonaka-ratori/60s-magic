@@ -16,7 +16,16 @@ test('最初の24秒を最後まで遊び、線と七つの雷を記録できる
   await expect(page.locator('#spell')).toHaveAttribute('data-phase','complete');
   await page.waitForTimeout(2400);await page.screenshot({path:'test-results/03b-formed.png'});
   await expect(page.locator('#step-release')).toHaveClass('active',{timeout:4500});await page.waitForTimeout(650);await page.screenshot({path:'test-results/04-release.png'});
-  await page.waitForTimeout(950);await page.screenshot({path:'test-results/04b-impact.png'});
+  await page.waitForTimeout(950);
+  // 合成の目印。18〜19秒あたりで、合成を見せている（on）か、遅くて諦めた（gaveUp）かのどちらかになっている。どちらでも合格。
+  const composite=await page.waitForFunction(()=>{
+    const canvas=document.querySelector<HTMLCanvasElement>('#composite');
+    if(canvas?.dataset.on==='true')return '見せている';
+    if(canvas?.dataset.gaveUp==='true')return '遅くて諦めた';
+    return null;
+  },null,{timeout:2000}).then(handle=>handle.jsonValue());
+  console.log('合成:',composite);
+  await page.screenshot({path:'test-results/04b-impact.png'});
   await expect(page.locator('#result')).toBeVisible({timeout:9000});await expect(page.locator('#spell-name')).toHaveText('7つの雷の連弾');
   await expect(page.locator('#spell')).toHaveAttribute('data-visible','false');await expect(page.locator('#result-spell')).toBeVisible();
   await expect(page.locator('#transcript')).toContainText('文字で入力');await page.screenshot({path:'test-results/05-result.png'});

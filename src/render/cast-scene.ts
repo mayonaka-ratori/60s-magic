@@ -6,11 +6,16 @@ import { clamp } from '../game/motion';
 import type { Point, Recipe } from '../game/types';
 import { emptyLive, type LiveInput } from '../game/live-input';
 import { Composite, compositeSettings, layerMotion } from './composite';
+import { FADE_OUT_AT } from './effects/screen';
+
+/** 演出が消え終わって元の画面へ戻る時刻（ミリ秒）。画面全体の効果と同じ値を使う。 */
+const FADE_OUT_MS = FADE_OUT_AT * 1000;
 
 /** 層ひとつ分の変形。動く量（move）と常時の余白（pad）を掛けて作る。中心を軸にする。 */
 export function layerTransform(screen:{shakeX:number;shakeY:number;rotate:number;zoom:number},move:number,pad:number) {
   const {x,y,rotate,scale}=layerMotion(screen,move,pad);
-  if(!x&&!y&&Math.abs(rotate)<.01&&Math.abs(scale-1)<.001)return pad===1?'':`scale(${pad})`;
+  // 揺れていないときは書かない（余白のぶんの拡大だけ残す）。
+  if(!x&&!y&&Math.abs(rotate)<.01&&Math.abs(scale-pad)<.001)return pad===1?'':`scale(${pad})`;
   return `translate(${x}px,${y}px) rotate(${rotate.toFixed(3)}deg) scale(${scale.toFixed(4)})`;
 }
 
@@ -33,6 +38,8 @@ export class CastScene {
   private calm=false;
   /** 前のコマで合成が描いていたか。変わった時だけ演出canvasへ伝える。 */
   private lastCompositeDrawing=false;
+  /** 最後に描いた時刻（ms）。命中の停止を含む。体力表示もこれを見る。 */
+  private worldMs=0;
   constructor(private canvas:HTMLCanvasElement,private backdrop:HTMLImageElement,private effects:MagicCanvas,knightCanvas:HTMLCanvasElement,compositeCanvas?:HTMLCanvasElement|null) {
     this.layers=[backdrop,knightCanvas,canvas];
     this.spell=new CompletedSpell(canvas,false);
@@ -44,12 +51,15 @@ export class CastScene {
   get impactTarget(){return this.knight.target;}
   /** 控えめモード。揺れと閃光と停止を抑える。騎士の白飛びも消し、合成では色収差と歪みも切る。 */
   setCalm(calm:boolean){this.calm=calm;this.effects.setCalm(calm);this.knight.setCalm(calm);}
-  /** 今の演出の時刻（ms）。命中の停止を含む。 */
-  get effectMs(){return this.effects.effectMs;}
+  /** 今の演出の時刻（ms）。命中の停止を含む。render で更新するので、読むのは render の後。 */
+  get effectMs(){return this.worldMs;}
   render(points:Point[],ms:number,recipe:Recipe|null,voice:number,cursors:Array<{x:number;y:number}>,ready:boolean,live:LiveInput=emptyLive) {
     const width=this.canvas.clientWidth,height=this.canvas.clientHeight;
-    // 世界の時計は一つ。命中の停止は騎士と術式にも効く。
+    // 世界の時計は一つ。命中の停止は騎士と術式にも効く。体力表示も effectMs でこれを見る。
     const worldMs=ready?ms:this.effects.effectMsOf(ms,recipe,live.amount);
+    this.worldMs=worldMs;
+    // 見た目の設定（控えめ・派手・最大）は演出canvasと同じものを騎士にも使う。
+    this.knight.setPreset(this.effects.preset);
     // 入力の量を騎士へも渡す。同じ魔法でも、たくさん描いて唱えたほど大きく崩れる。
     this.knight.render(worldMs,!ready,recipe,live.amount);
     const complete=ms>=14000&&!ready;
@@ -76,10 +86,10 @@ export class CastScene {
     this.canvas.dataset.phase=ready?'ready':ms<14000?'input':ms<17000?'complete':ms<23000?'release':'finished';
     this.canvas.dataset.scale=pose.scale.toFixed(4);
     this.canvas.dataset.visible=String(!ready&&pose.opacity>0);
-    this.backdrop.classList.toggle('spell-finished',!ready&&ms>=23500);
+    this.backdrop.classList.toggle('spell-finished',!ready&&ms>=FADE_OUT_MS);
     // 遊んでいる間だけ合成を使う。終わりのぼかしに入ったらHTMLの層へ戻す。
     if(this.composite){
-      this.composite.setActive(!ready&&ms<23500);
+      this.composite.setActive(!ready&&ms<FADE_OUT_MS);
       this.composite.render({screen,t:worldMs/1000,target:this.impactTarget,calm:this.calm});
     }
     // 合成が実際に描いている間は、演出canvas内の色ずれを飛ばす（後処理の色収差と二重にかからないように）。

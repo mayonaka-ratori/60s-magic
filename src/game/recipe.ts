@@ -98,9 +98,10 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
 const amplifyPairs=['fire+ice','fire+light','dark+fire','ice+light','dark+ice','dark+light'];
 const burstPairs=['fire+lightning','fire+wind','light+lightning','dark+lightning'];
 /**
- * 二属性の合わせ方。二つの属性の相性で三つに分かれる。
- * 「熱と冷」（炎と氷）と「明と暗」（光と闇）は互いに相反するので、ぶつかるほど明るく光る「増幅」。
- * 雷が荒れる組み合わせと炎に風を足したものは「爆発」。残りは並び立つので、二色が交互に出る「持続」。
+ * 二属性の合わせ方。上の二つの表で三つに分かれる。
+ * 炎・氷・光・闇どうしの6組は、ぶつかるほど明るく光る「増幅」。
+ * 雷に炎・光・闇を足した3組と、炎に風を足した1組は「爆発」。
+ * 残りの5組（氷と雷、それに風を炎以外と合わせたもの）は並び立つので、二色が交互に出る「持続」。
  */
 export function blendOf(element:Element,accent:Element|null|undefined):Blend|null {
   if(!accent||accent===element||element==='neutral'||accent==='neutral')return null;

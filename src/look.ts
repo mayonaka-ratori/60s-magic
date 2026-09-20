@@ -38,7 +38,7 @@ let knight: Knight;
 try { renderer = new CompletedSpell(canvas); knight = new Knight(el<HTMLCanvasElement>('knight')); }
 catch { el('loading').textContent = '光の表示を準備できませんでした。ブラウザーの画像処理の設定を確認してください。'; throw new Error('確認画面のWebGL初期化に失敗'); }
 
-// 本編と同じ時刻で姿勢を切り替える。被弾は18.5秒、構えを戻すのは19.1秒ごろ。
+// 本編と同じ時刻で姿勢を止める。被弾は18.7秒、構えを戻す途中は19.9秒（本編では19.1秒から戻り始め、19.3〜20.2秒がその姿勢）。
 const poseTimes: Record<string, number> = { idle: 0, hit: 18700, recover: 19900 };
 let pose = 'idle';
 let animation = requestAnimationFrame(function frame(now: number) {
@@ -50,7 +50,7 @@ let animation = requestAnimationFrame(function frame(now: number) {
 document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(button => button.addEventListener('click', () => {
   pose = button.dataset.pose!;
   document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
-  el('note').textContent = pose === 'idle' ? '待機の姿勢で、ゆっくり上下しています' : pose === 'hit' ? '魔法が届いた瞬間の姿勢（18.5秒）で止めています' : '構えを戻す途中の姿勢（19.1秒ごろ）です';
+  el('note').textContent = pose === 'idle' ? '待機の姿勢で、ゆっくり上下しています' : pose === 'hit' ? '魔法が届いた瞬間の姿勢（18.5秒）で止めています' : '構えを戻す途中の姿勢（19.9秒）です';
 }));
 
 // 見本用の入力点。描き直した場合は、この線を使わず本人の線だけで完成形を作る。

@@ -1,11 +1,32 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest';
 import { presets, getPreset, intensityOf, increase, mixHue, lighten } from '../src/render/effects/presets';
 import { hitDelay } from '../src/render/effects/release';
-import { screenState, effectTime, hitStopOf, shockAt, wobble, HIT_STOPS, IMPACT_AT } from '../src/render/effects/screen';
+import { screenState, effectTime, hitStopOf, shockAt, wobble, HIT_STOPS, IMPACT_AT, RELEASE_AT } from '../src/render/effects/screen';
 import { ParticlePool } from '../src/render/effects/particles';
 import { drawImpact } from '../src/render/effects/impact';
 import { type Frame } from '../src/render/effects/frame';
+import { MagicCanvas } from '../src/render/magic';
 import { ELEMENTS, type Recipe } from '../src/game/types';
+
+/**
+ * 描く命令を受け流すだけの仮のcanvas。どの命令も自分を返すので、gradient も使える。
+ * 記録用の配列を渡すと、描いた命令と数の指定を書き出す。node には本物のcanvasがないため。
+ */
+const digits = (v: number) => Math.round(v * 1000) / 1000;
+const stubContext = (log?: string[]) => {
+  const held: Record<string, unknown> = {};
+  const fake: unknown = new Proxy(held, {
+    get: (target, key: string) => (key in target ? target[key] : (...args: unknown[]) => {
+      log?.push(key + ':' + args.filter(a => typeof a === 'number').map(a => digits(a as number)).join(','));
+      return fake;
+    }),
+    set: (target, key: string, value) => {
+      if (typeof value === 'number') log?.push(key + '=' + digits(value));
+      target[key] = value; return true;
+    },
+  });
+  return fake as CanvasRenderingContext2D;
+};
 
 const recipe = (over: Partial<Recipe> = {}): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
   enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null, ...over });
@@ -21,12 +42,32 @@ describe('見た目の設定', () => {
   });
   it('派手さは0〜3に収まり、個数と範囲で増え、設定の順に大きくなる', () => {
     const small = intensityOf(recipe({ count: 1, area: .2, concentration: 0, purpose: 'defend' }), presets.calm);
-    const large = intensityOf(recipe({ count: 8, area: 1, concentration: 1 }), presets.max);
+    const large = intensityOf(recipe({ count: 8, area: 1, concentration: 1 }), presets.max, 1);
     expect(small).toBeGreaterThanOrEqual(0); expect(large).toBeLessThanOrEqual(3);
     expect(intensityOf(recipe({ count: 8 }), presets.vivid)).toBeGreaterThan(intensityOf(recipe({ count: 1 }), presets.vivid));
     expect(intensityOf(recipe(), presets.calm)).toBeLessThan(intensityOf(recipe(), presets.vivid));
     expect(intensityOf(recipe(), presets.vivid)).toBeLessThan(intensityOf(recipe(), presets.max));
     expect(increase(100, 0)).toBe(100); expect(increase(100, 2)).toBe(200);
+  });
+  it('設定は倍率なので、最大の設定でもレシピの違いが派手さに出る', () => {
+    const smallest = recipe({ count: 1, area: .2, concentration: 0 }), biggest = recipe({ count: 8, area: 1, concentration: 1 });
+    // 最大の設定でも、小さいレシピは上限に張り付かない。量を目一杯足しても3に届かない。
+    expect(intensityOf(smallest, presets.max, 1)).toBeLessThan(3);
+    // レシピの違いがそのまま差になる。ふつうの魔法は最大の設定でも3に届かない。
+    expect(intensityOf(biggest, presets.max) - intensityOf(smallest, presets.max)).toBeGreaterThan(1);
+    expect(intensityOf(recipe(), presets.max)).toBeLessThan(3);
+    // 3に届くのは、8連弾（範囲と収束も目一杯）に最大の設定か入力の量を重ねたときだけ。派手の設定では量を足さなければ届かない。
+    expect(intensityOf(biggest, presets.max, 1)).toBe(3);
+    expect(intensityOf(biggest, presets.vivid)).toBeLessThan(3);
+    // 派手（既定）のふつうの魔法は1.9のまま。実機で確認した見た目を変えない。
+    expect(intensityOf(recipe(), presets.vivid)).toBeCloseTo(1.9, 5);
+  });
+  it('入力の量は設定によらず同じだけ足され、最大で0.6', () => {
+    for (const preset of [presets.calm, presets.vivid, presets.max]) {
+      const none = intensityOf(recipe(), preset), full = intensityOf(recipe(), preset, 1);
+      expect(full - none).toBeCloseTo(.6, 5);
+      expect(intensityOf(recipe(), preset, .5) - none).toBeCloseTo(.3, 5);
+    }
   });
 });
 
@@ -105,6 +146,19 @@ describe('粒の置き場', () => {
     for (let i = 0; i < 60; i++) pool.spawn({ life: 1 });
     expect(pool.count).toBe(40);
   });
+  it('出し直しても入れ物を作り直さず、前の値も残さない', () => {
+    const pool = new ParticlePool(4);
+    const first = [...pool.items];
+    for (let turn = 0; turn < 5; turn++) {
+      for (let i = 0; i < 4; i++) pool.spawn({ x: i, gravity: 300, life: .1 });
+      pool.update(.2);
+    }
+    // 何度出し直しても、置き場の粒は最初に作ったものと同じまま。
+    pool.items.forEach((p, i) => expect(p).toBe(first[i]));
+    // 指定しなかった項目は前の値ではなく既定値に戻る。
+    const again = pool.spawn({ life: 1 });
+    expect(again.gravity).toBe(0); expect(again.x).toBe(0); expect(again.drag).toBe(1); expect(again.color).toBe('#fff');
+  });
   it('吸い込み先に届いた粒は消える', () => {
     const pool = new ParticlePool(1); pool.spawn({ x: 100, y: 0, pull: 4000, px: 0, py: 0, life: 5 });
     for (let i = 0; i < 100; i++) pool.update(.03);
@@ -125,12 +179,17 @@ describe('揺れ、寄り、暗転', () => {
     expect(wobble(3.42, 1)).toBe(wobble(3.42, 1));
     expect(Math.abs(wobble(7.77, 2))).toBeLessThanOrEqual(1);
   });
-  it('傾きは1度まで、揺れの拡大は1.03倍まで', () => {
+  it('傾きは1度までで、寄りは等倍から2割の間に収まり、命中が一番強い', () => {
+    const zoomOf = (t: number) => screenState(t, 3, presets.max, 'attack').zoom;
     for (let t = 17; t < 19.5; t += .01) {
       const s = screenState(t, 3, presets.max, 'attack');
       expect(Math.abs(s.rotate)).toBeLessThanOrEqual(1);
-      expect(s.zoom).toBeLessThanOrEqual(1.11 * 1.03 * 1.03 + .001);
+      // 引くことはなく、寄りすぎて絵が破綻することもない。
+      expect(s.zoom).toBeGreaterThanOrEqual(1);
+      expect(s.zoom).toBeLessThan(1.2);
     }
+    expect(zoomOf(IMPACT_AT)).toBeGreaterThan(zoomOf(17.6));
+    expect(zoomOf(IMPACT_AT)).toBeGreaterThan(zoomOf(19.2));
   });
   it('控えめモードでは揺れも傾きも寄りも停止もなく、閃光は3分の1', () => {
     const calm = vivid(18.52, true);
@@ -186,7 +245,10 @@ describe('揺れ、寄り、暗転', () => {
     const swing = (amount: number) => { const s = screenState(17.05, 1, presets.vivid, 'attack', 0, amount); return Math.abs(s.shakeX) + Math.abs(s.shakeY); };
     expect(swing(1)).toBe(swing(0));
     // 量は派手さを通して停止に効く。派手さが3に届いたときだけとどめになる。
-    expect(hitStopOf(presets.vivid, intensityOf(recipe({ count: 8, area: 1, concentration: 1 }), presets.vivid, 1))).toBeCloseTo(HIT_STOPS.finish);
+    const biggest = recipe({ count: 8, area: 1, concentration: 1 });
+    expect(hitStopOf(presets.max, intensityOf(biggest, presets.max, 1))).toBeCloseTo(HIT_STOPS.finish);
+    // 派手の設定では、8連弾でも入力の量を足さなければとどめまでは行かない。
+    expect(hitStopOf(presets.vivid, intensityOf(biggest, presets.vivid))).toBeLessThan(HIT_STOPS.finish);
   });
 });
 
@@ -226,15 +288,6 @@ describe('属性ごとの消え方', () => {
 });
 
 describe('控えめモードは部品にも届く', () => {
-  /** 描く命令を受け流すだけの仮のcanvas。どの命令も自分を返すので、gradient も使える。 */
-  const stubContext = () => {
-    const held: Record<string, unknown> = {};
-    const fake: unknown = new Proxy(held, {
-      get: (target, key: string) => (key in target ? target[key] : () => fake),
-      set: (target, key: string, value) => { target[key] = value; return true; },
-    });
-    return fake as CanvasRenderingContext2D;
-  };
   /** 命中の部品だけを呼ぶための仮の Frame。光の絵は描かず、粒の数だけを見る。 */
   const frame = (calm: boolean, pool: ParticlePool): Frame => ({
     c: stubContext(), w: 1280, h: 720, t: IMPACT_AT + .01, dt: .016,
@@ -257,5 +310,39 @@ describe('控えめモードは部品にも届く', () => {
   });
   it('控えめでないときの数は変わらない', () => {
     expect(impactParticles(false)).toBe(Math.round(increase(presets.vivid.impactParticles, 1.5, .5)));
+  });
+});
+
+describe('コマ落ちしても同じ火花', () => {
+  /** 仮の画面。描く命令は受け流し、記録用の配列に書き出す。 */
+  const screen = (log: string[]) => {
+    const canvas = { width: 0, height: 0, getContext: () => stubContext(log), getBoundingClientRect: () => ({ width: 1280, height: 720 }) };
+    return new MagicCanvas(canvas as unknown as HTMLCanvasElement, presets.max);
+  };
+  /**
+   * 蓄積（14〜17秒）を step 秒の刻みで進め、放出から命中までは同じ刻みで進める。
+   * 蓄積の粒は毎コマ乱数を使うので、刻みが違うと乱数の消費順が変わる。
+   * 返すのは命中のコマで描いた命令だけ。
+   */
+  const untilImpact = (step: number) => {
+    const log: string[] = [], magic = screen(log), spell = recipe({ count: 3 });
+    const at = (t: number) => magic.renderEffects([], t * 1000, spell, 0, [], false, { x: .72, y: .45 }, { x: 320, y: 520 });
+    for (let t = 14; t < RELEASE_AT; t += step) at(t);
+    for (let t = RELEASE_AT; t < IMPACT_AT; t += 1 / 60) at(t);
+    log.length = 0;
+    at(IMPACT_AT);
+    return log;
+  };
+  beforeAll(() => {
+    // node には canvas も画面の細かさもないので、仮のものを置く。
+    vi.stubGlobal('devicePixelRatio', 1);
+    vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => stubContext() }) });
+  });
+  afterAll(() => vi.unstubAllGlobals());
+  it('蓄積のコマ数が違っても、命中の火花は同じ', () => {
+    const steady = untilImpact(1 / 60), dropped = untilImpact(1 / 24);
+    expect(steady.length).toBeGreaterThan(300);
+    // 粒の入る場所（置き場の添え字）は違うので、描いた命令を並べ替えて突き合わせる。
+    expect([...dropped].sort()).toEqual([...steady].sort());
   });
 });

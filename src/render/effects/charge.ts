@@ -1,8 +1,12 @@
 import { clamp } from '../../game/motion';
 import { increase } from './presets';
+import { CHARGE_AT, RELEASE_AT } from './screen';
 import { few, glow, line, noise, slow, type Frame } from './frame';
 
-const CHARGE_AT = 14, CHARGE_END = 17;
+/** 蓄積が終わる時刻（秒）。そのまま放出につながる。 */
+const CHARGE_END = RELEASE_AT;
+/** 地面から昇る細い光の本数。入力の量が多いほど増える。 */
+const RISING_STREAKS = 6, RISING_STREAKS_BY_AMOUNT = 8;
 
 /** 蓄積と完成（14〜17秒）。粒が中心へ吸い込まれ、魔法陣が回り、中心が脈打つ。 */
 export function drawCharge(f: Frame) {
@@ -26,7 +30,7 @@ export function drawCharge(f: Frame) {
   }
   // 地面から昇る細い光。
   if (preset.magicCircle) {
-    const streaks = Math.round(increase(6 + amount * 8, intensity));
+    const streaks = Math.round(increase(RISING_STREAKS + amount * RISING_STREAKS_BY_AMOUNT, intensity));
     for (let i = 0; i < streaks; i++) {
       const u = (t * (0.5 + noise(i, 3) * .5) + noise(i, 4)) % 1, x = o.x + (noise(i, 5) - .5) * reach * 1.4, top = o.y + 40 - u * (90 + intensity * 40);
       line(f, { x, y: top + 30 }, { x, y: top }, 1.2, charge * fade * (1 - u) * .5, f.palette.main, 0);

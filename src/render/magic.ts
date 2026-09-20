@@ -4,19 +4,24 @@ import { fitSpell, smoothStroke } from './spell-layout';
 import { getPreset, intensityOf, rgba, type EffectPreset } from './effects/presets';
 import { GlowSprites } from './effects/sprites';
 import { ParticlePool } from './effects/particles';
-import { screenState, effectTime, hitStopOf, RELEASE_AT, IMPACT_AT, type ScreenState } from './effects/screen';
+import { screenState, effectTime, hitStopOf, CHARGE_AT, RELEASE_AT, IMPACT_AT, FADE_OUT_AT, type ScreenState } from './effects/screen';
 import { drawParticles, type Frame, type XY } from './effects/frame';
 import { drawCharge } from './effects/charge';
 import { drawRelease, drawTravel } from './effects/release';
 import { drawImpact } from './effects/impact';
 import { drawWordReactions } from './effects/words';
-import { drawStrokeReactions } from './effects/strokes';
+import { drawStrokeReactions, newStrokeMemory, type StrokeMemory } from './effects/strokes';
 import { emptyLive, type LiveInput } from '../game/live-input';
 
 /** 属性ごとの主色。術式の線と結果の縮小図が使う。 */
 export const colors: Record<Element, string> = Object.fromEntries(Object.entries(getPreset(null).palettes).map(([k, v]) => [k, v.main])) as Record<Element, string>;
 /** canvas内の色ずれを出す長さ（秒）。命中からこの時間だけ。 */
 const CHROMATIC_WINDOW = .2;
+/**
+ * 粒の乱数の種。作り始めと作り直しで同じ値にして、1回目と2回目の散り方をそろえる。
+ * 放出と命中では、その先頭のコマで種を戻す。コマ落ちして乱数の使う順が変わっても、同じ入力なら同じ火花になる。
+ */
+const POOL_SEED = 7, RELEASE_SEED = 1013, IMPACT_SEED = 2027;
 const still: ScreenState = { shakeX: 0, shakeY: 0, flash: 0, darken: 0, chromatic: 0, hitStop: 0, rotate: 0, zoom: 1, blackout: 0, saturate: 1 };
 /** 魔法が確定する前に部品へ渡す仮のレシピ。無属性の球。 */
 const pending: Recipe = { version: 'recipe-1', element: 'neutral', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .5, area: .5, duration: .5, concentration: .5,
@@ -32,6 +37,11 @@ export class MagicCanvas {
   private sprites = new GlowSprites();
   private pool: ParticlePool;
   private fired = new Set<string>();
+  /** 描く動きへの反応の覚え書き。画面ごとに持ち、作り直しで消す。 */
+  private strokeMemory: StrokeMemory = newStrokeMemory();
+  /** 背景を暗くする放射グラデーションの作り置きと、その中心と広がり。 */
+  private darkGradient: CanvasGradient | null = null;
+  private darkKey = '';
   private lastRaw = -1; private lastEffect = -1; private lastEffectMs = 0;
   private state: ScreenState = still;
   /** 控えめモード。揺れと閃光と停止を抑える。 */
@@ -43,6 +53,7 @@ export class MagicCanvas {
     this.ctx = canvas.getContext('2d')!;
     this.preset = typeof preset === 'string' || preset == null ? getPreset(preset) : preset;
     this.pool = new ParticlePool(this.preset.maxParticles);
+    this.pool.reseed(POOL_SEED);
     this.resize();
   }
   setPreset(preset: EffectPreset | string) {
@@ -57,7 +68,7 @@ export class MagicCanvas {
   /** 与えた時刻から、停止を含んだ演出の時刻（ms）を出す。時刻だけで決まる純粋な計算。 */
   effectMsOf(ms: number, recipe: Recipe | null, amount = 0) {
     const t = ms / 1000;
-    if (t < 17) return ms;
+    if (t < RELEASE_AT) return ms;
     return effectTime(t, hitStopOf(this.preset, intensityOf(recipe, this.preset, amount), this.calm)) * 1000;
   }
   setCalm(calm: boolean) { this.calm = calm; }
@@ -71,12 +82,12 @@ export class MagicCanvas {
     const rect = this.canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio, 1.5);
     this.width = rect.width; this.height = rect.height; this.canvas.width = rect.width * dpr; this.canvas.height = rect.height * dpr; this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  private reset() { this.pool.clear(); this.pool.reseed(7); this.fired.clear(); this.lastRaw = -1; this.lastEffect = -1; this.lastEffectMs = 0; this.state = still; }
+  private reset() { this.pool.clear(); this.pool.reseed(POOL_SEED); this.strokeMemory = newStrokeMemory(); this.fired.clear(); this.lastRaw = -1; this.lastEffect = -1; this.lastEffectMs = 0; this.state = still; }
 
   renderEffects(points: Point[], ms: number, recipe: Recipe | null, voice: number, cursors: XY[], ready: boolean, target: XY, origin: XY, live: LiveInput = emptyLive) {
     const c = this.ctx, w = this.width, h = this.height, t = ms / 1000;
     c.clearRect(0, 0, w, h);
-    if (ready || t >= 23.5) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
+    if (ready || t >= FADE_OUT_AT) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
     // 時刻が戻ったら（確認画面のつまみなど）粒と一度きりの発生をやり直す。
     if (t < this.lastRaw - .05) this.reset();
     this.lastRaw = t;
@@ -95,53 +106,55 @@ export class MagicCanvas {
     if (this.state.rotate) c.rotate(this.state.rotate * Math.PI / 180);
     if (this.state.zoom !== 1) c.scale(this.state.zoom, this.state.zoom);
     c.translate(-w / 2, -h / 2);
-    c.globalAlpha = lit;
-    // 背景を暗くする。術式の周りは明るいまま残す。
+    // 背景を暗くする。術式の周りは明るいまま残す。濃さは毎コマ変わるので、色は固定にして globalAlpha で掛ける。
     if (this.state.darken > .003) {
-      const g = c.createRadialGradient(origin.x, origin.y, 40, origin.x, origin.y, Math.max(w, h) * .8);
-      g.addColorStop(0, 'rgba(4,6,14,0)'); g.addColorStop(1, `rgba(4,6,14,${this.state.darken})`);
-      c.fillStyle = g; c.fillRect(-40, -40, w + 80, h + 80);
+      c.globalAlpha = lit * this.state.darken;
+      c.fillStyle = this.darkenGradient(origin.x, origin.y, Math.max(w, h) * .8);
+      c.fillRect(-40, -40, w + 80, h + 80);
     }
     c.globalCompositeOperation = 'lighter'; c.lineCap = 'round'; c.lineJoin = 'round';
     const nodes = getNodes(points, 5);
     // 描いている間の光。線の節が光り、光が線の上を巡る。声で大きくなる。
-    if (t >= 6 && t < 17) {
+    if (t >= 6 && t < RELEASE_AT) {
       for (const p of nodes) this.sprites.draw(c, p.x * w, p.y * h, 2 + voice * 3, palette.core, palette.main, .5);
-      const runners = t >= 14 ? 14 : 8;
+      const runners = t >= CHARGE_AT ? 14 : 8;
       for (let i = 0; i < Math.min(runners, points.length); i++) {
         const index = Math.floor(((t * .16 + i / runners) % 1) * points.length), p = points[index];
         this.sprites.draw(c, p.x * w, p.y * h, 1.8, palette.core, palette.main, .7);
       }
     }
-    if (t >= 14 && t < 17) {
+    if (t >= CHARGE_AT && t < RELEASE_AT) {
       // 線の節から中心へ光が流れ込む。
-      const charge = clamp((t - 14) / 3);
+      const charge = clamp((t - CHARGE_AT) / 3);
       for (let i = 0; i < nodes.length; i++) {
         const p = (t * (.8 + charge * .6) + i / nodes.length) % 1, a = nodes[i];
         this.sprites.draw(c, a.x * w + (origin.x - a.x * w) * p, a.y * h + (origin.y - a.y * h) * p, 2, palette.core, palette.main, p * .7);
       }
     }
-    if (t < 14) for (const p of cursors) {
+    if (t < CHARGE_AT) for (const p of cursors) {
       this.sprites.draw(c, p.x * w, p.y * h, 4 + voice * 2, palette.core, palette.main, 1);
       // 手の跡に小さな光を残す。
       if (dt > 0 && this.pool.random() < .6) this.pool.spawn({ x: p.x * w, y: p.y * h, vx: (this.pool.random() - .5) * 20, vy: -10 - this.pool.random() * 20, life: .5 + this.pool.random() * .5, size: 1 + this.pool.random() * 1.2, drag: .5, color: palette.main, core: palette.core, kind: 0 });
     }
     const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, target: hit, accent, live, points, cursors, calm: this.calm,
       once: (key, run) => { if (!this.fired.has(key)) { this.fired.add(key); run(); } } };
+    // 放出と命中に入る先頭のコマで、粒の乱数の種を戻す。コマ落ちしても同じ火花になる。
+    if (te >= RELEASE_AT) frame.once('seed-release', () => this.pool.reseed(RELEASE_SEED));
+    if (te >= IMPACT_AT) frame.once('seed-impact', () => this.pool.reseed(IMPACT_SEED));
     c.globalAlpha = fade;
-    // 描いている間の即時反応。動きと言葉に、その場で光が応える。
-    if (t < 17) { c.save(); drawStrokeReactions(frame); drawWordReactions(frame); c.restore(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = fade; }
+    // 描いている間の即時反応。動きと言葉に、その場で光が応える。save と restore で濃さと重ね方は元に戻る。
+    if (t < RELEASE_AT) { c.save(); drawStrokeReactions(frame, this.strokeMemory); drawWordReactions(frame); c.restore(); }
     if (recipe) {
       drawCharge(frame);
       if (te >= RELEASE_AT) { c.save(); drawRelease(frame); drawTravel(frame); drawImpact(frame); c.restore(); }
       c.globalCompositeOperation = 'lighter';
-    } else if (t >= 14) {
+    } else if (t >= CHARGE_AT) {
       // 魔法が未確定でも蓄積の光は見せる。無属性の色で中心だけ。
-      const charge = clamp((t - 14) / 3);
+      const charge = clamp((t - CHARGE_AT) / 3);
       this.sprites.draw(c, origin.x, origin.y, 5 + charge * 11, palette.core, palette.main, .4 + charge * .3);
     }
     this.pool.update(dt);
-    drawParticles({ c, sprites: this.sprites, pool: this.pool, preset, palette, calm: this.calm } as Frame, fade);
+    drawParticles(frame, fade);
     c.restore();
     // 色のずれ。命中の直後だけ、自分の絵を左右にずらして薄く重ねる。
     // 合成が動いている間は後処理側に任せて飛ばす。合成なしでも命中から CHROMATIC_WINDOW 秒だけに絞る。
@@ -156,6 +169,20 @@ export class MagicCanvas {
       c.fillStyle = `rgba(0,0,0,${clamp(this.state.blackout)})`; c.fillRect(0, 0, w, h); c.restore();
     }
     // 閃光と暗転の全画面の塗りは、HTMLの層（src/render/overlay.ts）が担当する。
+  }
+
+  /**
+   * 背景を暗くする放射グラデーション。中心と広がりが同じ間は作り直さない。
+   * 色は一番濃い状態で持ち、そのコマの濃さは globalAlpha で掛ける。
+   */
+  private darkenGradient(x: number, y: number, radius: number) {
+    const key = `${x}|${y}|${radius}`;
+    if (!this.darkGradient || this.darkKey !== key) {
+      const g = this.ctx.createRadialGradient(x, y, 40, x, y, radius);
+      g.addColorStop(0, 'rgba(4,6,14,0)'); g.addColorStop(1, 'rgba(4,6,14,1)');
+      this.darkGradient = g; this.darkKey = key;
+    }
+    return this.darkGradient;
   }
 
   /** 結果の枠に、本人の線を縮めて描く。 */

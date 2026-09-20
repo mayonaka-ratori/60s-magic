@@ -5,6 +5,16 @@ import { RELEASE_AT, IMPACT_AT } from './screen';
 import { few, glow, line, edged, mixOf, noise, ease, type Frame, type XY } from './frame';
 
 export const ARRIVAL = IMPACT_AT - RELEASE_AT;
+/** 面（壁、結界、波）の中を流れる粒の数。派手さで増える。 */
+const SURFACE_PARTICLES = 10;
+/** 光線の帯に沿って流れる粒の数。派手さで増える。 */
+const BEAM_PARTICLES = 8;
+/** 光線の粒の、流れる位置に使う種。弾の番号はここに足し、粒の番号とは別の引数に分ける。 */
+const BEAM_FLOW_SEED = 40;
+/** 雷の本体の折れ線を、毎秒何回描き替えるか。 */
+const BOLT_STEPS_PER_SECOND = 24;
+/** 雷の折れ線の節の数と、弾ごとに番号をずらす幅。足して同じ番号にならないよう、節の数より広くとる。 */
+const BOLT_JOINTS = 6, BOLT_INDEX_SPAN = 7;
 
 /**
  * 連弾の i 発目が届くまでの遅れ（秒）。80ms間隔で数発届き、最後の1発だけ200ms空けて落とす。
@@ -37,8 +47,9 @@ export function drawBody(f: Frame, x: number, y: number, size: number, element: 
   if (element === 'ice') {
     edged(f, 2, alpha, () => { c.moveTo(x, y - size * 1.8); c.lineTo(x + size * .7, y); c.lineTo(x, y + size); c.lineTo(x - size * .7, y); c.closePath(); c.moveTo(x - size * .5, y - size * .9); c.lineTo(x + size * .5, y + size * .3); }, pal.main, pal.core);
   } else if (element === 'lightning') {
-    const k = Math.floor(time * 24) + index;
-    edged(f, 2.5, alpha, () => { c.moveTo(x - size, y - size * 1.8); for (let i = 0; i < 6; i++) c.lineTo(x + (noise(k + i) - .5) * size * 1.6, y - size * 1.5 + i * size * .6); }, pal.main, pal.core);
+    // 描き替えの段は種の側、弾の番号と節の番号は番号の側に分ける。足して同じ組み合わせになる形を避ける。
+    const step = Math.floor(time * BOLT_STEPS_PER_SECOND);
+    edged(f, 2.5, alpha, () => { c.moveTo(x - size, y - size * 1.8); for (let i = 0; i < BOLT_JOINTS; i++) c.lineTo(x + (noise(i + index * BOLT_INDEX_SPAN, step) - .5) * size * 1.6, y - size * 1.5 + i * size * .6); }, pal.main, pal.core);
   } else if (element === 'wind') {
     edged(f, 2, alpha, () => { for (let i = 0; i < 3; i++) { c.moveTo(x - size * 1.2, y + i * 5 - 5); c.quadraticCurveTo(x + Math.sin(time * 9 + i) * size * .4, y - size - i * 5, x + size * 1.2, y + i * 5 - 5); } }, pal.main, pal.core);
   } else if (element === 'fire') {
@@ -81,20 +92,26 @@ export function drawRelease(f: Frame) {
     for (let i = 0; i < rings; i++) {
       const u = clamp((time - i * .07) / .55); if (u <= 0 || u >= 1) continue;
       const size = ease(u) * (80 + intensity * 40 + i * 12);
-      c.globalAlpha = (1 - u) * .7; c.lineWidth = 3 - u * 2; c.strokeStyle = i % 2 ? f.palette.core : pal0.main;
+      // 一つおきの輪は、二色目があればその色、なければ白い芯の色で描く。
+      c.globalAlpha = (1 - u) * .7; c.lineWidth = 3 - u * 2; c.strokeStyle = i % 2 ? (mix.alt ? mix.alt.main : pal0.core) : pal0.main;
       c.beginPath(); c.ellipse(o.x, o.y, size, size * .42, 0, 0, Math.PI * 2); c.stroke();
     }
     // 放射状の線。長さは決まった乱数で、すぐ消える。
     const lines = Math.round(increase(preset.radialLines, intensity, .5)), lu = clamp(time / .32);
     if (lines && lu < 1) {
-      c.globalAlpha = (1 - lu) * .8; c.lineWidth = 1.3; c.strokeStyle = f.palette.core; c.beginPath();
-      for (let i = 0; i < lines; i++) { const a = i / lines * Math.PI * 2 + noise(i, 1) * .2, from = 18 + lu * 60, len = (40 + noise(i, 2) * 90) * (1 + intensity * .4) * lu; c.moveTo(o.x + Math.cos(a) * from, o.y + Math.sin(a) * from * .6); c.lineTo(o.x + Math.cos(a) * (from + len), o.y + Math.sin(a) * (from + len) * .6); }
-      c.stroke();
+      // 持続型は一本おきに二色目、爆発型は中間色にする。色ごとに一度ずつ引く。
+      const step = mix.alt ? 2 : 1;
+      for (let pass = 0; pass < step; pass++) {
+        c.globalAlpha = (1 - lu) * .8; c.lineWidth = 1.3; c.strokeStyle = pass && mix.alt ? mix.alt.main : (mix.mid ?? pal0.core); c.beginPath();
+        for (let i = pass; i < lines; i += step) { const a = i / lines * Math.PI * 2 + noise(i, 1) * .2, from = 18 + lu * 60, len = (40 + noise(i, 2) * 90) * (1 + intensity * .4) * lu; c.moveTo(o.x + Math.cos(a) * from, o.y + Math.sin(a) * from * .6); c.lineTo(o.x + Math.cos(a) * (from + len), o.y + Math.sin(a) * (from + len) * .6); }
+        c.stroke();
+      }
     }
     // 奥へ小さくなる輪で、術式から出た向きを見せる。
     if (violent) for (let i = 0; i < 3; i++) {
       const depth = .12 + i * .2, size = (55 - i * 13) * Math.min(1, time * 5);
-      c.globalAlpha = (1 - clamp((time - .8) / .5)) * (.4 - i * .07); c.lineWidth = 1.2; c.strokeStyle = f.palette.main;
+      // 一つおきの輪は、二色目か中間色があればその色にする。
+      c.globalAlpha = (1 - clamp((time - .8) / .5)) * (.4 - i * .07); c.lineWidth = 1.2; c.strokeStyle = i % 2 ? (mix.alt ? mix.alt.main : (mix.mid ?? pal0.main)) : pal0.main;
       c.beginPath(); c.ellipse(o.x + (g.x - o.x) * depth, o.y + (g.y - o.y) * depth, size, size * .38, -.25, 0, Math.PI * 2); c.stroke();
     }
   }
@@ -131,7 +148,7 @@ export function drawTravel(f: Frame) {
     c.globalAlpha = fade * .9; c.lineWidth = Math.max(1, (2 + r.defense * 3) * .38); c.strokeStyle = pal0.core; c.stroke(); c.strokeStyle = pal0.main;
     // 面の中を流れる格子と粒。
     if (r.form !== 'wave') { c.globalAlpha = fade * .35; c.lineWidth = 1; c.beginPath(); for (let i = -3; i <= 3; i++) { const u = ((time * .3 + i / 7) % 1) * 2 - 1; c.moveTo(p.x - size, p.y + u * rh); c.lineTo(p.x + size, p.y + u * rh * (r.form === 'wall' ? .9 : 1)); } c.stroke(); }
-    for (let i = 0; i < Math.round(increase(10, intensity)); i++) { const u = (t * .5 + noise(i)) % 1; glow(f, p.x + (noise(i, 2) - .5) * size * 1.8, p.y + rh - u * rh * 2, 1.6, fade * Math.sin(u * Math.PI) * .7); }
+    for (let i = 0; i < Math.round(increase(SURFACE_PARTICLES, intensity)); i++) { const u = (t * .5 + noise(i)) % 1; glow(f, p.x + (noise(i, 2) - .5) * size * 1.8, p.y + rh - u * rh * 2, 1.6, fade * Math.sin(u * Math.PI) * .7); }
     glow(f, p.x, p.y, 15 + intensity * 5, fade * .25);
     if (travel < 1) line(f, o, p, 2, .3);
     return;
@@ -147,8 +164,9 @@ export function drawTravel(f: Frame) {
       // 光線の縁は合わせ方で色が変わる。芯は白のまま細くはっきり残す。
       const edgeColor = mix.mid ?? (mix.alt ?? pal0).main;
       line(f, a, end, width * 2.6, fade * .28, edgeColor, 0); line(f, a, end, width * 1.5, fade * .55, edgeColor, 0);
-      line(f, a, end, width, fade * .95, pal0.main, width * .34);
-      for (let k = 0; k < Math.round(increase(8, intensity)); k++) { const u = (t * 2.5 + noise(k + i * 9)) % 1; glow(f, a.x + (end.x - a.x) * u + (noise(k, 4) - .5) * width * 2, a.y + (end.y - a.y) * u, 2, fade * .8); }
+      line(f, a, end, width, fade * .95, pal0.main, width * .34, pal0.core);
+      // 粒の番号は番号の側、弾の番号は種の側に置く。足し合わせて同じ組になると、弾どうしで粒の流れが重なる。
+      for (let k = 0; k < Math.round(increase(BEAM_PARTICLES, intensity)); k++) { const u = (t * 2.5 + noise(k, BEAM_FLOW_SEED + i)) % 1; glow(f, a.x + (end.x - a.x) * u + (noise(k, 4) - .5) * width * 2, a.y + (end.y - a.y) * u, 2, fade * .8); }
       glow(f, end.x, end.y, 9 + intensity * 3, fade * .9 * mix.boost, pal0.main, pal0.core);
       continue;
     }
