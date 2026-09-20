@@ -8,17 +8,37 @@ import { edged, few, glow, noise, ease, smooth, type Frame, type XY } from './fr
  * ほかの回からは呼ばない。時刻はすべて世界の時刻（Frame の t）で、回の表からの相対で書く。
  */
 
-/** 術式が視界を通り抜ける見せ方（4.1）。発動からの秒で使う。 */
+/**
+ * 術式が視界を通り抜ける見せ方（4.1）。発動からの秒で使う。
+ * 広げる倍率は決め打ちにしない。本人の術式の大きさと画面の大きさから、画面の外へ出る倍率を出す。
+ * 決め打ちの8倍では、大きく描いた人の術式が0.03秒で画面の外へ出てしまい、見えないため。
+ */
 export const FINISH_PASS = {
   /** 通り抜けきるまでの長さ（秒） */ seconds: .25,
-  /** 速く広がる前半の長さ（秒） */ fast: .1,
-  /** 前半で届く倍率 */ fastScale: 6,
-  /** 広がりきる倍率 */ scale: 8,
-  /** 控えめモードの広がりきる倍率 */ calmScale: 4,
-  /** 濃さ1.0のまま保つ長さ（秒） */ hold: .06,
+  /** 画面の外へ出るまでの長さ（秒） */ reach: .2,
+  /** 画面の外へ出たあと、さらに広げる倍率 */ overshoot: 1.3,
+  /** 広げる倍率の下限。小さく描いた人でもこれだけは広げる */ minScale: 2,
+  /** 控えめモードで広げる割合 */ calmShare: .5,
+  /** 濃さ1.0のまま保つ長さ（秒） */ hold: .15,
   /** 線の太さの下限（画面の高さに対する割合） */ width: .006,
-  /** 広げたぶん線も太くする割合。8倍のとき約1.8倍の太さになる */ widen: .12,
+  /** 広げたぶん線も太くする割合 */ widen: .12,
 };
+
+/** 術式の半径（画素）。中心から一番遠い点まで。 */
+export function spellRadius(points: Array<{ x: number; y: number }>, w: number, h: number, center: XY) {
+  let far = 0;
+  for (const p of points) far = Math.max(far, Math.hypot(p.x * w - center.x, p.y * h - center.y));
+  return far;
+}
+
+/**
+ * 術式が画面の外へ出る倍率。術式の外周が画面の対角線の半分を超えたら、外へ出たとみなす。
+ * 術式が小さいほど大きく広げることになるが、下限（2倍）は必ず広げる。
+ */
+export function passExitScale(w: number, h: number, radius: number) {
+  const half = Math.hypot(w, h) / 2;
+  return Math.max(FINISH_PASS.minScale, radius > 0 ? half / radius : FINISH_PASS.minScale);
+}
 
 /**
  * 描いている間の術式の線の太さ（画素）。strokes.ts が線全体を照らすときと同じ値。
@@ -78,16 +98,16 @@ export const finishHitTimes = (beat: Beat) => FINISH_HIT_OFFSETS.map(offset => b
  * 術式が通り抜けるときの拡大と濃さ。time は発動からの秒。
  * 速く始めて遅く終わる。濃さは少し保ってから0へ抜ける。時間の外では null。
  */
-export function passThrough(time: number, calm = false) {
+export function passThrough(time: number, exit: number, calm = false) {
   if (time < 0 || time >= FINISH_PASS.seconds) return null;
-  const top = calm ? FINISH_PASS.calmScale : FINISH_PASS.scale;
-  // 控えめモードでも「速く始めて遅く終わる」割合は同じにする。
-  const mid = 1 + (top - 1) * ((FINISH_PASS.fastScale - 1) / (FINISH_PASS.scale - 1));
-  const scale = time < FINISH_PASS.fast
-    ? 1 + (mid - 1) * ease(time / FINISH_PASS.fast)
-    : mid + (top - mid) * ((time - FINISH_PASS.fast) / (FINISH_PASS.seconds - FINISH_PASS.fast));
+  const top = calm ? 1 + (exit - 1) * FINISH_PASS.calmShare : exit;
+  // 0.20秒かけて画面の外へ出る。最初はゆっくり、後半で速く（二乗の曲線）。
+  // 残りの0.05秒は、外へ出たあとをさらに広げながら消す。
+  const grown = time < FINISH_PASS.reach
+    ? 1 + (top - 1) * Math.pow(time / FINISH_PASS.reach, 2)
+    : top * (1 + (FINISH_PASS.overshoot - 1) * ((time - FINISH_PASS.reach) / (FINISH_PASS.seconds - FINISH_PASS.reach)));
   const alpha = time < FINISH_PASS.hold ? 1 : 1 - (time - FINISH_PASS.hold) / (FINISH_PASS.seconds - FINISH_PASS.hold);
-  return { scale, alpha: clamp(alpha) };
+  return { scale: grown, alpha: clamp(alpha) };
 }
 
 /**
@@ -202,8 +222,10 @@ function spellPath(f: Frame, center: XY, scale: number) {
 
 /** 4.1 術式が視界を通り抜ける。完成した形を中心から一気に広げ、画面の外へ抜く。 */
 function drawPassThrough(f: Frame) {
-  const pass = passThrough(f.t - f.beat.release, f.calm);
-  if (!pass || f.points.length < 2) return;
+  if (f.points.length < 2) return;
+  const exit = passExitScale(f.w, f.h, spellRadius(f.points, f.w, f.h, f.origin));
+  const pass = passThrough(f.t - f.beat.release, exit, f.calm);
+  if (!pass) return;
   const c = f.c, width = passStrokeWidth(f.h, f.intensity, pass.scale);
   // 術式と同じ重ね方。外側のにじみ、属性色の線、白い芯の三枚。広げても細く見えないようにする。
   spellPath(f, f.origin, pass.scale);
