@@ -45,6 +45,18 @@ describe('反応の強さ', () => {
     expect(knightPose(19000, true).rim).toBeGreaterThan(0);
     expect(knightPose(19110, true).rim).toBe(0);
   });
+  it('控えめモードでは白飛びが出ず、残像と輪郭の光は3分の1になる', () => {
+    for (const ms of [18510, 18560, 18610, 18640]) {
+      expect(knightPose(ms, true, false, 'attack', 1, true).flashAlpha).toBe(0);
+      expect(knightPose(ms, true, false, 'attack', 1).flashAlpha).toBeGreaterThan(0);
+    }
+    const calm = knightPose(18700, true, false, 'attack', 1, true);
+    const loud = knightPose(18700, true, false, 'attack', 1);
+    expect(calm.ghost).toBeCloseTo(loud.ghost / 3, 5);
+    expect(knightPose(19000, true, false, 'attack', 1, true).rim).toBeCloseTo(knightPose(19000, true, false, 'attack', 1).rim / 3, 5);
+    // 控えめでないときの見た目は変えない。
+    expect(loud.ghost).toBeGreaterThan(0);
+  });
   it('動きを減らす設定では回転も移動も0にする', () => {
     const quiet = knightPose(18600, true, true, 'attack', 1);
     expect(quiet.spin).toBe(0); expect(quiet.push).toBe(0); expect(quiet.collapse).toBe(0);

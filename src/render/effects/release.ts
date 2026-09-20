@@ -105,7 +105,8 @@ export function drawTravel(f: Frame) {
   const { c, t, origin: o, target: g, preset, intensity, recipe: r } = f;
   const time = t - RELEASE_AT;
   if (time < 0 || time > 7) return;
-  const travel = clamp(time / ARRIVAL), fade = (1 - clamp((time - 3.2 - r.duration) / 2.8)) * (1 - clamp((time - 4) / 2));
+  // 頭打ちにしない。弾ごとの遅れを引いた後に bodyPoint が0〜1へ丸めるので、遅れて届く弾も騎士まで進む。
+  const travel = time / ARRIVAL, fade = (1 - clamp((time - 3.2 - r.duration) / 2.8)) * (1 - clamp((time - 4) / 2));
   if (fade <= 0) return;
   const radius = 24 + r.area * 70 + intensity * 10, focus = .7 + r.concentration * .6, mix = mixOf(f), pal0 = mix.pal;
   c.strokeStyle = pal0.main; c.fillStyle = pal0.main;

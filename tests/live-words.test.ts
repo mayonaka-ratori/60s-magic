@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { liveWords, latestElement } from '../src/game/live-words';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { liveWords, spokenElements, resetLiveWords } from '../src/game/live-words';
+import { affirmativeText } from '../src/game/recipe';
 import { SpeechBook } from '../src/game/speech-book';
 import type { SpeechEntry } from '../src/game/types';
+
+// 言葉の「初めて現れた時刻」の覚え書きは試験の間で持ち越さない。
+beforeEach(() => resetLiveWords());
 
 const say = (text: string, over: Partial<SpeechEntry> = {}): SpeechEntry =>
   ({ id: 1, revision: 1, startMs: 1000, endMs: 2000, text, final: true, stability: 1, source: 'typed', ...over });
@@ -44,14 +48,62 @@ describe('言葉への即時反応：言い直し', () => {
   it('「炎ではなく氷」は後半の氷だけを残す', () => {
     const words = liveWords([say('炎ではなく氷')]);
     expect(words.map(w => w.element)).toEqual(['ice']);
-    expect(latestElement(words)?.element).toBe('ice');
+    // 確定側（recipe.ts）の言い直しの扱いと同じ結果になる。
+    expect(affirmativeText('炎ではなく氷')).toBe('氷');
+    expect(spokenElements(words).main?.element).toBe('ice');
+    expect(spokenElements(words).accent).toBeNull();
   });
   it('否定した用途は拾わない', () => {
     expect(liveWords([say('守らないで')]).some(w => w.purpose === 'defend')).toBe(false);
   });
-  it('言い直しは後から言った方が直近の色になる', () => {
+  it('二つ言えば、先に言った方が主の色、後の方が飾り色になる', () => {
     const words = liveWords([say('炎よ', { id: 1, endMs: 2000 }), say('やっぱり氷', { id: 2, startMs: 3000, endMs: 4000 })]);
-    expect(latestElement(words)?.element).toBe('ice');
+    const { main, accent } = spokenElements(words);
+    expect(main?.element).toBe('fire');
+    expect(accent?.element).toBe('ice');
+  });
+});
+
+describe('言葉への即時反応：候補の色と飾り色', () => {
+  it('「炎よ、雷と共に撃て」は候補が炎、飾りが雷になる', () => {
+    const { main, accent } = spokenElements(liveWords([say('炎よ、雷と共に撃て')]));
+    expect(main?.element).toBe('fire');
+    expect(accent?.element).toBe('lightning');
+  });
+  it('属性語が一つだけなら飾り色はない', () => {
+    const { main, accent } = spokenElements(liveWords([say('炎よ撃て')]));
+    expect(main?.element).toBe('fire');
+    expect(accent).toBeNull();
+  });
+  it('同じ属性を二度言っても飾り色にはならない', () => {
+    expect(spokenElements(liveWords([say('炎よ、炎で撃て')])).accent).toBeNull();
+  });
+  it('属性語がなければ何も返さない', () => {
+    expect(spokenElements(liveWords([say('撃て')]))).toEqual({ main: null, accent: null });
+  });
+});
+
+describe('言葉への即時反応：言葉の時刻', () => {
+  it('途中結果が伸びても、先に出た言葉の時刻は動かない', () => {
+    const first = liveWords([say('炎', { final: false, revision: 1, endMs: 2000 })]);
+    expect(first[0].atMs).toBe(2000);
+    const second = liveWords([say('炎よ雷と', { final: false, revision: 2, endMs: 5000 })]);
+    const third = liveWords([say('炎よ雷と共に撃て', { final: false, revision: 3, endMs: 9000 })]);
+    expect(second[0].atMs).toBe(2000);
+    expect(third[0].atMs).toBe(2000);
+    // 後から現れた言葉は、その言葉が初めて聞こえた時刻を持つ。
+    expect(third.find(w => w.element === 'lightning')?.atMs).toBe(5000);
+    expect(third.find(w => w.purpose === 'attack')?.atMs).toBe(9000);
+  });
+  it('覚え書きを消せば時刻を取り直す', () => {
+    liveWords([say('炎', { final: false, revision: 1, endMs: 2000 })]);
+    resetLiveWords();
+    expect(liveWords([say('炎', { final: false, revision: 2, endMs: 6000 })])[0].atMs).toBe(6000);
+  });
+  it('言葉が一つもない間に覚え書きは自分で消える', () => {
+    liveWords([say('炎', { final: false, revision: 1, endMs: 2000 })]);
+    expect(liveWords([])).toEqual([]);
+    expect(liveWords([say('炎', { final: false, revision: 2, endMs: 6000 })])[0].atMs).toBe(6000);
   });
 });
 

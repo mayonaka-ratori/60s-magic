@@ -39,24 +39,45 @@ function wordId(entryId: number, order: number, key: string) {
   return entryId * 1000000 + order * 1000 + Math.abs(h) % 1000;
 }
 
+/**
+ * 言葉ごとの「初めて現れた時刻」。認識の途中結果は同じ発話が何度も伸びて届き、
+ * そのたびに発話の終わり時刻が後ろへ動く。そのまま使うと前に出た言葉の反応がやり直されるので、
+ * 番号ごとに最初の時刻を覚えてずっと使う。
+ */
+const firstHeardAt = new Map<number, number>();
+
+/** 覚え書きを消す。新しい一戦を始めるときに呼ぶ。 */
+export function resetLiveWords() { firstHeardAt.clear(); }
+
+function firstHeard(id: number, heard: number) {
+  const known = firstHeardAt.get(id);
+  if (known !== undefined) return known;
+  firstHeardAt.set(id, heard);
+  return heard;
+}
+
 /** 音声の記録から、演出が反応すべき言葉を取り出す。 */
 export function liveWords(entries: readonly SpeechEntry[]): LiveWord[] {
+  // まだ何も聞こえていない間は、前の一戦の覚え書きを捨てる。
+  if (!entries.length) firstHeardAt.clear();
   const found: LiveWord[] = [];
   for (const entry of [...entries].sort((a, b) => a.startMs - b.startMs)) {
     // 詠唱辞書で意味に直してから、否定と言い直しの前半を落とす。「炎ではなく氷」は氷だけが残る。
     const text = affirmativeText(readChant(entry.text ?? '').meaning);
-    const atMs = Number.isFinite(entry.endMs) && entry.endMs >= entry.startMs ? entry.endMs : entry.startMs;
+    const heard = Number.isFinite(entry.endMs) && entry.endMs >= entry.startMs ? entry.endMs : entry.startMs;
     let order = 0;
     for (let at = 0; at < text.length;) {
       const digits = countHead.exec(text.slice(at));
       const count = digits ? explicitCount(digits[0]) : null;
       if (digits && count !== null) {
-        found.push({ id: wordId(entry.id, order++, `count:${count}`), text: digits[0], element: null, kind: 'count', count, atMs, final: entry.final, form: null, purpose: null });
+        const id = wordId(entry.id, order++, `count:${count}`);
+        found.push({ id, text: digits[0], element: null, kind: 'count', count, atMs: firstHeard(id, heard), final: entry.final, form: null, purpose: null });
         at += digits[0].length; continue;
       }
       const hit = terms.find(term => text.startsWith(term.word, at));
       if (hit) {
-        found.push({ id: wordId(entry.id, order++, `${hit.kind}:${hit.word}`), text: hit.word, element: hit.element ?? null, kind: hit.kind, count: null, atMs, final: entry.final, form: hit.form ?? null, purpose: hit.purpose ?? null });
+        const id = wordId(entry.id, order++, `${hit.kind}:${hit.word}`);
+        found.push({ id, text: hit.word, element: hit.element ?? null, kind: hit.kind, count: null, atMs: firstHeard(id, heard), final: entry.final, form: hit.form ?? null, purpose: hit.purpose ?? null });
         at += hit.word.length; continue;
       }
       at++;
@@ -65,8 +86,12 @@ export function liveWords(entries: readonly SpeechEntry[]): LiveWord[] {
   return found.sort((a, b) => a.atMs - b.atMs || a.id - b.id);
 }
 
-/** 直近の属性の言葉。確定前の「候補の色」に使う。 */
-export function latestElement(words: readonly LiveWord[]): LiveWord | null {
-  for (let i = words.length - 1; i >= 0; i--) if (words[i].element) return words[i];
-  return null;
+/**
+ * 属性の言葉のうち、確定側（recipe.ts）と同じ選び方をしたもの。
+ * 先に言った属性が主属性、次に言った別の属性が飾り色になる。
+ */
+export function spokenElements(words: readonly LiveWord[]): { main: LiveWord | null; accent: LiveWord | null } {
+  const main = words.find(w => w.element) ?? null;
+  if (!main) return { main: null, accent: null };
+  return { main, accent: words.find(w => w.element && w.element !== main.element) ?? null };
 }

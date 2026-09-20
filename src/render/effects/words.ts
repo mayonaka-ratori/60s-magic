@@ -1,5 +1,5 @@
 import { clamp, getNodes } from '../../game/motion';
-import { latestElement, type LiveWord } from '../../game/live-words';
+import { spokenElements, type LiveWord } from '../../game/live-words';
 import { increase, type Palette } from './presets';
 import { glow, noise, smooth, type Frame, type XY } from './frame';
 
@@ -97,20 +97,37 @@ export function drawWordReactions(f: Frame) {
     }
   }
 
-  // 候補の色。確定前だけ、直近の属性語の色を線の節と中心の光に薄く混ぜる。確定後は主属性の色に任せる。
-  const candidate = latestElement(words);
-  if (!f.locked && candidate) {
-    const pal = f.preset.palettes[candidate.element!], u = age(f, candidate);
+  // 候補の色。確定前だけ、先に言った属性語の色を線の節と中心の光に薄く混ぜる。確定後は主属性の色に任せる。
+  // 主属性の選び方は確定側（recipe.ts）と同じで、先に言った属性が主、二つ目は飾り色になる。
+  const { main, accent } = spokenElements(words);
+  if (!f.locked && main) {
+    const pal = f.preset.palettes[main.element!], u = age(f, main);
     if (u >= 0) {
       const settle = clamp(u / .5), pulse = .5 + .5 * Math.sin(f.t * 4);
-      for (const p of getNodes(f.points, 10)) { const a = px(f, p); glow(f, a.x, a.y, 3.5 + pulse, .3 * settle, pal.main, pal.core); }
+      // 飾り色は二つ目の属性語を言った後から、主の色の上に薄く添える。
+      const accentPal = accent && age(f, accent) >= 0 ? f.preset.palettes[accent.element!] : null;
+      const accentSettle = accentPal ? clamp(age(f, accent!) / .5) : 0;
+      for (const p of getNodes(f.points, 10)) {
+        const a = px(f, p);
+        glow(f, a.x, a.y, 3.5 + pulse, .3 * settle, pal.main, pal.core);
+        if (accentPal) glow(f, a.x, a.y, 2.2 + pulse * .6, .12 * accentSettle, accentPal.main, accentPal.core);
+      }
       glow(f, o.x, o.y, 9 + pulse * 3, .28 * settle, pal.main, pal.core);
+      if (accentPal) glow(f, o.x, o.y, 6 + pulse * 2, .11 * accentSettle, accentPal.main, accentPal.core);
       // 手元にも候補の色を添える。
-      for (const p of f.cursors) { const a = px(f, p); glow(f, a.x, a.y, 5, .35 * settle, pal.main, pal.core); }
-      // 線に沿って候補の色の光が一つ巡る。
+      for (const p of f.cursors) {
+        const a = px(f, p);
+        glow(f, a.x, a.y, 5, .35 * settle, pal.main, pal.core);
+        if (accentPal) glow(f, a.x, a.y, 3.2, .14 * accentSettle, accentPal.main, accentPal.core);
+      }
+      // 線に沿って候補の色の光が一つ巡る。飾り色があるときは少し離れてもう一つ続く。
       if (f.points.length > 1) {
         const at = f.points[Math.floor(((f.t * .3) % 1) * (f.points.length - 1))], q = px(f, at);
         glow(f, q.x, q.y, 3, .4 * settle, pal.main, pal.core);
+        if (accentPal) {
+          const b = f.points[Math.floor((((f.t * .3) + .12) % 1) * (f.points.length - 1))], r = px(f, b);
+          glow(f, r.x, r.y, 2.4, .16 * accentSettle, accentPal.main, accentPal.core);
+        }
       }
     }
   }

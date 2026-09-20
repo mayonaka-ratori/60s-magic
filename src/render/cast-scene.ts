@@ -31,6 +31,8 @@ export class CastScene {
   /** 合成用のBabylonシーン。作れなかったときは null で、今まで通りのHTMLの層のまま遊べる。 */
   readonly composite:Composite|null;
   private calm=false;
+  /** 前のコマで合成が描いていたか。変わった時だけ演出canvasへ伝える。 */
+  private lastCompositeDrawing=false;
   constructor(private canvas:HTMLCanvasElement,private backdrop:HTMLImageElement,private effects:MagicCanvas,knightCanvas:HTMLCanvasElement,compositeCanvas?:HTMLCanvasElement|null) {
     this.layers=[backdrop,knightCanvas,canvas];
     this.spell=new CompletedSpell(canvas,false);
@@ -40,8 +42,8 @@ export class CastScene {
   }
   resize(){this.spell.resize();this.knight.resize();this.composite?.resize();this.revision++;}
   get impactTarget(){return this.knight.target;}
-  /** 控えめモード。揺れと閃光と停止を抑える。合成では色収差と歪みも切る。 */
-  setCalm(calm:boolean){this.calm=calm;this.effects.setCalm(calm);}
+  /** 控えめモード。揺れと閃光と停止を抑える。騎士の白飛びも消し、合成では色収差と歪みも切る。 */
+  setCalm(calm:boolean){this.calm=calm;this.effects.setCalm(calm);this.knight.setCalm(calm);}
   /** 今の演出の時刻（ms）。命中の停止を含む。 */
   get effectMs(){return this.effects.effectMs;}
   render(points:Point[],ms:number,recipe:Recipe|null,voice:number,cursors:Array<{x:number;y:number}>,ready:boolean,live:LiveInput=emptyLive) {
@@ -79,6 +81,9 @@ export class CastScene {
       this.composite.setActive(!ready&&ms<23500);
       this.composite.render({screen,t:worldMs/1000,target:this.impactTarget,calm:this.calm});
     }
+    // 合成が実際に描いている間は、演出canvas内の色ずれを飛ばす（後処理の色収差と二重にかからないように）。
+    const drawing=!!this.composite&&!this.composite.gaveUp&&this.composite.on;
+    if(drawing!==this.lastCompositeDrawing){this.effects.setCompositeActive(drawing);this.lastCompositeDrawing=drawing;}
   }
   dispose(){this.composite?.dispose();this.spell.dispose();this.knight.dispose();}
 }

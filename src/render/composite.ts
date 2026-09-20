@@ -37,6 +37,8 @@ export const POST_FROM = 16.9, POST_TO = 21;
 export const RIPPLE_SECONDS = .45;
 /** ブルームの常時の強さと、放出や命中で上げるときの倍率。 */
 export const BLOOM_BASE = .18, BLOOM_PEAK = 5, BLOOM_RELEASE = 3;
+/** 控えめモードのときの倍率の上限。全画面の白飛びを抑えるため、放出も命中もここまでに留める。 */
+export const BLOOM_CALM_PEAK = 1.6;
 /** ブルームを切る目安のfpsと、戻す目安のfps。 */
 export const FPS_DROP = 55, FPS_BACK = 58;
 
@@ -54,11 +56,12 @@ export function rippleAt(t: number, impactAt = IMPACT_AT, life = RIPPLE_SECONDS)
   return { radius: .06 + p * .82, width: .18 * (1 - p * .62), strength: .028 * (1 - p) * (1 - p) };
 }
 
-/** ブルームの強さ。放出で3倍、命中で5倍まで上がり、0.4秒ほどで元へ戻る。 */
-export function bloomWeightAt(t: number) {
+/** ブルームの強さ。放出で3倍、命中で5倍まで上がり、0.4秒ほどで元へ戻る。控えめモードでは1.6倍までに抑える。 */
+export function bloomWeightAt(t: number, calm = false) {
+  const peak = calm ? BLOOM_CALM_PEAK : BLOOM_PEAK, release = calm ? BLOOM_CALM_PEAK : BLOOM_RELEASE;
   let boost = 1;
-  if (t >= RELEASE_AT) boost = Math.max(boost, 1 + (BLOOM_RELEASE - 1) * Math.max(0, 1 - (t - RELEASE_AT) / .4));
-  if (t >= IMPACT_AT) boost = Math.max(boost, 1 + (BLOOM_PEAK - 1) * Math.max(0, 1 - (t - IMPACT_AT) / .4));
+  if (t >= RELEASE_AT) boost = Math.max(boost, 1 + (release - 1) * Math.max(0, 1 - (t - RELEASE_AT) / .4));
+  if (t >= IMPACT_AT) boost = Math.max(boost, 1 + (peak - 1) * Math.max(0, 1 - (t - IMPACT_AT) / .4));
   return BLOOM_BASE * boost;
 }
 
@@ -113,7 +116,7 @@ export type CompositeFrame = {
   t: number;
   /** 命中の位置（画面の左上を0とした0〜1） */
   target: { x: number; y: number };
-  /** 控えめモード。色収差と歪みを切る。 */
+  /** 控えめモード。色収差と歪みを切り、ブルームの倍率も抑える。 */
   calm: boolean;
 };
 
@@ -333,7 +336,7 @@ export class Composite {
     if (heavy) {
       const bloom = this.keepBloom || bloomDecision(this.bloomOn, this.fps);
       if (bloom !== this.bloomOn) { this.bloomOn = bloom; this.pipeline.bloomEnabled = bloom; }
-      this.pipeline.bloomWeight = bloomWeightAt(frame.t);
+      this.pipeline.bloomWeight = bloomWeightAt(frame.t, frame.calm);
       // 色収差は命中後0.5秒だけ。値は画面全体の効果から受け取る。控えめモードでは出さない。
       const chromatic = frame.calm ? 0 : frame.screen.chromatic;
       this.pipeline.chromaticAberration.aberrationAmount = chromatic * 6;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BLOOM_BASE, FPS_BACK, FPS_DROP, POST_FROM, POST_TO, RIPPLE_SECONDS, giveUpDecision, GIVE_UP_WARMUP, GIVE_UP_FRAMES,
+import { BLOOM_BASE, BLOOM_CALM_PEAK, FPS_BACK, FPS_DROP, POST_FROM, POST_TO, RIPPLE_SECONDS, giveUpDecision, GIVE_UP_WARMUP, GIVE_UP_FRAMES,
   bloomDecision, bloomWeightAt, compositeSettings, layerMotion, postHeavyActive, rippleAt, shouldUploadKnight } from '../src/render/composite';
 import { IMPACT_AT, RELEASE_AT } from '../src/render/effects/screen';
 
@@ -48,6 +48,14 @@ describe('ブルームの強さ', () => {
   it('放出と命中で3〜5倍になる', () => {
     expect(bloomWeightAt(17.5)).toBeCloseTo(BLOOM_BASE, 5);
     expect(bloomWeightAt(RELEASE_AT) / BLOOM_BASE).toBeCloseTo(3, 5);
+    expect(bloomWeightAt(IMPACT_AT) / BLOOM_BASE).toBeCloseTo(5, 5);
+  });
+  it('控えめモードでは1.6倍までに抑える', () => {
+    expect(bloomWeightAt(IMPACT_AT, true) / BLOOM_BASE).toBeCloseTo(BLOOM_CALM_PEAK, 5);
+    expect(bloomWeightAt(RELEASE_AT, true) / BLOOM_BASE).toBeCloseTo(BLOOM_CALM_PEAK, 5);
+    expect(bloomWeightAt(IMPACT_AT, true)).toBeLessThan(bloomWeightAt(IMPACT_AT));
+    expect(bloomWeightAt(17.5, true)).toBeCloseTo(BLOOM_BASE, 5);
+    // 控えめでないときの値は変わらない。
     expect(bloomWeightAt(IMPACT_AT) / BLOOM_BASE).toBeCloseTo(5, 5);
   });
   it('0.4秒ほどで元へ戻る', () => {

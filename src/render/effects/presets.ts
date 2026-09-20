@@ -41,7 +41,7 @@ export type EffectPreset = {
   afterglowParticles: number;
   /** 命中後の色のずれの最大px。0でなし */
   chromatic: number;
-  /** 同時に描く粒の上限。負荷の安全弁 */
+  /** 同時に描く粒の上限。負荷の安全弁。8連弾の命中で出る数（最大の設定で約1400個）を超える値にして、古い粒の横取りを防ぐ */
   maxParticles: number;
 };
 
@@ -63,9 +63,9 @@ const base: Omit<EffectPreset, 'name' | 'label' | 'baseIntensity'> = {
 export const presets: Record<string, EffectPreset> = {
   calm: { ...base, name: 'calm', label: '控えめ', baseIntensity: 0, glowScale: .85, chargeParticles: 24, magicCircle: false, darken: .12, flash: .2, releaseRings: 1, radialLines: 0,
     shake: 2, hitStop: 0, impactParticles: 40, impactRings: 1, cracks: 0, trail: .1, afterglowParticles: 16, chromatic: 0, maxParticles: 250 },
-  vivid: { ...base, name: 'vivid', label: '派手', baseIntensity: 1.2 },
+  vivid: { ...base, name: 'vivid', label: '派手', baseIntensity: 1.2, maxParticles: 900 },
   max: { ...base, name: 'max', label: '最大', baseIntensity: 2.4, glowScale: 1.3, chargeParticles: 140, darken: .6, flash: .85, releaseRings: 4, radialLines: 48,
-    shake: 18, hitStop: .14, impactParticles: 220, impactRings: 5, cracks: 10, trail: .35, afterglowParticles: 120, chromatic: 6, maxParticles: 1100 },
+    shake: 18, hitStop: .14, impactParticles: 220, impactRings: 5, cracks: 10, trail: .35, afterglowParticles: 120, chromatic: 6, maxParticles: 1500 },
 };
 export const defaultPresetName = 'vivid';
 export function getPreset(name: string | null | undefined): EffectPreset { return presets[name ?? ''] ?? presets[defaultPresetName]; }

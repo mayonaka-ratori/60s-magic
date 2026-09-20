@@ -16,35 +16,48 @@ const blank = (): Particle => ({ alive: false, x: 0, y: 0, vx: 0, vy: 0, life: 0
 
 export class ParticlePool {
   readonly items: Particle[] = [];
+  /** 空いている添え字を並べた列。先頭から取り、消えた粒は末尾に戻す。探し回らずに空きが見つかる。 */
+  private free: number[] = [];
+  /** free の何番目まで使ったか。使い切ったら列ごと空にして0に戻す。 */
+  private head = 0;
   private next = 0;
   private rng = 1;
-  constructor(readonly max: number) { for (let i = 0; i < max; i++) this.items.push(blank()); }
+  constructor(readonly max: number) { for (let i = 0; i < max; i++) { this.items.push(blank()); this.free.push(i); } }
   /** 同じ演出は同じ散り方になるよう、乱数の種を固定できる。 */
   reseed(seed: number) { this.rng = (seed | 0) || 1; }
   random() { this.rng = (Math.imul(this.rng, 1664525) + 1013904223) | 0; return (this.rng >>> 0) / 4294967296; }
   get count() { let n = 0; for (const p of this.items) if (p.alive) n++; return n; }
-  clear() { for (const p of this.items) p.alive = false; this.next = 0; }
-  spawn(init: Partial<Particle>) {
-    // 空きがなければ一番古い粒を使い回す。上限を超えて増やさない。
-    for (let i = 0; i < this.max; i++) {
-      const p = this.items[(this.next + i) % this.max];
-      if (!p.alive) { this.next = (this.next + i + 1) % this.max; return this.fill(p, init); }
-    }
-    const p = this.items[this.next]; this.next = (this.next + 1) % this.max; return this.fill(p, init);
+  clear() {
+    for (const p of this.items) p.alive = false;
+    this.free.length = 0; for (let i = 0; i < this.max; i++) this.free.push(i);
+    this.head = 0; this.next = 0;
   }
+  spawn(init: Partial<Particle>) { return this.fill(this.items[this.take()], init); }
+  /** 使う粒の添え字。空きがなければ一番古い粒を使い回す。上限を超えて増やさない。 */
+  private take() {
+    while (this.head < this.free.length) {
+      const i = this.free[this.head++];
+      if (this.head >= this.free.length) { this.free.length = 0; this.head = 0; }
+      if (!this.items[i].alive) return i;
+    }
+    const i = this.next; this.next = (this.next + 1) % this.max; return i;
+  }
+  /** 消えた粒の添え字を空きの列へ戻す。 */
+  private release(i: number) { this.free.push(i); }
   private fill(p: Particle, init: Partial<Particle>) {
     Object.assign(p, blank(), init); p.alive = true; p.span = p.life; p.seed = this.random(); return p;
   }
   update(dt: number) {
     if (dt <= 0) return;
     const keep = Math.pow(1, dt);
-    for (const p of this.items) {
+    for (let i = 0; i < this.items.length; i++) {
+      const p = this.items[i];
       if (!p.alive) continue;
-      p.life -= dt; if (p.life <= 0) { p.alive = false; continue; }
+      p.life -= dt; if (p.life <= 0) { p.alive = false; this.release(i); continue; }
       if (p.pull) {
         const dx = p.px - p.x, dy = p.py - p.y, d = Math.hypot(dx, dy) || 1;
         p.vx += dx / d * p.pull * dt; p.vy += dy / d * p.pull * dt;
-        if (d < 6) { p.alive = false; continue; }
+        if (d < 6) { p.alive = false; this.release(i); continue; }
       }
       p.vy += p.gravity * dt;
       const drag = p.drag === 1 ? keep : Math.pow(p.drag, dt);

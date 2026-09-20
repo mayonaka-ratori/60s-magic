@@ -32,7 +32,7 @@ export function reactionPower(recipe:Recipe|null|undefined) {
   return clamp(.16+many*.42+wide*.22+focus*.26);
 }
 
-export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45) {
+export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45,calm=false) {
   const t=(ms-18500)/1000;
   const hit=active?smooth(t/.09)*(1-smooth((t-.62)/.2)):0;
   const recover=active?smooth((t-.62)/.2)*(1-smooth((t-1.65)/.65)):0;
@@ -52,8 +52,9 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
     strength,push:reduced?0:push,collapse:reduced?0:collapse,
     // 打撃の向きに合わせ、右へのけぞる。単位は度。
     spin:reduced?0:push*(1.4+strength*2.6)+collapse*3.4,
-    flashAlpha:step<0?0:(.85-step*.2)*(.5+strength*.5),flashTint:step===1?1:0,
-    ghost:struck&&t<.3?1-t/.3:0,rim:struck&&t<.6?1-smooth(t/.6):0};
+    // 控えめモードでは白飛びを出さず、残像と輪郭の発光を3分の1にする。
+    flashAlpha:calm||step<0?0:(.85-step*.2)*(.5+strength*.5),flashTint:step===1?1:0,
+    ghost:(struck&&t<.3?1-t/.3:0)*(calm?1/3:1),rim:(struck&&t<.6?1-smooth(t/.6):0)*(calm?1/3:1)};
 }
 
 // 待機・ひるむ・構えを戻すの3姿勢。角度だけを並べ、weightsで混ぜる。
@@ -99,6 +100,7 @@ export class Knight {
   private trail:Array<{x:number;y:number;scale:number;rot:number}>=[];
   private cssSize='';
   target={x:.5,y:.32};
+  private calm=false;
   constructor(private canvas:HTMLCanvasElement) {
     this.source.width=this.source.height=16;
     this.view=canvas.getContext('2d');
@@ -311,11 +313,13 @@ export class Knight {
     this.trail.push(spot);if(this.trail.length>4)this.trail.shift();
     return spot;
   }
+  /** 控えめモード。白飛びを消し、残像と輪郭の発光を弱める。 */
+  setCalm(calm:boolean){this.calm=calm;}
   render(ms:number,active:boolean,recipe:Recipe|null,power?:number) {
     // 表示の大きさが変わっていたら、描く前に合わせ直す。
     const size=`${Math.max(1,this.canvas.clientWidth)}x${Math.max(1,this.canvas.clientHeight)}`;
     if(size!==this.cssSize)this.resize();
-    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe));
+    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe),this.calm);
     const p=blendPose(pose.weights);
     this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7);
     this.root.position.y=p.crouch+pose.breath*4;

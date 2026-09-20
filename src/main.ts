@@ -11,6 +11,7 @@ import { chantDictionary } from './game/chant-dictionary';
 import { CastAudio } from './audio/cast-audio';
 import { Diagnostics } from './game/diagnostics';
 import { liveInput, emptyLive } from './game/live-input';
+import { resetLiveWords } from './game/live-words';
 import { ScreenOverlay } from './render/overlay';
 import { HealthBar } from './render/health-bar';
 
@@ -157,7 +158,7 @@ async function begin(isDemo=false) {
     }
     countingDown=false;show('countdown',false);
   }
-  session=new CastSession(undefined,id);diag?.rebase(session.startMs);diag?.log('24秒を開始');voice?.start(performance.now()-session.startMs);
+  resetLiveWords();session=new CastSession(undefined,id);diag?.rebase(session.startMs);diag?.log('24秒を開始');voice?.start(performance.now()-session.startMs);
   sound.start(!!voice);
   el('app').dataset.screen='playing';
   endedInput=false;requested=false;resultShown=false;preparing=false;feedback=null;serviceNotice='';lastHandAt=performance.now();lastCameraLatency=0;frameIntervals.length=0;
