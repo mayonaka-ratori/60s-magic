@@ -215,10 +215,16 @@ export class Knight {
     };
     const [swordShoulder,swordHand]=arm('剣を持つ腕',-1);this.swordArm=swordShoulder;
     const sword=new TransformNode('剣',this.scene);sword.parent=swordHand;sword.position.set(-.04,-.46,-.03);sword.rotation.z=-.26;
-    cone('握り',sword,0,.07,0,.07,.075,.2,10,plate);
-    cone('柄頭',sword,0,.19,0,.09,.05,.08,10,trim);
-    box('鍔',sword,0,-.04,0,.46,.075,.11,trim);
-    const blade=cone('刃',sword,0,-.8,0,.17,.02,1.46,4,steel);blade.scaling.z=.32;blade.rotation.y=Math.PI/4;
+    // 柄は両手で握れる長さ。柄頭も大きくして、剣全体の重さを出す。
+    cone('握り',sword,0,.11,0,.075,.085,.28,10,plate);
+    cone('柄頭',sword,0,.29,0,.13,.07,.1,10,trim);
+    box('鍔',sword,0,-.04,0,.54,.08,.12,trim);
+    for(const side of [-1,1]) {
+      const tip=cone('鍔の先',sword,side*.29,-.04,0,.02,.11,.1,6,trim);tip.rotation.set(0,0,side*Math.PI/2);
+    }
+    // 刃は幅の広い身と先の三角に分ける。細いと画面の中でただの線に見える。
+    const blade=cone('刃',sword,0,-.73,0,.28,.25,1.14,4,steel);blade.scaling.z=.2;blade.rotation.y=Math.PI/4;
+    const point=cone('切っ先',sword,0,-1.45,0,.25,.02,.31,4,steel);point.scaling.z=.2;point.rotation.y=Math.PI/4;
     const [shieldShoulder,shieldHand]=arm('盾を持つ腕',1);this.shieldArm=shieldShoulder;
     // 盾は四角柱を平たくし、縦へ伸ばした凧形。金の縁と中央の飾りを重ねる。
     const mount=new TransformNode('盾の取り付け',this.scene);mount.parent=shieldHand;mount.position.set(.3,-.3,-.2);mount.rotation.set(-.24,-.34,.1);
@@ -226,11 +232,20 @@ export class Knight {
     // 縦へ伸ばす拡大と、五角形を回す回転を別の節に分ける。上が広く下が尖った形になる。
     const stretch=new TransformNode('盾の伸ばし',this.scene);stretch.parent=shield;stretch.scaling.set(.96,1,1.26);
     const spin=new TransformNode('盾の向き',this.scene);spin.parent=stretch;spin.rotation.y=-.314;
-    const shieldFace=MeshBuilder.CreateCylinder('盾の面',{diameter:.94,height:.09,tessellation:5},this.scene);
+    // 手前の面を一回り小さくして、縁に斜めの面を作る。平らな板に光の段が付く。
+    const shieldFace=MeshBuilder.CreateCylinder('盾の面',{diameterTop:.96,diameterBottom:.86,height:.13,tessellation:5},this.scene);
     shieldFace.parent=spin;shieldFace.material=this.armor;
-    const edge=MeshBuilder.CreateCylinder('盾の縁',{diameter:1.02,height:.05,tessellation:5},this.scene);
-    edge.parent=spin;edge.position.y=.012;edge.material=trim;
-    const band=box('盾の帯',shield,0,-.05,0,.08,.03,.98,trim);band.scaling.z=1;
+    const edge=MeshBuilder.CreateCylinder('盾の縁',{diameter:1,height:.05,tessellation:5},this.scene);
+    edge.parent=spin;edge.position.y=.03;edge.material=trim;
+    // 角の鋲。5つ置くと、のっぺりした板に見えなくなる。
+    for(let i=0;i<5;i++) {
+      const angle=Math.PI*2*i/5;
+      const stud=MeshBuilder.CreateCylinder('盾の鋲',{diameterTop:.05,diameterBottom:.09,height:.05,tessellation:8},this.scene);
+      stud.parent=spin;stud.position.set(Math.cos(-angle)*.34,-.07,Math.sin(-angle)*.34);
+      stud.rotation.x=Math.PI;stud.material=trim;
+    }
+    // 中央の帯は角を立てた隆起にする。左右で明るさが変わり、面が平らに見えなくなる。
+    const band=cone('盾の帯',shield,0,-.05,0,.14,.17,1.02,4,this.armor);band.rotation.set(Math.PI/2,0,0);band.scaling.z=.45;
     const boss=MeshBuilder.CreateCylinder('盾の飾り',{diameterTop:.07,diameterBottom:.19,height:.12,tessellation:10},this.scene);
     boss.parent=shield;boss.position.y=-.08;boss.rotation.x=Math.PI;boss.material=trim;
 
