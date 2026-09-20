@@ -17,7 +17,7 @@ import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
-import { BATTLE_END, ROUNDS } from '../game/rounds';
+import { BATTLE_END, FINISH_HIT_OFFSETS_MS, ROUNDS } from '../game/rounds';
 import { colors } from './magic';
 import { getPreset, type EffectPreset } from './effects/presets';
 import { smooth } from './effects/frame';
@@ -69,6 +69,8 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
     // shakeは体の細かい震え。立体のほうを揺らすので、押し戻しや回りとは別に持つ。
     shake:reduced?0:flash*.028,
     state:hit>.1?'hit':recover>.1?'recover':'idle',
+    // 崩れ落ちはとどめの回だけ。一回目はいつも立っている。
+    fall:0,still:1,blink:0,
     strength,push:reduced?0:push,collapse:reduced?0:collapse,
     // 打撃の向きに合わせ、右へのけぞる。単位は度。
     spin:reduced?0:push*(1.4+strength*2.6)+collapse*3.4,
@@ -94,12 +96,24 @@ const POSES:Pose[]=[
   {body:.5,head:.32,swordSwing:-1.15,swordOut:.85,shieldSwing:-.55,shieldOut:.72,crouch:-.02},
   // 前屈。胸当てが割れて弱点が見える姿勢。
   {body:-.5,head:-.34,swordSwing:-.12,swordOut:.04,shieldSwing:-.2,shieldOut:.08,crouch:-.32},
+  // 崩れ落ちる。膝をつき、体が前へ折れて腕が垂れる。とどめの回の最後だけで使う。
+  {body:-.95,head:-.52,swordSwing:.34,swordOut:.06,shieldSwing:.3,shieldOut:.05,crouch:-.92},
 ];
 /** 姿勢の重みを、表の長さにそろえる。足りない分は0。 */
 const pad=(weights:number[])=>{const full=new Array(POSES.length).fill(0);for(let i=0;i<weights.length;i++)full[i]=weights[i];return full;};
 
-// 防御の回の時刻は、回の表（rounds.ts）から作る。表を直したら騎士も一緒に動く。
-const FIRST=ROUNDS[0],DEFEND=ROUNDS[1];
+// 防御の回ととどめの回の時刻は、回の表（rounds.ts）から作る。表を直したら騎士も一緒に動く。
+const FIRST=ROUNDS[0],DEFEND=ROUNDS[1],FINISH=ROUNDS[2];
+/** とどめの一撃が核へ届く時刻（秒、世界の時刻）。 */
+export const FINAL_BLOW_AT=FINISH.finalBlow!/1000;
+/** 膝をつき始める時刻（秒）。とどめの一撃の0.9秒後。 */
+export const KNEEL_AT=FINAL_BLOW_AT+.9;
+/** 膝をつききるまでの長さ（秒）。ここまで来たら、そのまま倒れ始める。 */
+export const KNEEL_RAMP=.8;
+/** 手前へ倒れ始める時刻と、倒れきる時刻（秒）。 */
+export const FALL_FROM=KNEEL_AT+KNEEL_RAMP,FALL_TO=FALL_FROM+.7;
+/** 倒れるときに足元を軸に回す角（ラジアン）と、視点へ近づく距離。 */
+export const FALL_TURN=1.2,FALL_NEAR=.6;
 /** 防御の姿勢へ移り始める時刻（秒）。一回目の受け渡しの始まり。 */
 export const GUARD_FROM=FIRST.handoff/1000;
 /** 防御の回の姿勢の順。at の時刻から ramp 秒かけて、その姿勢へ移る。 */
@@ -111,6 +125,7 @@ const GUARD_STEPS:Array<{at:number;pose:number;ramp:number}>=[
   {at:DEFEND.impact/1000,pose:6,ramp:.22},      // 弾かれる
   {at:DEFEND.impact/1000+2.2,pose:2,ramp:1.1},  // よろめきから構えを戻す
   {at:DEFEND.handoff/1000,pose:7,ramp:1},       // 前屈して弱点を晒す
+  {at:KNEEL_AT,pose:8,ramp:KNEEL_RAMP},         // 膝をついて崩れ落ちる
 ];
 /** 弾き返したとき、騎士が自分の一撃を受ける時刻（秒）。一撃が盾に当たってから0.8秒後。 */
 export const REFLECT_BACK_AT=DEFEND.impact/1000+.8;
@@ -118,6 +133,69 @@ export const REFLECT_BACK_AT=DEFEND.impact/1000+.8;
 export const HORN_BREAK_MS=DEFEND.impact+2100;
 /** 胸当てが外れて弱点が見え始める時刻（ms）。 */
 export const WEAKPOINT_MS=DEFEND.handoff;
+
+/** とどめの回で落ちる部品の名前。 */
+export type DropKey='shoulderSpike'|'shield'|'horn'|'chestPlate'|'core'|'sword';
+/**
+ * 部品が落ちる時刻の表（秒、世界の時刻）。多段命中の4回は rounds.ts の一覧から作る。
+ * 核は砕け、剣は手放して床へ落ちる。入力では変えない。
+ */
+export const FINISH_DROPS:Array<{key:DropKey;at:number}>=[
+  {key:'shoulderSpike',at:(FINISH.impact+FINISH_HIT_OFFSETS_MS[0])/1000},
+  {key:'shield',at:(FINISH.impact+FINISH_HIT_OFFSETS_MS[1])/1000},
+  {key:'horn',at:(FINISH.impact+FINISH_HIT_OFFSETS_MS[2])/1000},
+  {key:'chestPlate',at:(FINISH.impact+FINISH_HIT_OFFSETS_MS[3])/1000},
+  {key:'core',at:FINAL_BLOW_AT+.3},
+  {key:'sword',at:FINAL_BLOW_AT+.425},
+];
+/**
+ * とどめの傷あとの表。4回の命中は当たった部品の場所に、直撃は核の場所に残る。
+ * 倒れ始め（FALL_FROM）から0.5秒で全部消す。
+ */
+export const SCAR_MARKS:Array<{key:DropKey;at:number}>=[...FINISH_DROPS.slice(0,4),{key:'core',at:FINAL_BLOW_AT}];
+/** 核が砕けきるまでの長さ（秒、世界の時刻）。スローの中なので、実際には0.5秒かかる。 */
+export const CORE_BREAK_SECONDS=.125;
+/** その時刻までに落ちている部品の一覧。 */
+export const droppedAt=(t:number):DropKey[]=>FINISH_DROPS.filter(drop=>t>=drop.at).map(drop=>drop.key);
+
+/** 落ちる速さ（1秒あたり）と、床で跳ね返るときに残る割合。 */
+export const GRAVITY=9.8,BOUNCE=.34;
+/**
+ * 落ちた部品の動き。落ち始めからの秒数と、落ち始めの高さ、飛び出す速さから、
+ * ずれと回りを出す。重力で落ち、床（高さ0）で1回だけ跳ねて止まる。ばらばらにはしない。
+ */
+export function debrisMotion(dt:number,height:number,v:{vx:number;vy:number;vz:number;spin:number}) {
+  const h=Math.max(0,height),d=Math.max(0,dt);
+  // 床に着くまでの時間。落ち始めの高さと上向きの速さから出す。
+  const land=(v.vy+Math.sqrt(v.vy*v.vy+2*GRAVITY*h))/GRAVITY;
+  // 跳ね返る速さと、跳ねている時間。跳ねるのは1回だけ。
+  const back=Math.max(0,GRAVITY*land-v.vy)*BOUNCE,bounce=2*back/GRAVITY,rest=land+bounce;
+  let y:number;
+  if(d<land)y=h+v.vy*d-GRAVITY*d*d/2;
+  else if(d<rest){const u=d-land;y=back*u-GRAVITY*u*u/2;}
+  else y=0;
+  // 横は着地まで同じ速さで進み、跳ねている間は半分に落として止まる。
+  const moved=Math.min(d,land)+Math.max(0,Math.min(d,rest)-land)*.5;
+  const turned=v.spin*Math.min(d,rest);
+  return {x:v.vx*moved,z:v.vz*moved,y:Math.max(0,y),rot:turned,resting:d>=rest};
+}
+
+/**
+ * とどめの回の核の明滅（0〜1）。40〜44秒は2秒に1回、44〜49秒は1秒に1回、
+ * 確定の0.4秒前から1秒かけて最大の明るさまで上げ、そのあとは最大のままにする。
+ */
+export function coreBlink(t:number) {
+  const start=FINISH.start/1000,fast=FINISH.chant/1000,aim=FINISH.lock/1000-.4;
+  if(t<start)return 0;
+  if(t<fast)return .5+.5*Math.sin((t-start)*Math.PI*2/2);
+  if(t<aim)return .5+.5*Math.sin((t-fast)*Math.PI*2);
+  // 50.6秒から1秒かけて上げきり、そのあとは最大のまま。
+  const from=.5+.5*Math.sin((aim-fast)*Math.PI*2);
+  return from+(1-from)*clamp(t-aim);
+}
+
+/** 膝をついてから手前へ倒れるまでの進み具合（0〜1）。控えめモードでも減らさない。 */
+export const fallAt=(t:number)=>smooth(clamp((t-FALL_FROM)/(FALL_TO-FALL_FROM)));
 
 /**
  * 防御の回（23秒以降）の姿勢。順に姿勢を移すだけで、入力では変えない。
@@ -143,12 +221,16 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
   // 控えめモードでは、白飛びを3分の1にして残像を出さない。動きはもともと止めてある。
   const soft=reduced?1/3:1,weak=WEAKPOINT_MS/1000;
   const flash=struck?Math.max(0,1-back/.24)*soft:0;
+  // 崩れ落ち。膝をついてから手前へ倒れる進み具合。倒れきったら呼吸の揺れも止める。
+  const fall=fallAt(t),still=1-fall;
   return {weights,lean:reduced?0:repel*.35,
-    breath:reduced?0:Math.sin(ms*.0016)*.003+charging*Math.sin(t*Math.PI*2)*.004,
-    flash,
+    // 0に丸めるときに符号が残らないよう、0を足しておく。
+    breath:reduced?0:(Math.sin(ms*.0016)*.003+charging*Math.sin(t*Math.PI*2)*.004)*still+0,
+    flash,fall,still,blink:coreBlink(t),
     // shakeは体の細かい震え。一回目と同じ作り方にする。
     shake:reduced?0:flash*.028,
-    state:index>=6?'exposed':index===5?'recover':index===4?'repel':index===3?'swing':index===2?'charge':index===1?'guard':'idle',
+    // 崩れ始めと倒れきった後は、とどめの回だけの名前にする。ブラウザーの試験はこれを見る。
+    state:t>=FALL_TO?'down':index>=7?'collapse':index>=6?'exposed':index===5?'recover':index===4?'repel':index===3?'swing':index===2?'charge':index===1?'guard':'idle',
     strength:.5,push:reduced?0:repel*.5+(struck?Math.max(0,1-back/.3)*.3:0),collapse:0,
     spin:reduced?0:repel*2.2,
     flashAlpha:stepIndex<0?0:(.85-stepIndex*.2)*.75*soft,flashTint:stepIndex===1?1:0,
@@ -222,6 +304,12 @@ export class Knight {
   private stencil=document.createElement('canvas');
   private stencilContext:CanvasRenderingContext2D|null;
   private trail:KnightTransform[]=[];
+  /** とどめの回で落ちる部品。落ちた後は親から外し、重力で床まで落として止める。 */
+  private parts:Array<{key:DropKey;at:number;node:TransformNode;home:TransformNode|null;
+    pos:Vector3;rot:Vector3;scale:Vector3;spot:TransformNode;v:{vx:number;vy:number;vz:number;spin:number};
+    dropped:boolean;start:Vector3;startRot:Vector3}>=[];
+  /** 今落ちている部品。毎コマの分岐で使う。 */
+  private down=new Set<DropKey>();
   private cssSize='';
   target={x:.5,y:.32};
   private calm=false;
@@ -533,9 +621,10 @@ export class Knight {
       elbow.parent=node;elbow.position.set(side*.02,-.46,0);elbow.rotation.x=.26;
       cone('肘当て',elbow,0,0,0,.22,.21,.1);
       cone('前腕',elbow,side*.01,-.24,0,.21,.17,.42);
-      return [node,elbow];
+      // 肩の棘は、とどめの一発目で落とすので取り出せるようにする。
+      return [node,elbow,spike] as [TransformNode,TransformNode,Mesh];
     };
-    const [swordShoulder,swordHand]=arm('剣を持つ腕',-1);this.swordArm=swordShoulder;
+    const [swordShoulder,swordHand,swordSpike]=arm('剣を持つ腕',-1);this.swordArm=swordShoulder;
     const sword=new TransformNode('剣',this.scene);sword.parent=swordHand;sword.position.set(-.04,-.46,-.03);sword.rotation.z=-.26;
     // 柄は両手で握れる長さ。柄頭も大きくして、剣全体の重さを出す。
     cone('握り',sword,0,.11,0,.075,.085,.28,10,plate);
@@ -595,8 +684,67 @@ export class Knight {
     glow.intensity=.75;
     for(const mesh of this.scene.meshes)if(mesh!==this.core&&mesh.name!=='兜の目')glow.addExcludedMesh(mesh as Mesh);
 
+    // とどめの回で落ちる部品を登録する。落ちる速さは部品ごとに決め打ちで、入力では変えない。
+    this.addPart('shoulderSpike',swordSpike,{vx:-1.1,vy:1.6,vz:-1.3,spin:6});
+    this.addPart('shield',this.shieldArm,{vx:1.5,vy:1.2,vz:-1.5,spin:4});
+    this.addPart('horn',this.horns[1],{vx:.9,vy:1.9,vz:-1.1,spin:7});
+    if(this.chestPlate)this.addPart('chestPlate',this.chestPlate,{vx:-.4,vy:1.4,vz:-1.7,spin:5});
+    this.addPart('core',this.core,{vx:0,vy:0,vz:0,spin:0});
+    this.addPart('sword',this.swordArm,{vx:-1,vy:.5,vz:-.7,spin:3.2});
+
     this.resize();
     this.ready=this.scene.whenReadyAsync(true).then(()=>{this.scene.render();});
+  }
+  /**
+   * 落ちる部品を一つ登録する。落ちた後にどこへ戻すかと、傷あとを描く位置の印も一緒に作る。
+   * 印は部品と同じ所に置いた見えない節で、部品が落ちた後も傷あとの場所を指し続ける。
+   */
+  private addPart(key:DropKey,node:TransformNode,v:{vx:number;vy:number;vz:number;spin:number}) {
+    const at=FINISH_DROPS.find(drop=>drop.key===key)!.at;
+    const spot=new TransformNode('傷あとの位置',this.scene);
+    spot.parent=node.parent;spot.position.copyFrom(node.position);
+    this.parts.push({key,at,node,home:node.parent as TransformNode|null,
+      pos:node.position.clone(),rot:node.rotation.clone(),scale:node.scaling.clone(),spot,v,
+      dropped:false,start:node.position.clone(),startRot:node.rotation.clone()});
+  }
+  /**
+   * 部品の脱落を時刻から作り直す。落ちる時刻を過ぎたら親から外して落とし、
+   * 時刻が戻ったり遊びが終わったりしたら元の所へ付け直す。二回目に遊ぶときも欠けたままにしない。
+   */
+  private updateParts(t:number,active:boolean,coreOpen:number) {
+    for(const part of this.parts) {
+      const should=active&&t>=part.at;
+      if(should&&!part.dropped) {
+        part.dropped=true;this.down.add(part.key);
+        if(part.key!=='core') {
+          // 親から外す。世界の中の場所と向きはそのまま残る。
+          part.node.setParent(null);
+          part.start.copyFrom(part.node.position);part.startRot.copyFrom(part.node.rotation);
+        }
+      } else if(!should&&part.dropped) {
+        part.dropped=false;this.down.delete(part.key);
+        if(part.key==='core')this.core.setEnabled(true);
+        else{part.node.setParent(part.home);part.node.position.copyFrom(part.pos);part.node.rotation.copyFrom(part.rot);part.node.scaling.copyFrom(part.scale);part.node.setEnabled(true);}
+      }
+      if(!part.dropped)continue;
+      const dt=t-part.at;
+      if(part.key==='core') {
+        // 核は落とさず、その場で縮んで消す。世界の時計で0.125秒（スロー中なので実際は0.5秒）。
+        const gone=clamp(dt/CORE_BREAK_SECONDS);
+        this.core.scaling.setAll(Math.max(.001,(1+coreOpen*1.2)*(1-gone)));
+        this.core.setEnabled(gone<1);
+        continue;
+      }
+      const m=debrisMotion(dt,part.start.y,part.v);
+      part.node.position.set(part.start.x+m.x,m.y,part.start.z+m.z);
+      part.node.rotation.set(part.startRot.x+m.rot,part.startRot.y,part.startRot.z+m.rot*.6);
+    }
+  }
+  /** 傷あとを描く場所（表に出す面の中の点）。部品が落ちた後も、当たった所を指し続ける。 */
+  private scarSpot(key:DropKey,rw:number,rh:number,w:number,h:number) {
+    const part=this.parts.find(p=>p.key===key);if(!part)return null;
+    const at=Vector3.Project(part.spot.getAbsolutePosition(),Matrix.Identity(),this.scene.getTransformMatrix(),this.camera.viewport.toGlobal(rw,rh));
+    return {x:at.x*w/rw,y:at.y*h/rh};
   }
   resize() {
     const cssWidth=Math.max(1,this.canvas.clientWidth),cssHeight=Math.max(1,this.canvas.clientHeight);
@@ -700,14 +848,20 @@ export class Knight {
     if(this.horns[0])this.horns[0].setEnabled(!(active&&ms>=HORN_BREAK_MS));
     // 弱点。胸当てが前へ外れ、胸の線が左右へ開き、核が大きくなる。
     const open=active&&ms>=WEAKPOINT_MS?clamp((ms-WEAKPOINT_MS)/700):0;
-    if(this.chestPlate){this.chestPlate.position.z=-.2-open*.45;this.chestPlate.position.y=.34-open*.6;this.chestPlate.rotation.x=open*1.3;}
+    const t=ms/1000;
+    // とどめの回の部品の脱落。落ちた部品はここで動かすので、この後の姿勢では触らない。
+    this.updateParts(t,active,open);
+    if(this.chestPlate&&!this.down.has('chestPlate')){this.chestPlate.position.z=-.2-open*.45;this.chestPlate.position.y=.34-open*.6;this.chestPlate.rotation.x=open*1.3;}
     for(let i=0;i<this.chestLines.length;i++)this.chestLines[i].position.x=(i?1:-1)*.11*(1+open*2.4);
-    this.core.scaling.setAll(1+open*1.2);
+    if(!this.down.has('core'))this.core.scaling.setAll(1+open*1.2);
     const p=blendPose(pose.weights);
     // 待機の間もわずかに体と腕を動かし、首をゆっくり振る。動きを減らす設定では止める。
-    const live=this.motion.matches?0:1,t=ms/1000;
+    // 倒れきった後は、この揺れも呼吸も止める。
+    const live=(this.motion.matches?0:1)*pose.still;
     const shake=pose.shake;
-    this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7);
+    // 崩れ落ち。足元を軸に手前へ回し、同時に視点へ近づける。控えめモードでも減らさない。
+    this.root.rotation.x=-pose.fall*FALL_TURN;
+    this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7)-pose.fall*FALL_NEAR;
     this.root.position.y=p.crouch+pose.breath*4;
     this.root.position.x=Math.sin(t*62)*shake;
     this.root.rotation.z=Math.sin(t*44)*shake;
@@ -715,11 +869,13 @@ export class Knight {
     this.body.rotation.z=Math.sin(t*.55)*.012*live;
     this.head.rotation.x=p.head;
     this.head.rotation.y=Math.sin(t*.31)*.06*live;
-    this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live,0,-p.swordOut);
-    this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);
+    if(!this.down.has('sword'))this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live,0,-p.swordOut);
+    if(!this.down.has('shield'))this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);
     // 一回目の締め切りからの蓄積で核が明るくなり、命中では前から強く照らす。弱点が出たら脈打つ。
+    // とどめの回は、明滅の速さを回の表から作った coreBlink に任せる。
     const charge=active?clamp((ms-FIRST.inputEnd)/4500):0;
-    const glow=.22+charge*.5+pose.flash*1.5+open*(.5+.5*Math.sin(ms*.012))*.7;
+    const pulse=active&&t>=FINISH.start/1000?pose.blink:.5+.5*Math.sin(ms*.012);
+    const glow=.22+charge*.5+pose.flash*1.5+open*pulse*.7;
     this.coreMaterial.emissiveColor.set(.42+glow,.32+glow*.86,.17+glow*.7);
     const blink=.82+Math.sin(t*1.7)*.18*live+pose.flash*.6;
     this.eyes.emissiveColor.set(.52*blink,.23*blink,.07*blink);
@@ -736,9 +892,17 @@ export class Knight {
     const spot=knightTransform(pose,w,h,unit);
     this.compose(pose,recipe,spot,unit);
     const hit=knightPoint(spot,projected.x*w/rw,projected.y*h/rh);
-    // 命中から0.9秒かけて薄くなり、その後は残り続ける傷あと。
-    const scar=active&&ms>=IMPACT_AT*1000?Math.max(.38,1.15-(ms-IMPACT_AT*1000)/900):0;
+    // 命中から0.9秒かけて薄くなり、その後は残り続ける傷あと。倒れ始めたら0.5秒で全部消す。
+    const wipe=active?1-clamp((t-FALL_FROM)/.5):1;
+    const scar=active&&ms>=IMPACT_AT*1000?Math.max(.38,1.15-(ms-IMPACT_AT*1000)/900)*wipe:0;
     if(scar>0)this.paintScar(scar,recipe,hit.x,hit.y);
+    // とどめの4回の命中と直撃の傷あと。当たった部品の場所にそれぞれ残る。
+    if(active&&wipe>0)for(const mark of SCAR_MARKS) {
+      if(t<mark.at)continue;
+      const strength=Math.max(.38,1.15-(t-mark.at)/.9)*wipe;
+      const at=this.scarSpot(mark.key,rw,rh,w,h);
+      if(at){const point=knightPoint(spot,at.x,at.y);this.paintScar(strength,recipe,point.x,point.y);}
+    }
     this.target={x:hit.x/w,y:hit.y/h};
     this.canvas.dataset.state=pose.state;
     this.canvas.dataset.scar=scar>0?'1':'0';

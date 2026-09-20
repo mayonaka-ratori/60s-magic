@@ -45,6 +45,14 @@ export const FINISH_HIT_OFFSETS_MS = [0, 160, 320, 500];
 
 /** 戦いの終わり。回の表の最後の行から決まる。 */
 export const BATTLE_END = ROUNDS[ROUNDS.length - 1].end;
+/**
+ * とどめの多段命中が当たる時刻。最初の到達（impact）からのずれ（ms）。
+ * 53.60、53.76、53.92、54.10秒にあたる。弾の数や属性では変えない。
+ * 体力の段、部品の脱落、傷あと、演出がすべてこの一つの表を見る。
+ */
+export const FINISH_HIT_OFFSETS_MS = [0, 160, 320, 500];
+/** とどめの多段命中の時刻（ms）。53600、53760、53920、54100。 */
+export const FINISH_HIT_MS = FINISH_HIT_OFFSETS_MS.map(offset => ROUNDS[2].impact + offset);
 /** 締め切りのあと、声の最後の文字を待てる時間。MacのGPUでの認識一回分が入る長さ。 */
 export const SPEECH_WAIT_MS = 1400;
 /** 声を待つのをやめ、Jevへ送る時刻。声が先に届けばもっと早く送る。 */
