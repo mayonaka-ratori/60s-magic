@@ -1,7 +1,7 @@
 import { clamp } from '../../game/motion';
 import { FINISH_HIT_OFFSETS_MS, type Beat } from '../../game/rounds';
 import { increase } from './presets';
-import { few, glow, noise, ease, smooth, type Frame, type XY } from './frame';
+import { edged, few, glow, noise, ease, smooth, type Frame, type XY } from './frame';
 
 /**
  * とどめの回だけの見せ方。設計「とどめと結果_詳細設計」の4章にあたる。
@@ -16,7 +16,21 @@ export const FINISH_PASS = {
   /** 広がりきる倍率 */ scale: 8,
   /** 控えめモードの広がりきる倍率 */ calmScale: 4,
   /** 濃さ1.0のまま保つ長さ（秒） */ hold: .06,
+  /** 線の太さの下限（画面の高さに対する割合） */ width: .006,
+  /** 広げたぶん線も太くする割合。8倍のとき約1.8倍の太さになる */ widen: .12,
 };
+
+/**
+ * 描いている間の術式の線の太さ（画素）。strokes.ts が線全体を照らすときと同じ値。
+ * 通り抜ける術式は、これより細くならないようにする。
+ */
+export const SPELL_LINE_WIDTH = 2.4;
+
+/** 通り抜ける術式の線の太さ（画素）。今の術式の2倍を下回らず、広げるほど少し太くする。 */
+export function passStrokeWidth(h: number, intensity: number, scale: number) {
+  const base = Math.max(h * FINISH_PASS.width, SPELL_LINE_WIDTH * 2 + intensity * .6);
+  return base * (1 + (scale - 1) * FINISH_PASS.widen);
+}
 
 /** 道筋に並べる術式の輪（4.2）。 */
 export const FINISH_RING = {
@@ -30,6 +44,9 @@ export const FINISH_RING = {
   /** くぐった輪が強く光る長さ（秒） */ lit: .12,
   /** 輪を出し始める、発動からの秒 */ from: .3,
   /** 輪を消す、最初の到達より前の秒 */ until: .1,
+  /** 線の太さ（画面の高さに対する割合） */ width: .004,
+  /** ふだんの濃さ。くぐった瞬間はここから上がる */ alpha: .8,
+  /** 奥行きに見せるための、輪の縦のつぶれ具合 */ flatten: .5,
 };
 
 /** 描く値だけを止める間（6）。世界の時計は止めない。 */
@@ -187,43 +204,63 @@ function spellPath(f: Frame, center: XY, scale: number) {
 function drawPassThrough(f: Frame) {
   const pass = passThrough(f.t - f.beat.release, f.calm);
   if (!pass || f.points.length < 2) return;
-  const c = f.c, width = 3 + f.intensity * 1.2;
+  const c = f.c, width = passStrokeWidth(f.h, f.intensity, pass.scale);
+  // 術式と同じ重ね方。外側のにじみ、属性色の線、白い芯の三枚。広げても細く見えないようにする。
   spellPath(f, f.origin, pass.scale);
-  c.globalAlpha = pass.alpha * .3; c.lineWidth = width * 3; c.strokeStyle = f.palette.main; c.stroke();
-  c.globalAlpha = pass.alpha * .85; c.lineWidth = width; c.strokeStyle = f.palette.main; c.stroke();
-  c.globalAlpha = pass.alpha; c.lineWidth = Math.max(1, width * .4); c.strokeStyle = f.palette.core; c.stroke();
+  c.globalAlpha = pass.alpha * .4; c.lineWidth = width * 2.6; c.strokeStyle = f.palette.main; c.stroke();
+  c.globalAlpha = pass.alpha * .95; c.lineWidth = width; c.strokeStyle = f.palette.main; c.stroke();
+  c.globalAlpha = pass.alpha; c.lineWidth = Math.max(1.4, width * .42); c.strokeStyle = f.palette.core; c.stroke();
+  // 節の光も一緒に広げる。線だけだと、広げたときに輪郭が弱く見える。
+  for (let i = 0; i < f.points.length; i += 5) {
+    const p = f.points[i];
+    glow(f, f.origin.x + (p.x * f.w - f.origin.x) * pass.scale, f.origin.y + (p.y * f.h - f.origin.y) * pass.scale,
+      2.5 + pass.scale * .4, pass.alpha * .5);
+  }
 }
 
-/** 4.2 道筋に並ぶ術式の輪。本体がくぐると光り、火花が外へ散る。 */
+/** その輪の線の太さ（画素）。画面の高さの0.4%を下回らず、くぐった瞬間は太くする。 */
+export function ringStrokeWidth(h: number, lit = 0) {
+  return Math.max(h * FINISH_RING.width, 2.5) * (1 + lit * .8);
+}
+
+/** 4.2 道筋に並ぶ術式の輪。術式と同じ描き方で、手前から奥まではっきり並べる。 */
 function drawRings(f: Frame) {
   const c = f.c, { origin: o, target: g, beat } = f;
   const time = f.t - beat.release, flight = beat.impact - beat.release;
   if (time < FINISH_RING.from || time > flight - FINISH_RING.until) return;
   const u = flight > 0 ? time / flight : 1;
-  const appear = clamp((time - FINISH_RING.from) / .25);
-  for (let i = 0; i < FINISH_RING.count; i++) {
+  const appear = clamp((time - FINISH_RING.from) / .18);
+  // 奥から手前の順に描く。手前の大きい輪が上に重なる。
+  for (let i = FINISH_RING.count - 1; i >= 0; i--) {
     const { depth, radius } = ringLayout(i), at = ringPassAt(i);
-    const x = o.x + (g.x - o.x) * depth, y = o.y + (g.y - o.y) * depth, rx = radius * f.h;
+    const x = o.x + (g.x - o.x) * depth, y = o.y + (g.y - o.y) * depth;
+    const rx = radius * f.h, ry = rx * FINISH_RING.flatten;
     // くぐった直後だけ強く光る。
     const lit = u >= at ? Math.max(0, 1 - (u - at) * flight / FINISH_RING.lit) : 0;
-    const base = (.22 + lit * .7) * appear;
-    c.globalAlpha = base * .5; c.lineWidth = 2 + lit * 3; c.strokeStyle = f.palette.main;
-    c.beginPath(); c.ellipse(x, y, rx, rx * .5, 0, 0, Math.PI * 2); c.stroke();
-    c.globalAlpha = base; c.lineWidth = Math.max(1, 1 + lit * 2); c.strokeStyle = lit > .2 ? f.palette.core : f.palette.main;
-    c.beginPath(); c.ellipse(x, y, rx * .86, rx * .43, 0, 0, Math.PI * 2); c.stroke();
-    // 外周の目盛り。術式の輪らしさを出す。
-    c.globalAlpha = base * .6; c.lineWidth = 1.2; c.beginPath();
+    const alpha = Math.min(1, (FINISH_RING.alpha + lit * .2) * appear);
+    const width = ringStrokeWidth(f.h, lit);
+    // 術式と同じ三枚重ね。外側のにじみ、属性色の線、白い芯。
+    edged(f, width, alpha, () => c.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2));
+    // 内側の細い輪。二重の輪にして術式らしくする。
+    edged(f, Math.max(1.2, width * .5), alpha * .7, () => c.ellipse(x, y, rx * .84, ry * .84, 0, 0, Math.PI * 2));
+    // 外周の目盛り。輪ごとに向きを変えてゆっくり回す。
+    c.globalAlpha = alpha * .7; c.lineWidth = Math.max(1.2, width * .55); c.strokeStyle = f.palette.main; c.beginPath();
     for (let k = 0; k < 16; k++) {
-      const a = k / 16 * Math.PI * 2 + f.t * .4 * (i % 2 ? -1 : 1), len = k % 4 ? .06 : .13;
-      c.moveTo(x + Math.cos(a) * rx, y + Math.sin(a) * rx * .5);
-      c.lineTo(x + Math.cos(a) * rx * (1 + len), y + Math.sin(a) * rx * (1 + len) * .5);
+      const a = k / 16 * Math.PI * 2 + f.t * .4 * (i % 2 ? -1 : 1), len = k % 4 ? .07 : .15;
+      c.moveTo(x + Math.cos(a) * rx, y + Math.sin(a) * ry);
+      c.lineTo(x + Math.cos(a) * rx * (1 + len), y + Math.sin(a) * ry * (1 + len));
     }
     c.stroke();
+    // くぐった瞬間は、輪そのものが光をまとう。
+    if (lit > 0) for (let k = 0; k < 12; k++) {
+      const a = k / 12 * Math.PI * 2;
+      glow(f, x + Math.cos(a) * rx, y + Math.sin(a) * ry, 3 + radius * 14, lit * .8);
+    }
     if (u >= at) f.once('finish-ring-' + i, () => {
       const n = Math.round(few(f, increase(10, f.intensity, .5)));
       for (let k = 0; k < n; k++) {
         const a = f.pool.random() * Math.PI * 2, speed = (60 + f.pool.random() * 180) * (1 + radius);
-        f.pool.spawn({ x: x + Math.cos(a) * rx, y: y + Math.sin(a) * rx * .5, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed * .5,
+        f.pool.spawn({ x: x + Math.cos(a) * rx, y: y + Math.sin(a) * ry, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed * .5,
           life: .3 + f.pool.random() * .4, size: 1 + f.pool.random() * 1.6, drag: .2, color: f.palette.spark, core: f.palette.core, kind: 1 });
       }
     });
