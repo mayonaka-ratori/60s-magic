@@ -50,7 +50,7 @@ const resultCanvas=document.createElement('canvas');resultCanvas.id='result-spel
 const resultMagic=new MagicCanvas(resultCanvas);
 let session:CastSession|null=null,camera:HandCamera|null=null,voice:VoiceInput|null=null;
 let cursors:Array<{x:number;y:number}>=[],lastHandAt=0,mode='pointer',demo=false,preparing=false;
-let endedInput=false,requested=false,resultShown=false,lastUi=0,feedback:string|null=null;
+let endedInput=false,requested=false,resultShown=false,lastUi=0,feedback:string|null=null,lastCameraLatency=0;
 let requestAbort:AbortController|null=null;
 let status:{jev:boolean;speech:boolean;handModel:boolean;model:string;speechProvider:'local'|'google'|'off';localSpeech:{state:string;message:string;model:string;device:string}|null}={jev:false,speech:false,handModel:false,model:'',speechProvider:'local',localSpeech:null};
 let serviceNotice='',prepareVersion=0;
@@ -86,11 +86,16 @@ async function begin(isDemo=false) {
   try {
     if(mode==='camera'&&!demo) {
       if(!status.handModel)throw new Error('手の認識ファイルがありません。接続の確認から準備方法をご覧ください。');
+      const record=diag;
       const input=new HandCamera((hands,timestamp)=>{
         if(version!==prepareVersion)return;
         cursors=hands;if(hands.length)lastHandAt=timestamp;
         if(session?.accepting)for(const hand of hands)session.motion.add(hand.x,hand.y,timestamp-session.startMs,hand.id);
-      },message=>{serviceNotice=message;});camera=input;await input.prepare();
+      },message=>{serviceNotice=message;},{
+        frame:(detectMs,latencyMs)=>{lastCameraLatency=latencyMs;record?.camera(detectMs,latencyMs);},
+        event:(kind,detail)=>{record?.log(kind,detail);if(record&&typeof detail?.delegate==='string')record.cameraDelegate=detail.delegate;},
+      });camera=input;await input.prepare();
+      if(record)record.cameraDelegate=input.delegate;
       if(version!==prepareVersion){input.dispose();return;}
     }
     if(el<HTMLInputElement>('use-voice').checked&&!demo) {
@@ -123,7 +128,7 @@ async function begin(isDemo=false) {
   session=new CastSession(undefined,id);diag?.rebase(session.startMs);diag?.log('24秒を開始');voice?.start(performance.now()-session.startMs);
   sound.start(!!voice);
   el('app').dataset.screen='playing';
-  endedInput=false;requested=false;resultShown=false;preparing=false;feedback=null;serviceNotice='';lastHandAt=performance.now();frameIntervals.length=0;
+  endedInput=false;requested=false;resultShown=false;preparing=false;feedback=null;serviceNotice='';lastHandAt=performance.now();lastCameraLatency=0;frameIntervals.length=0;
   show('welcome',false);show('enemy-label',false);show('ready-footer',false);show('result',false);show('hud',true);show('timer',true);show('bottom-hud',true);show('demo-tag',demo);show('recognized',false);
   show('input-panel',!voice&&!demo);show('meter',!!voice);show('voice-label',!demo);
   el('voice-label').textContent=voice?'声を受け付けています':'声の代わりに文字で試せます';
@@ -194,7 +199,7 @@ function drawResult(){if(session?.recipe)resultMagic.thumbnail(session.motion.di
 
 function report() {
   const sorted=[...frameIntervals].sort((a,b)=>a-b);
-  return {...session?.report(),mode:demo?'demo':mode,feedback,audio:sound.snapshot,speechFallback:session?.speech.usedFallback??false,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:sorted[Math.floor(sorted.length*0.99)]??null,cameraProcessingMs:camera?.latencyMs??null,note:'手を動かしてから表示されるまでの遅れは未計測。カメラ処理時間とは別。マウスの入力から描画までは diagnostics.drawing にある。'},
+  return {...session?.report(),mode:demo?'demo':mode,feedback,audio:sound.snapshot,speechFallback:session?.speech.usedFallback??false,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:sorted[Math.floor(sorted.length*0.99)]??null,cameraProcessingMs:lastCameraLatency||null,note:'手を動かしてから表示されるまでの遅れは未計測。カメラ処理時間とは別。マウスの入力から描画までは diagnostics.drawing にある。'},
     diagnostics:diag?.summary()??null,recordedAt:new Date().toISOString(),userAgent:navigator.userAgent,screen:{width:innerWidth,height:innerHeight,pixelRatio:devicePixelRatio}};
 }
 /** サーバー側の記録（音声認識の処理時間など）も合わせて一つのJSONにする。 */

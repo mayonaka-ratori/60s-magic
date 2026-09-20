@@ -1,5 +1,6 @@
 export class HandCamera {
   private worker:Worker|null=null;
+  private wanted=new URLSearchParams(location.search).get('hands')?.toUpperCase()==='CPU'?'CPU':'GPU';
   private stream:MediaStream|null=null;
   private video=document.createElement('video');
   private running=false;
@@ -8,7 +9,10 @@ export class HandCamera {
   private frame=0;
   private lastFrameTime=-1;
   latencyMs=0;
-  constructor(private onHands:(hands:Array<{x:number;y:number;id:number}>,timestamp:number)=>void,private onError:(message:string)=>void) {}
+  /** GPU か CPU のどちらで手を探しているか。準備のあとに決まる。 */
+  delegate='';
+  constructor(private onHands:(hands:Array<{x:number;y:number;id:number}>,timestamp:number)=>void,private onError:(message:string)=>void,
+    private hooks:{frame?:(detectMs:number,latencyMs:number)=>void;event?:(kind:string,detail?:Record<string,unknown>)=>void}={}) {}
   async prepare() {
     try {
       this.stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480},frameRate:{ideal:30,max:30}},audio:false});
@@ -17,14 +21,22 @@ export class HandCamera {
       this.worker=new Worker('/hand-worker.js');
       await new Promise<void>((resolve,reject)=>{
         const timeout=setTimeout(()=>reject(new Error('手の認識の準備が時間内に終わりませんでした')),20000);
-        this.worker!.onmessage=({data})=>{clearTimeout(timeout);if(data.type==='ready')resolve();else reject(new Error('手の認識を準備できませんでした'));};
+        this.worker!.onmessage=({data})=>{
+          if(data.type==='delegate'){this.noteDelegate(data);return;}
+          clearTimeout(timeout);
+          if(data.type==='ready'){this.delegate=data.delegate??'';this.hooks.event?.('手の認識の準備ができた',{delegate:this.delegate,warmupMs:data.warmupMs??null});resolve();}
+          else reject(new Error('手の認識を準備できませんでした'));
+        };
         this.worker!.onerror=()=>{clearTimeout(timeout);reject(new Error('手の認識を読み込めませんでした'));};
-        this.worker!.postMessage({type:'init'});
+        this.worker!.postMessage({type:'init',delegate:this.wanted});
       });
       this.worker.onmessage=({data})=>{
+        if(data.type==='delegate'){this.noteDelegate(data);return;}
         this.busy=false;
         if(data.type!=='hands'){this.onError('手の認識が止まりました');return;}
         this.latencyMs=performance.now()-data.timestamp;
+        if(data.delegate&&data.delegate!==this.delegate)this.delegate=data.delegate;
+        this.hooks.frame?.(Number(data.detectMs)||0,this.latencyMs);
         const available=this.previous.filter(p=>data.timestamp-p.t<800);
         const assigned:Array<{x:number;y:number;id:number;t:number}>=[];
         // 二つの候補の近さを全体で比較し、左右のラベルの揺れで筆を入れ替えない。
@@ -40,6 +52,11 @@ export class HandCamera {
       };
       this.running=true;this.capture();
     } catch(error) {this.dispose();throw error;}
+  }
+  /** GPUで動かせないと分かったとき。CPUへ戻したことを記録へ残す。 */
+  private noteDelegate(data:{delegate?:string;reason?:string}) {
+    this.delegate=data.delegate??this.delegate;
+    this.hooks.event?.('手の認識をCPUへ戻した',{delegate:this.delegate,reason:String(data.reason??'').slice(0,200)});
   }
   private capture=()=>{
     if(!this.running)return;
