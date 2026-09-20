@@ -13,5 +13,6 @@ try { bytes = await readFile(path); } catch {
   await writeFile(path, bytes);
 }
 const sha256 = createHash('sha256').update(bytes).digest('hex');
-await writeFile('public/vision/version.json', JSON.stringify({ mediapipe: '0.10.32', model: 'float16/1', sha256 }, null, 2));
+const mediapipe = JSON.parse(await readFile('node_modules/@mediapipe/tasks-vision/package.json', 'utf8')).version;
+await writeFile('public/vision/version.json', JSON.stringify({ mediapipe, model: 'float16/1', sha256 }, null, 2));
 console.log('手の認識に使うファイルをPCへ保存しました。', sha256);

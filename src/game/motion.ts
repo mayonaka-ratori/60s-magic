@@ -7,6 +7,9 @@ export class MotionRecorder {
   readonly display: Point[] = [];
   private last = new Map<number, Point>();
   private stroke = 0;
+  private first: Point | null = null;
+  /** 一度でも最初の点から動いたか。毎コマ全点を集計せずに済むよう、点を足すときに覚える。 */
+  hasMovement = false;
   add(x: number, y: number, t: number, hand = 0) {
     if (![x, y, t].every(Number.isFinite) || t < 0 || t >= 14000) return false;
     const previous = this.last.get(hand);
@@ -16,6 +19,8 @@ export class MotionRecorder {
     // 保存する点は補正しない。表示だけ、ごく小さい揺れを抑える。
     this.raw.push(point);
     this.last.set(hand, point);
+    if (!this.first) this.first = point;
+    else if (!this.hasMovement && (Math.abs(point.x - this.first.x) > 0.001 || Math.abs(point.y - this.first.y) > 0.001)) this.hasMovement = true;
     const rendered = { ...point };
     if (!broken && previous && distance(point, previous) < 0.012) {
       rendered.x = point.x * 0.8 + previous.x * 0.2;

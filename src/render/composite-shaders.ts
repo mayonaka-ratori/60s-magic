@@ -32,7 +32,7 @@ void main(){
  * 衝撃波の歪み。命中の位置から広がる輪の内側だけ、中心から外へ向かう向きに数pxずらす。
  * 輪の半径と幅と強さは外から渡す（composite.ts の rippleAt が時刻から決める）。
  */
-export const SHOCKWAVE_FRAGMENT = `
+const SHOCKWAVE_FRAGMENT = `
 precision highp float;
 varying vec2 vUV;
 uniform sampler2D textureSampler;

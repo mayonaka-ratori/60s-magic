@@ -44,6 +44,7 @@ export class CastScene {
     this.layers=[backdrop,knightCanvas,canvas];
     this.spell=new CompletedSpell(canvas,false);
     this.knight=new Knight(knightCanvas);
+    this.knight.setPreset(effects.preset);
     this.composite=compositeCanvas?Composite.create(compositeCanvas,{world:backdrop,knight:knightCanvas,spell:canvas,magic:effects.canvas},compositeSettings(location.search)):null;
     this.ready=Promise.all([backdrop.decode(),this.spell.ready(),this.knight.ready]).then(()=>{});
   }

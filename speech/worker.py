@@ -29,12 +29,6 @@ PRESET = default_preset()
 MODEL_DIR = Path(os.environ.get('LOCAL_SPEECH_MODEL') or str(model_dir(PRESET)))
 
 
-def model_name(preset):
-    """画面に出す名前。動かし方の違い（末尾の -mlx）は名前に含めない。"""
-    base = preset[:-4] if preset.endswith('-mlx') else preset
-    return 'kotoba-whisper-v2.0' if base == 'kotoba-v2.0' else f'whisper-{base}'
-
-
 def send(value):
     print(json.dumps(value, ensure_ascii=False), flush=True)
 
@@ -47,7 +41,8 @@ def main():
         # 一回目だけ極端に遅くなる動かし方があるため。
         for _ in range(2):
             engine.transcribe(silence(1.0))
-        send({'type': 'ready', 'model': model_name(PRESET), 'preset': PRESET, 'engine': engine.kind,
+        # 画面に出す名前は server/local-speech.ts の speechModelName が preset から決める。
+        send({'type': 'ready', 'preset': PRESET, 'engine': engine.kind,
               'device': engine.device, 'computeType': engine.compute_type, 'threads': engine.threads,
               'loadMs': round((time.perf_counter() - started) * 1000), 'vocabulary': engine.vocabulary})
     except Exception as error:

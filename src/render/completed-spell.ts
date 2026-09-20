@@ -7,7 +7,7 @@ import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
-import type { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Point } from '../game/types';
@@ -92,6 +92,16 @@ export class CompletedSpell {
       if (clean.length < 2) return;
       const mesh = MeshBuilder.CreateTube(name, { path: clean, radius, tessellation: 6 }, this.scene);
       mesh.material = material;mesh.parent=this.root;mesh.metadata={detail:!name.startsWith('本人が描いた線')}; this.meshes.push(mesh);
+      return mesh;
+    };
+    /** 何本もの短い管を一つの形にまとめる。描く回数が本数ぶんから1回に減る。 */
+    const bundle = (name: string, parts: Array<Mesh | undefined>) => {
+      const meshes = parts.filter((m): m is Mesh => !!m);
+      if (meshes.length < 2) return;
+      const merged = Mesh.MergeMeshes(meshes, true, false);
+      this.meshes = this.meshes.filter(m => !meshes.includes(m));
+      if (!merged) return;
+      merged.name = name; merged.material = meshes[0].material; merged.parent = this.root; merged.metadata = { detail: true }; this.meshes.push(merged);
     };
     const ring = (center: Vector3, radius: number, material = this.guide, thickness = .38) => {
       tube('光点を囲む線', Array.from({ length: 81 }, (_, i) => center.add(new Vector3(Math.cos(i / 80 * Math.PI * 2) * radius, Math.sin(i / 80 * Math.PI * 2) * radius, 1))), thickness, material);
@@ -134,10 +144,10 @@ export class CompletedSpell {
       if (nodes.every(p => Vector3.Distance(p, candidate.p) > radius * .25)) nodes.push(candidate.p);
     }
     // 外周は補助表示。元の線はそのまま残し、外周に引き寄せない。
-    for (let i = 0; i < 100; i++) {
+    bundle('外周の目盛り', Array.from({ length: 100 }, (_, i) => {
       const a = i / 100 * Math.PI * 2;
-      tube('外周の短い目盛り', [a, a + .028].map(t => center.add(new Vector3(Math.cos(t) * rx, Math.sin(t) * ry, 2))), .32, this.guide);
-    }
+      return tube('外周の短い目盛り', [a, a + .028].map(t => center.add(new Vector3(Math.cos(t) * rx, Math.sin(t) * ry, 2))), .32, this.guide);
+    }));
     tube('外周の淡い弧', Array.from({length: 91}, (_,i) => center.add(new Vector3(Math.cos(i/90*Math.PI*1.65+.25)*rx,Math.sin(i/90*Math.PI*1.65+.25)*ry,2))), .42, this.guide);
     for (const [i, p] of nodes.entries()) {
       dot(p, i === 1 ? 4 : 3.1); ring(p, i === 1 ? 12 : 9, this.line, .4);

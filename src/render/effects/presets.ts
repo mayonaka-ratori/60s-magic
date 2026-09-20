@@ -97,7 +97,7 @@ export function intensityOf(recipe: Recipe | null, preset: EffectPreset, amount 
 /** 派手さに応じて数を増やす。派手さ0で1倍、3で最大約2.5倍。 */
 export const increase = (value: number, intensity: number, rate = .5) => value * (1 + intensity * rate);
 
-export function hexToRgb(hex: string) {
+function hexToRgb(hex: string) {
   const n = parseInt(hex.slice(1, 7), 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }

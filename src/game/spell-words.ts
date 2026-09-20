@@ -26,20 +26,20 @@ export type SpellTerm = {
 };
 
 /** 属性を見る順。先に言った属性が主属性、次に言った別の属性が飾り色になる。 */
-export const ELEMENT_ORDER: readonly Element[] = ['fire', 'ice', 'lightning', 'wind', 'light', 'dark'];
+const ELEMENT_ORDER: readonly Element[] = ['fire', 'ice', 'lightning', 'wind', 'light', 'dark'];
 /** 用途を見る順。上から先に当たったものを使う。 */
 export const PURPOSE_ORDER: readonly Purpose[] = ['defend', 'bind', 'enhance', 'attack'];
 /** 形を見る順。上から先に当たったものを使う。 */
 export const FORM_ORDER: readonly Form[] = ['wall', 'dome', 'wave', 'beam', 'orb', 'swarm'];
 
 /** 個数に添える言葉。「三つ」「4本」など。 */
-export const COUNT_UNITS = ['つ', '本', '個', '発', '体', '枚'] as const;
+const COUNT_UNITS = ['つ', '本', '個', '発', '体', '枚'] as const;
 /** 漢数字の読み替え。 */
 export const KANJI_NUMBERS: Record<string, number> =
   { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, 百: 100 };
 
 /** 語彙の表。行の並びは意味ごとにまとめてある。 */
-export const SPELL_TERMS: readonly SpellTerm[] = [
+const SPELL_TERMS: readonly SpellTerm[] = [
   // 属性の言葉
   { word: '炎', kind: 'element', element: 'fire' },
   { word: '火', kind: 'element', element: 'fire' },

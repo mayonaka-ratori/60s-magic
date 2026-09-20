@@ -45,7 +45,8 @@ export const FADE_SECONDS = .3;
 /** 衝撃波の輪が出ている長さ（秒）。命中から0.3〜0.6秒の範囲に収める。 */
 export const RIPPLE_SECONDS = .45;
 /** ブルームの常時の強さと、放出や命中で上げるときの倍率。 */
-export const BLOOM_BASE = .18, BLOOM_PEAK = 5, BLOOM_RELEASE = 3;
+export const BLOOM_BASE = .18;
+const BLOOM_PEAK = 5, BLOOM_RELEASE = 3;
 /** 控えめモードのときの倍率の上限。全画面の白飛びを抑えるため、放出も命中もここまでに留める。 */
 export const BLOOM_CALM_PEAK = 1.6;
 /** ブルームを切る目安のfpsと、戻す目安のfps。 */
@@ -86,7 +87,8 @@ export function bloomWeightAt(t: number, calm = false, shownAt = 0) {
 }
 
 /** 合成そのものを諦める目安。最初の90コマは慣らし、その後24fps未満が60コマ続いたら止めて元の層へ戻す。 */
-export const GIVE_UP_FPS = 24, GIVE_UP_WARMUP = 90, GIVE_UP_FRAMES = 60;
+const GIVE_UP_FPS = 24;
+export const GIVE_UP_WARMUP = 90, GIVE_UP_FRAMES = 60;
 /**
  * 隠したまま描くコマ数。90コマでシェーダーを用意し、続く60コマで速さを見る。
  * 遅いPCでは見せ始める前に諦められるよう、giveUpDecision が数え終わるまでの長さにしてある。
