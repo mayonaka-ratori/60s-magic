@@ -15,6 +15,19 @@ describe('確認用の記録',()=>{
     expect(s.voice.lastResult).toMatchObject({arrivedMs:4000,coversUntilMs:3500,delayMs:500,text:'氷よ',processingMs:1200});
     expect(s.voice.finalReceived).toBe(false);expect(s.events[0]).toMatchObject({atMs:4000,kind:'入力を確定'});
   });
+  it('手の認識にかかった時間と、GPUとCPUのどちらで動いたかを残す',()=>{
+    const d=new Diagnostics(0,()=>0);
+    d.cameraDelegate='GPU';
+    d.camera(4,9);d.camera(6,12);d.camera(20,30);
+    const s=d.summary();
+    expect(s.camera.delegate).toBe('GPU');expect(s.camera.frames).toBe(3);
+    expect(s.camera.detectMs.average).toBe(10);expect(s.camera.detectMs.max).toBe(20);
+    expect(s.camera.latencyMs.max).toBe(30);
+  });
+  it('カメラを使わない回は、手の認識の記録を空のままにする',()=>{
+    const s=new Diagnostics(0,()=>0).summary();
+    expect(s.camera.delegate).toBeNull();expect(s.camera.frames).toBe(0);expect(s.camera.detectMs.average).toBeNull();
+  });
   it('24秒の開始が後から決まっても、前の出来事の時刻を合わせる',()=>{
     let now=0;const d=new Diagnostics(0,()=>now);
     now=500;d.log('準備');now=2000;d.rebase(2000);d.log('開始');
