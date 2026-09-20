@@ -35,7 +35,7 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばす',asy
       return (connect as any).call(this,destination,...args);
     };
   });
-  await page.goto('/');await page.locator('#test-sound').click();
+  await page.goto('/?dev=1');await page.locator('#test-sound').click();
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.peak)).toBeGreaterThan(.001);
   await page.locator('#start').click();await page.locator('#chant').fill('雷よ、七つに分かれろ');
   // 6秒より前は合図が無いので、ここで音が出ていれば曲が鳴っている。

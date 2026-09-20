@@ -79,7 +79,7 @@ export class LocalSpeech {
     child.stderr.setEncoding('utf8');child.stderr.on('data',text=>console.error('[音声認識]',String(text).trim().slice(0,2000)));
     child.on('error',()=>this.fail('音声認識を起動できませんでした。npm run setup:speech を確認してください。'));
     child.on('exit',()=>{this.process=null;if(!this.disposed&&this.status.state!=='error')this.fail('音声認識が停止しました。アプリを起動し直してください。');});
-    child.stdin.on('error',()=>{if(!this.disposed)this.fail('音声認識との接続が切れました。');});
+    child.stdin.on('error',()=>{if(!this.disposed)this.fail('音声認識との接続が切れました');});
   }
   reserve(owner:object){if(this.owner&&this.owner!==owner)return false;this.owner=owner;return true;}
   release(owner:object){if(this.owner===owner)this.owner=null;}
@@ -94,7 +94,7 @@ export class LocalSpeech {
   }
   private dispatch(job:Job) {
     this.active=job;job.sentAt=performance.now();
-    this.timer=setTimeout(()=>this.fail('音声認識が時間内に終わりませんでした。'),10000);
+    this.timer=setTimeout(()=>this.fail('音声認識が時間内に終わりませんでした'),10000);
     this.process?.stdin.write(JSON.stringify({id:job.id,pcm:job.pcm.toString('base64')})+'\n');
   }
   private fail(message:string) {

@@ -39,7 +39,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <label>範囲 <input id="area" type="range" min="0.2" max="1" step="0.05" value="${params.get('area') ?? 0.5}"></label>
       <label>収束 <input id="concentration" type="range" min="0" max="1" step="0.05" value="${params.get('concentration') ?? 0.5}"></label>
       <label>言葉 <input id="words" type="text" placeholder="炎よ、七つに分かれろ" value="${params.get('words') ?? ''}"></label>
-      <label><input id="unlocked" type="checkbox"${params.get('unlocked') ? ' checked' : ''}> 確定前にする（候補の色）</label>
+      <label><input id="unlocked" type="checkbox"${params.get('unlocked') ? ' checked' : ''}> 確定前の状態にする（候補の色）</label>
       <p id="note" role="status">左右で設定を変えて見比べられます。時刻のつまみを動かすと、その瞬間で止まります。</p>
     </footer>
   </main>`;
