@@ -13,6 +13,9 @@ describe('騎士の反応',()=>{
   it('開始画面では被弾せず、動きを減らす設定では揺らさない',()=>{
     expect(knightPose(18700,false).state).toBe('idle');
     expect(knightPose(18700,true,true).lean).toBe(0);expect(knightPose(1000,true,true).breath).toBe(0);
+    // 命中の震えも止まるが、胸の光の強さは残す。
+    expect(knightPose(18550,true,true).shake).toBe(0);expect(knightPose(18550,true,true).flash).toBeGreaterThan(0);
+    expect(knightPose(18550,true).shake).toBeGreaterThan(0);
   });
 });
 describe('音の時刻',()=>{

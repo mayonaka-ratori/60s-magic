@@ -2,6 +2,7 @@
 @import '@fontsource/noto-sans-jp/500.css';
 @import '@fontsource/noto-serif-jp/400.css';
 @import './overlay.css';
+@import './knight-canvas.css';
 
 :root{font-family:'Noto Sans JP','Yu Gothic',sans-serif;color:#e8e9e5;background:#080f19;font-synthesis:none;font-weight:400;--muted:#9daeb9;--gold:#d8bd85;--line:#adc4d326;--ink:#0b1420}
 *{box-sizing:border-box}body{margin:0}button,input{font:inherit}button{cursor:pointer;border:0}button:disabled{cursor:wait;opacity:.5}button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid #bfeaff;outline-offset:5px}button,summary{-webkit-tap-highlight-color:transparent}button:focus:not(:focus-visible){outline:0}[hidden]{display:none!important}
@@ -25,13 +26,13 @@ header{position:absolute;z-index:2;inset:30px 42px auto;display:flex;align-items
 /* 体力表示は二層。本体はすぐ減り、薄い赤の残りが0.3秒待ってから0.5秒かけて追いつく。幅の動きはJSで出すので、ここでは動かさない。（段階3） */
 .enemy-health .health-trail{background:#ffb4a2}/* 一枚絵の背景と、独立した発光の描画面を重ねる。 */#world{object-fit:cover;object-position:center;transition:filter .6s}#world.spell-finished{filter:blur(5px) brightness(.63)}
 #spell{position:absolute;inset:0;width:100%;height:100%;mix-blend-mode:screen;pointer-events:none}
-#knight{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#knight{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;transition:filter .6s}
 /* 段階4の合成。四枚の層をまとめて描き直した絵を、いちばん手前に一枚だけ置く。使わない間は隠す。 */
-#composite{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;visibility:hidden}#knight.spell-finished{filter:blur(5px) brightness(.63)}
+#composite{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;visibility:hidden}#knight.spell-finished{filter:blur(5px) brightness(.63) saturate(.92)}
 .sound-options{display:flex;align-items:center;gap:10px;font-size:11px;margin:-7px 0 17px;color:#c6d5df}.sound-options label{display:flex;align-items:center;gap:5px}.sound-options input{accent-color:#d7bd89}.sound-options input[type=range]{width:110px}.sound-options output{min-width:30px}.sound-toggle{position:absolute;right:36px;top:158px;pointer-events:auto;background:#081728c9;color:#e1e9ed;border:1px solid #a9b8c04d;padding:7px 12px;font-size:12px}
 .sound-options button{font-size:10px;padding:5px 7px;background:#102234;color:#d8e5ed;border:1px solid #c0d7e74d;white-space:nowrap}
 @media(max-width:520px){.sound-options{gap:6px;font-size:11px}.sound-options input[type=range]{width:72px}}
-#world:not(.spell-finished){transition:none}
+#world:not(.spell-finished),#knight:not(.spell-finished){transition:none}
 /* 揺れと傾きと寄りは画面の中央を軸にする。背景と騎士は常時1.03倍の余白を持たせ、端に黒帯を出さない。 */
 #world,#knight,#spell{transform-origin:50% 50%;will-change:transform}
 #world,#knight{transform:scale(1.03)}
