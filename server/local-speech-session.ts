@@ -35,8 +35,8 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
     const now=performance.now();
     if(now>=deadline){if(ended)finish();return;}
     if(!force&&!ended&&(now-lastRequestAt<650||lastSample-firstSample<6400))return;
-    // 終了の直前に途中の認識を始めず、最後の音を含む要求を優先する。
-    if(!ended&&lastSample>=217600)return;
+    // 終了の直前に途中の認識を始めず、最後の音を含む要求を優先する。MacのGPUでは一回に約1.3秒かかるため、12.6秒以降は途中の認識を始めない。
+    if(!ended&&lastSample>=201600)return;
     // 締め切りに間に合わない認識は始めない。結果を捨てるだけで、直前の結果を送るのも遅れる。
     if(ended&&lastProcessingMs>0&&now+lastProcessingMs>deadline){finish();return;}
     busy=true;lastRequestAt=now;
