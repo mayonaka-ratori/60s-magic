@@ -23,6 +23,7 @@ export class CompletedSpell {
   private core: StandardMaterial;
   private line: StandardMaterial;
   private guide: StandardMaterial;
+  private band: StandardMaterial;
   private halo: ShaderMaterial;
   private width = 1;
   private height = 1;
@@ -47,6 +48,7 @@ export class CompletedSpell {
     this.core = material('光点の白い中心', new Color3(1.8, 2.1, 2.8));
     this.line = material('青白い主線', new Color3(.36, .66, 1.8));
     this.guide = material('細い補助線', new Color3(.27, .52, .95), .58);
+    this.band = material('主線の外側の帯', new Color3(.36, .66, 1.8), .22);
     this.halo = new ShaderMaterial('光点の青いにじみ', this.scene, {
       vertexSource: 'precision highp float; attribute vec3 position; attribute vec2 uv; uniform mat4 worldViewProjection; varying vec2 vUV; void main(){ vUV=uv; gl_Position=worldViewProjection*vec4(position,1.0); }',
       fragmentSource: 'precision highp float; varying vec2 vUV; uniform float strength; uniform vec3 tint; void main(){ float r=length(vUV-0.5)*2.0; float glow=exp(-r*r*6.0)*(1.0-smoothstep(0.6,1.0,r)); vec3 color=mix(tint,vec3(0.72,0.9,1.0),exp(-r*r*80.0)); gl_FragColor=vec4(color,glow*0.85*strength); }',
@@ -55,7 +57,7 @@ export class CompletedSpell {
     this.halo.setFloat('strength', 1);
     this.halo.setColor3('tint',new Color3(.1,.32,1));
     this.glow = new GlowLayer('術式の青い光', this.scene, { blurKernelSize: 48, mainTextureRatio: .75 });
-    this.glow.intensity = .95;
+    this.glow.intensity = 1.25;
     this.resize();
     // 材質の準備が終わった後も描き直し、最初の表示で線が消えるのを防ぐ。
     if(autoRender)this.engine.runRenderLoop(() => { if (!document.hidden) this.scene.render(); });
@@ -76,7 +78,7 @@ export class CompletedSpell {
     this.opacity=opacity;this.root.setEnabled(opacity>.001);
     const tint=Color3.FromHexString(color);
     this.core.emissiveColor.set(1.8*opacity,2.1*opacity,2.8*opacity);
-    this.line.emissiveColor=tint.scale(1.4*opacity);this.guide.emissiveColor=tint.scale(.65*opacity);
+    this.line.emissiveColor=tint.scale(2.0*opacity);this.band.emissiveColor=tint.scale(.9*opacity);this.guide.emissiveColor=tint.scale(.65*opacity);
     this.halo.setColor3('tint',tint);this.halo.setFloat('strength',this.strength/.95*opacity);
     for(const mesh of this.meshes)mesh.visibility=opacity*(mesh.metadata?.detail?details:1);
   }
@@ -89,7 +91,7 @@ export class CompletedSpell {
       const clean = path.filter((p, i) => !i || Vector3.Distance(p, path[i - 1]) > .08);
       if (clean.length < 2) return;
       const mesh = MeshBuilder.CreateTube(name, { path: clean, radius, tessellation: 6 }, this.scene);
-      mesh.material = material;mesh.parent=this.root;mesh.metadata={detail:name!=='本人が描いた線'}; this.meshes.push(mesh);
+      mesh.material = material;mesh.parent=this.root;mesh.metadata={detail:!name.startsWith('本人が描いた線')}; this.meshes.push(mesh);
     };
     const ring = (center: Vector3, radius: number, material = this.guide, thickness = .38) => {
       tube('光点を囲む線', Array.from({ length: 81 }, (_, i) => center.add(new Vector3(Math.cos(i / 80 * Math.PI * 2) * radius, Math.sin(i / 80 * Math.PI * 2) * radius, 1))), thickness, material);
@@ -104,7 +106,9 @@ export class CompletedSpell {
     const strokes = new Map<number, Point[]>();
     for (const p of points) { const stroke = strokes.get(p.stroke) ?? []; stroke.push(p); strokes.set(p.stroke, stroke); }
     for (const stroke of strokes.values()) {
-      tube('本人が描いた線', smoothStroke(stroke).map(vector), .95);
+      // 本人の線は明るい背景の上でもはっきり見えるよう、太い芯と、その外側の淡い帯の二重にする。
+      tube('本人が描いた線', smoothStroke(stroke).map(vector), 2.1);
+      tube('本人が描いた線の帯', smoothStroke(stroke).map(vector), 5.5, this.band);
       if (stroke.length === 1) dot(vector(stroke[0]), 2.5);
     }
     if (!points.length) { this.render(); return; }

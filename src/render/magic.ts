@@ -133,7 +133,7 @@ export class MagicCanvas {
     const strokes = new Map<number, Point[]>(); for (const p of shape) { const group = strokes.get(p.stroke) ?? []; group.push(p); strokes.set(p.stroke, group); }
     c.beginPath();
     for (const stroke of strokes.values()) { smoothStroke(stroke).forEach((p, i) => { if (!i) c.moveTo(p.x * w, p.y * h); else c.lineTo(p.x * w, p.y * h); }); }
-    c.globalAlpha = .35; c.lineWidth = 4; c.stroke(); c.globalAlpha = 1; c.lineWidth = 1.1; c.stroke();
+    c.globalAlpha = .4; c.lineWidth = 6; c.stroke(); c.globalAlpha = 1; c.lineWidth = 2; c.stroke();
     for (const p of getNodes(shape, 5)) this.sprites.draw(c, p.x * w, p.y * h, 2.5, '#fff8e9', color, .9);
     this.sprites.draw(c, w / 2, h / 2, 5, '#fff8e9', color, .9); c.restore();
   }
