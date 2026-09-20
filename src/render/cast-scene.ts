@@ -43,5 +43,5 @@ export class CastScene {
     this.canvas.dataset.visible=String(!ready&&pose.opacity>0);
     this.backdrop.classList.toggle('spell-finished',!ready&&ms>=23500);
   }
-  dispose(){this.spell.dispose();}
+  dispose(){this.spell.dispose();this.knight.dispose();}
 }
