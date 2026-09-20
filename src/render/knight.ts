@@ -16,6 +16,7 @@ import { CubeTextureCreateFromImages } from '@babylonjs/core/Materials/Textures/
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator';
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { VertexBuffer } from '@babylonjs/core/Buffers/buffer';
 import { clamp } from '../game/motion';
 import { colors } from './magic';
 import type { Recipe } from '../game/types';
@@ -83,7 +84,7 @@ export class Knight {
     const back=new DirectionalLight('奥からの光',new Vector3(-.3,-.7,-1),this.scene);
     back.intensity=1.02;back.diffuse=new Color3(.82,.88,.98);
     const fill=new DirectionalLight('床からの照り返し',new Vector3(.45,-.35,1),this.scene);
-    fill.intensity=.58;fill.diffuse=new Color3(.44,.49,.57);fill.specular=new Color3(.09,.1,.13);
+    fill.intensity=.66;fill.diffuse=new Color3(.44,.49,.57);fill.specular=new Color3(.09,.1,.13);
     fill.position=new Vector3(-2.4,3.4,-3.6);
     // 手前の光だけ影を落とす。剣や盾の影が体に掛かり、厚みが出る。
     const shadows=new ShadowGenerator(1024,fill);
@@ -105,13 +106,97 @@ export class Knight {
     const side=paint([[0,'#cdd6df'],[.42,'#93a0ad'],[.52,'#4e5866'],[1,'#191d23']]);
     const backdrop=paint([[0,'#e8eef4'],[.44,'#a9b6c2'],[.52,'#525d6b'],[1,'#1a1e25']]);
     const sight=CubeTextureCreateFromImages([side,paint([[0,'#a3adb8'],[1,'#8a939e']]),backdrop,side,paint([[0,'#15181d'],[1,'#0f1216']]),side],this.scene);
-    sight.level=.32;
+    sight.level=.3;
+
+    // 汚れとてかりむらの絵を描く。これも外部のファイルを持たず、起動時にその場で描く。
+    // 同じ並びになるよう、乱数は決まった種から作る。
+    let seed=20260920;const rnd=()=>(seed=seed*48271%2147483647)/2147483647;
+    const SHEET=256;
+    // 端と端がつながるよう、大きな図形は上下左右へ回り込ませて9回描く。
+    const wrapOn=(c:CanvasRenderingContext2D)=>(f:()=>void)=>{
+      for(let x=-1;x<2;x++)for(let y=-1;y<2;y++){c.save();c.translate(x*SHEET,y*SHEET);f();c.restore();}
+    };
+    const sheet=(name:string,base:string,draw:(c:CanvasRenderingContext2D,wrap:(f:()=>void)=>void)=>void)=>{
+      const texture=new DynamicTexture(name,{width:SHEET,height:SHEET},this.scene,true);
+      const c=texture.getContext() as CanvasRenderingContext2D;
+      c.fillStyle=base;c.fillRect(0,0,SHEET,SHEET);
+      draw(c,wrapOn(c));texture.update();return texture;
+    };
+    // でこぼこの絵。白黒で高さを描いてから、隣との差で面の向きに直す。
+    // 色を暗くするのではなく光の当たり方を変えるので、遠目でも凹凸が分かる。
+    const relief=(name:string,depth:number,draw:(c:CanvasRenderingContext2D,wrap:(f:()=>void)=>void)=>void)=>{
+      const height=document.createElement('canvas');height.width=height.height=SHEET;
+      const hc=height.getContext('2d')!;hc.fillStyle='#808080';hc.fillRect(0,0,SHEET,SHEET);
+      draw(hc,wrapOn(hc));
+      const src=hc.getImageData(0,0,SHEET,SHEET).data;
+      const at=(x:number,y:number)=>src[(((y+SHEET)%SHEET)*SHEET+(x+SHEET)%SHEET)*4];
+      const texture=new DynamicTexture(name,{width:SHEET,height:SHEET},this.scene,true);
+      const c=texture.getContext() as CanvasRenderingContext2D,out=c.createImageData(SHEET,SHEET);
+      for(let y=0;y<SHEET;y++)for(let x=0;x<SHEET;x++) {
+        const dx=(at(x+1,y)-at(x-1,y))/255*depth,dy=(at(x,y+1)-at(x,y-1))/255*depth;
+        const len=Math.hypot(dx,dy,1),i=(y*SHEET+x)*4;
+        out.data[i]=(-dx/len*.5+.5)*255;out.data[i+1]=(-dy/len*.5+.5)*255;out.data[i+2]=(1/len*.5+.5)*255;out.data[i+3]=255;
+      }
+      c.putImageData(out,0,0);texture.update();return texture;
+    };
+    const blot=(c:CanvasRenderingContext2D,x:number,y:number,r:number,color:string,alpha:number)=>{
+      const g=c.createRadialGradient(x,y,0,x,y,r);
+      g.addColorStop(0,color.replace('A',String(alpha)));g.addColorStop(1,color.replace('A','0'));
+      c.fillStyle=g;c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fill();
+    };
+    // 汚れ。しみと細かいざらつきで、広い面のべた塗りを崩す。
+    const grime=sheet('汚れ','#e6e6e6',(c,wrap)=>{
+      for(let i=0;i<20;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=26+rnd()*74,a=.34+rnd()*.44;
+        wrap(()=>blot(c,x,y,r,'rgba(18,16,14,A)',a));}
+      for(let i=0;i<14;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=20+rnd()*46;
+        wrap(()=>blot(c,x,y,r,'rgba(255,250,238,A)',.24+rnd()*.34));}
+      // 縦に流れた跡。上下は切れ目なくつながる。
+      for(let i=0;i<10;i++){const x=rnd()*SHEET,w=3+rnd()*12;
+        c.fillStyle=`rgba(24,22,20,${(.14+rnd()*.24).toFixed(3)})`;c.fillRect(x,0,w,SHEET);}
+      for(let i=0;i<1400;i++){const v=rnd()<.5?'0,0,0':'255,255,255';
+        c.fillStyle=`rgba(${v},${(.06+rnd()*.16).toFixed(3)})`;c.fillRect(rnd()*SHEET,rnd()*SHEET,2+rnd()*4,2+rnd()*4);}
+    });
+    // てかりむら。磨けた所と曇った所を作り、細い擦り傷を走らせる。
+    const shine=sheet('てかりむら','#a8a8a8',(c,wrap)=>{
+      for(let i=0;i<12;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=30+rnd()*64;
+        wrap(()=>blot(c,x,y,r,'rgba(0,0,0,A)',.38+rnd()*.42));}
+      for(let i=0;i<10;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=24+rnd()*50;
+        wrap(()=>blot(c,x,y,r,'rgba(255,255,255,A)',.32+rnd()*.42));}
+      c.lineWidth=2;
+      for(let i=0;i<44;i++){
+        const x=rnd()*SHEET,y=rnd()*SHEET,a=(rnd()-.5)*.7+(rnd()<.5?0:Math.PI/2),len=40+rnd()*130;
+        c.strokeStyle=`rgba(255,255,255,${(.14+rnd()*.32).toFixed(3)})`;
+        wrap(()=>{c.beginPath();c.moveTo(x,y);c.lineTo(x+Math.cos(a)*len,y+Math.sin(a)*len);c.stroke();});
+      }
+    });
+
+    // 打ち傷のへこみ、擦り傷、鋳物のざらつき。
+    const dents=relief('でこぼこ',4,(c,wrap)=>{
+      for(let i=0;i<10;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=18+rnd()*40;
+        wrap(()=>blot(c,x,y,r,'rgba(0,0,0,A)',.5+rnd()*.4));}
+      for(let i=0;i<18;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=5+rnd()*12;
+        wrap(()=>blot(c,x,y,r,rnd()<.6?'rgba(0,0,0,A)':'rgba(255,255,255,A)',.35+rnd()*.45));}
+      c.lineWidth=2;
+      for(let i=0;i<40;i++) {
+        const x=rnd()*SHEET,y=rnd()*SHEET,a=(rnd()-.5)*.5+(rnd()<.5?0:Math.PI/2),len=30+rnd()*120;
+        c.strokeStyle=`rgba(0,0,0,${(.3+rnd()*.5).toFixed(3)})`;
+        wrap(()=>{c.beginPath();c.moveTo(x,y);c.lineTo(x+Math.cos(a)*len,y+Math.sin(a)*len);c.stroke();});
+      }
+      for(let i=0;i<2200;i++){const v=rnd()<.5?'0,0,0':'255,255,255';
+        c.fillStyle=`rgba(${v},${(.08+rnd()*.16).toFixed(3)})`;c.fillRect(rnd()*SHEET,rnd()*SHEET,1+rnd()*3,1+rnd()*3);}
+    });
 
     const material=(name:string,color:string,specular=.24,rim=0)=>{
       const m=new StandardMaterial(name,this.scene);
       m.diffuseColor=Color3.FromHexString(color);m.specularColor=new Color3(specular,specular*1.06,specular*1.14);m.specularPower=46;
       // 逆光の縁だけを明るくする。暗い鎧のまま輪郭を見せるための設定。
       if(rim){m.emissiveColor=new Color3(.26*rim,.32*rim,.4*rim);m.emissiveFresnelParameters=new FresnelParameters({bias:.35,power:1.9,leftColor:Color3.White(),rightColor:Color3.Black()});}
+      return m;
+    };
+    // 汚れとてかりむらを貼る。色は材質の色に掛かり、てかりは場所ごとに強弱が付く。
+    const worn=(m:StandardMaterial,shiny=true)=>{
+      m.diffuseTexture=grime;m.bumpTexture=dents;m.bumpTexture.level=.6;
+      if(shiny)m.specularTexture=shine;
       return m;
     };
     // 金属には空と床を映り込ませる。正面より縁のほうが強く映る。
@@ -121,13 +206,13 @@ export class Knight {
         leftColor:new Color3(strength,strength,strength),rightColor:new Color3(.13*strength,.15*strength,.18*strength)});
       return m;
     };
-    this.armor=metal(material('鎧','#34363c',.26,1));
-    const plate=metal(material('当て板','#272930',.2,.8),.8);
-    const cloth=material('布','#25272f',.05,.6);cloth.backFaceCulling=false;
+    this.armor=worn(metal(material('鎧','#5c6069',.3,1)));
+    const plate=worn(metal(material('当て板','#464955',.23,.8),.8));
+    const cloth=worn(material('布','#393c47',.05,.6),false);cloth.backFaceCulling=false;
     const hollow=material('隙間','#0b0f16',.02);hollow.emissiveColor=new Color3(.52,.23,.07);
     this.eyes=hollow;
-    const trim=metal(material('金の縁','#6d5e39',.32,.7),.9);
-    const steel=metal(material('刃と縁','#636a74',.42,1.2),1.3);
+    const trim=worn(metal(material('金の縁','#8c7749',.36,.7),.9));
+    const steel=worn(metal(material('刃と縁','#8a919d',.48,1.2),1.3));
     this.coreMaterial=material('胸の核','#2a2418',.1);this.coreMaterial.emissiveColor=Color3.FromHexString('#6f542e');
 
     this.root=new TransformNode('遺跡の騎士',this.scene);
@@ -234,7 +319,7 @@ export class Knight {
     const spin=new TransformNode('盾の向き',this.scene);spin.parent=stretch;spin.rotation.y=-.314;
     // 手前の面を一回り小さくして、縁に斜めの面を作る。平らな板に光の段が付く。
     const shieldFace=MeshBuilder.CreateCylinder('盾の面',{diameterTop:.96,diameterBottom:.86,height:.13,tessellation:5},this.scene);
-    shieldFace.parent=spin;shieldFace.material=this.armor;
+    shieldFace.parent=spin;shieldFace.material=steel;
     const edge=MeshBuilder.CreateCylinder('盾の縁',{diameter:1,height:.05,tessellation:5},this.scene);
     edge.parent=spin;edge.position.y=.03;edge.material=trim;
     // 角の鋲。5つ置くと、のっぺりした板に見えなくなる。
@@ -261,6 +346,18 @@ export class Knight {
     // 視点が低いため、足元の面は手前へ長く取らないと影が見えない。
     const shadow=MeshBuilder.CreateGround('影',{width:2.3,height:3.2},this.scene);
     shadow.parent=this.root;shadow.position.set(0,.02,-.5);shadow.material=shadowMaterial;
+
+    // 汚れの絵は部品の大小に関係なく1枚ぶん貼られるため、そのままだと小さい部品ほど粒が細かくなる。
+    // 実寸を測り、だいたい1.2mで1枚になるよう部品ごとに目盛りを引き伸ばす。
+    for(const mesh of this.scene.meshes) {
+      if(mesh===shadow)continue;
+      const uv=mesh.getVerticesData(VertexBuffer.UVKind);
+      if(!uv)continue;
+      mesh.computeWorldMatrix(true);
+      const half=mesh.getBoundingInfo().boundingBox.extendSizeWorld;
+      const tiles=Math.min(4,Math.max(.35,Math.max(half.x,half.y,half.z)*2/1.2));
+      mesh.setVerticesData(VertexBuffer.UVKind,uv.map(v=>v*tiles));
+    }
 
     // にじむ光は胸の核と兜の隙間だけ。鎧の縁まで広げると輪郭がぼやける。
     const glow=new GlowLayer('核のにじみ',this.scene,{blurKernelSize:24,mainTextureRatio:.35});
