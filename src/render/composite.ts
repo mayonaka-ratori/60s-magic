@@ -24,6 +24,11 @@ import { LAYER_FRAGMENT, LAYER_VERTEX, SHOCKWAVE_SHADER, registerCompositeShader
  * 元のHTMLの層は見えなくするだけで、描くのは今まで通り続ける（板に貼る絵がそこにあるため）。
  * WebGLを用意できないときは合成を使わず、今までのHTMLの層のまま遊べる。
  *
+ * 見せるのは魔法の山場だけ。最初の150コマだけ隠したまま描いてシェーダーを用意し速さを測り、
+ * そのあとは16.5秒まで板への転送も描画もしない（線を描いている間を軽くするため）。
+ * 16.5秒から0.3秒かけて重ね、重なりきってから元のHTMLの層を消す。`?composite=always` なら0秒から見せる。
+ *
+ * 時刻はすべて render に渡される t（命中の停止を含む演出の時刻）だけで判断する。
  * このファイルの前半は画面を使わない計算だけにしてある（tests/composite.test.ts で確かめる）。
  */
 
@@ -33,6 +38,10 @@ import { LAYER_FRAGMENT, LAYER_VERTEX, SHOCKWAVE_SHADER, registerCompositeShader
 
 /** 重い後処理を有効にする時間帯（秒）。命中の前後だけ。 */
 export const POST_FROM = 16.9, POST_TO = 21;
+/** 合成を見せ始める時刻（秒）。ここまではHTMLの層をそのまま見せ、板への転送も描画もしない。 */
+export const SHOW_FROM = 16.5;
+/** 見せ始めと切り際にかける時間（秒）。この間に合成の濃さとブルームの強さを0と1の間で動かす。 */
+export const FADE_SECONDS = .3;
 /** 衝撃波の輪が出ている長さ（秒）。命中から0.3〜0.6秒の範囲に収める。 */
 export const RIPPLE_SECONDS = .45;
 /** ブルームの常時の強さと、放出や命中で上げるときの倍率。 */
@@ -54,17 +63,35 @@ export function rippleAt(t: number, impactAt = IMPACT_AT, life = RIPPLE_SECONDS)
   return { radius: .06 + p * .82, width: .18 * (1 - p * .62), strength: .028 * (1 - p) * (1 - p) };
 }
 
-/** ブルームの強さ。放出で3倍、命中で5倍まで上がり、0.4秒ほどで元へ戻る。控えめモードでは1.6倍までに抑える。 */
-export function bloomWeightAt(t: number, calm = false) {
+/**
+ * 見せ始めの重なり具合。見せ始めた時刻で0、FADE_SECONDS 秒後に1。
+ * 合成のcanvasの濃さとブルームの強さの両方に使う。切り替えの1コマで絵が跳ばないようにするため。
+ */
+const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
+export function showFadeAt(t: number, shownAt: number) { return clamp01((t - shownAt) / FADE_SECONDS); }
+
+/** 後処理を切る手前の落とし具合。POST_TO の FADE_SECONDS 秒前から下がり始め、POST_TO で0になる。 */
+export function postFadeAt(t: number) { return clamp01((POST_TO - t) / FADE_SECONDS); }
+
+/**
+ * ブルームの強さ。放出で3倍、命中で5倍まで上がり、0.4秒ほどで元へ戻る。控えめモードでは1.6倍までに抑える。
+ * 見せ始めの0.3秒は0から上げ、後処理を切る手前0.3秒では0へ落とす。どちらも明るさが1コマで変わらないように。
+ */
+export function bloomWeightAt(t: number, calm = false, shownAt = 0) {
   const peak = calm ? BLOOM_CALM_PEAK : BLOOM_PEAK, release = calm ? BLOOM_CALM_PEAK : BLOOM_RELEASE;
   let boost = 1;
   if (t >= RELEASE_AT) boost = Math.max(boost, 1 + (release - 1) * Math.max(0, 1 - (t - RELEASE_AT) / .4));
   if (t >= IMPACT_AT) boost = Math.max(boost, 1 + (peak - 1) * Math.max(0, 1 - (t - IMPACT_AT) / .4));
-  return BLOOM_BASE * boost;
+  return BLOOM_BASE * boost * Math.min(showFadeAt(t, shownAt), postFadeAt(t));
 }
 
 /** 合成そのものを諦める目安。最初の90コマは慣らし、その後24fps未満が60コマ続いたら止めて元の層へ戻す。 */
 export const GIVE_UP_FPS = 24, GIVE_UP_WARMUP = 90, GIVE_UP_FRAMES = 60;
+/**
+ * 隠したまま描くコマ数。90コマでシェーダーを用意し、続く60コマで速さを見る。
+ * 遅いPCでは見せ始める前に諦められるよう、giveUpDecision が数え終わるまでの長さにしてある。
+ */
+export const WARMUP_FRAMES = GIVE_UP_WARMUP + GIVE_UP_FRAMES;
 /**
  * 合成をやめるかどうか。時刻とブルームの状態も見る（画面には触らない計算だけ）。
  * - 山場（16.9〜21秒）の間は判定を止める。命中の途中で合成が消えると絵が一瞬で変わってしまうため。
@@ -86,11 +113,27 @@ export function bloomDecision(on: boolean, fps: number) {
   return on;
 }
 
-/** 騎士の板を貼り直すかどうか。姿勢が変わった時と、動きのある時間帯は毎コマ。それ以外は4コマに1回。 */
-export function shouldUploadKnight(state: string, previous: string, t: number, frame: number) {
+/**
+ * 騎士の板を貼り直すかどうか。
+ * 見せている間は毎コマ貼る（間引くと呼吸が毎秒15コマに見えてしまうため）。
+ * 隠したまま描く慣らしの間だけ、姿勢が変わった時と4コマに1回に減らす。見えていないので絵には出ない。
+ */
+export function shouldUploadKnight(state: string, previous: string, shown: boolean, frame: number) {
   if (state !== previous) return true;
-  if (t >= 13.5) return true;
+  if (shown) return true;
   return frame % 4 === 0;
+}
+
+/** 板のテクスチャの片辺の上限（画素）。大きすぎるテクスチャで詰まらないように。 */
+export const BOARD_MAX_PIXELS = 4096;
+/**
+ * 板を作る細かさ（画素）。表示の大きさ（CSSの画素）を合成の粗さで割ると、実際に描く解像度になる。
+ * 既定の粗さは 1/min(devicePixelRatio,1.5) なので、細かい画面では表示の1.5倍の画素で作る。
+ * これをしないと背景だけ表示の大きさのまま引き伸ばされてぼける。
+ */
+export function boardPixels(cssSize: number, scaleLevel: number) {
+  const level = Number.isFinite(scaleLevel) && scaleLevel > 0 ? scaleLevel : 1;
+  return Math.min(BOARD_MAX_PIXELS, Math.max(2, Math.round(cssSize / level)));
 }
 
 /** 層ひとつ分の動き。揺れる量（move）と常時の余白（pad）を掛けて作る。 */
@@ -99,15 +142,20 @@ export function layerMotion(screen: { shakeX: number; shakeY: number; rotate: nu
   return { x: Math.round(screen.shakeX * move), y: Math.round(screen.shakeY * move), rotate: screen.rotate * move, scale: screen.zoom * pad };
 }
 
-/** 合成の設定。URLの指定から作る。?bloom=1 は速さに関わらずブルームを出し続ける（見え方の確認用）。 */
-export type CompositeSettings = { enabled: boolean; scale: number | null; keepBloom: boolean };
+/**
+ * 合成の設定。URLの指定から作る。
+ * `?composite=0` は合成そのものを使わない。`?composite=always` は0秒から見せる（今までとの見比べ用）。
+ * `?bloom=1` は速さに関わらずブルームを出し続ける（見え方の確認用）。
+ */
+export type CompositeSettings = { enabled: boolean; scale: number | null; keepBloom: boolean; showFrom: number };
 /** ?scale= で受け付ける粗さの範囲。小さすぎると解像度が跳ね上がって固まるので下限を置く。 */
 export const SCALE_MIN = .5, SCALE_MAX = 4;
 export function compositeSettings(search: string): CompositeSettings {
   const params = new URLSearchParams(search);
+  const composite = params.get('composite');
   const scale = Number(params.get('scale'));
   const level = Number.isFinite(scale) && scale > 0 ? Math.min(Math.max(scale, SCALE_MIN), SCALE_MAX) : null;
-  return { enabled: params.get('composite') !== '0', scale: level, keepBloom: params.get('bloom') === '1' };
+  return { enabled: composite !== '0', scale: level, keepBloom: params.get('bloom') === '1', showFrom: composite === 'always' ? 0 : SHOW_FROM };
 }
 
 // ------------------------------------------------------------------
@@ -119,8 +167,13 @@ export type CompositeSources = {
 };
 
 export type CompositeFrame = {
+  /**
+   * 画面全体の効果（揺れ、傾き、寄り、彩度、色収差の量）。magic.ts が計算した値をそのまま受け取る。
+   * 注意：この値だけは magic.ts が生の時刻で計算している。このファイルの中は下の t（停止を含む時刻）に
+   * 一本化してあるので、二つを完全に揃えるには magic.ts 側で揺れも停止を含む時刻から計算する必要がある。
+   */
   screen: ScreenState;
-  /** 演出の時刻（秒）。命中の停止を含む。 */
+  /** 演出の時刻（秒）。命中の停止を含む。このファイルの時間の判断はすべてこの値だけを見る。 */
   t: number;
   /** 命中の位置（画面の左上を0とした0〜1） */
   target: { x: number; y: number };
@@ -144,7 +197,16 @@ export class Composite {
   private center = { x: .5, y: .5 };
   private aspect = 16 / 9;
   private width = 1; private height = 1;
-  private active = false;
+  /** cast-scene から「合成を使ってよい」と言われている（描いてよい）。 */
+  private allowed = false;
+  /** 実際に合成のcanvasを見せている。重ねている途中も含む。 */
+  private shown = false;
+  /** 見せ始めた時刻（秒）。重なり具合とブルームの上げ始めをここから測る。 */
+  private shownAt = 0;
+  /** 今の重なり具合（0〜1）。1になったら元のHTMLの層を消す。 */
+  private fade = 0;
+  /** 元のHTMLの層を消してある。 */
+  private layersHidden = false;
   private heavy = false;
   private bloomOn = true;
   private knightState = '';
@@ -156,6 +218,8 @@ export class Composite {
   gaveUp = false;
   private worldDrawn = false;
   private keepBloom = false;
+  /** 合成を見せ始める時刻（秒）。既定は16.5、`?composite=always` なら0。 */
+  readonly showFrom: number;
   readonly scaleLevel: number;
 
   /** 作れなかったら null を返す。呼ぶ側は今まで通りのHTMLの層で続ける。 */
@@ -170,6 +234,7 @@ export class Composite {
   private constructor(private canvas: HTMLCanvasElement, private sources: CompositeSources, settings: CompositeSettings) {
     registerCompositeShaders();
     this.keepBloom = settings.keepBloom;
+    this.showFrom = settings.showFrom;
     const engine = new Engine(canvas, false, { alpha: false, stencil: false, antialias: false, preserveDrawingBuffer: false });
     this.engine = engine;
     try {
@@ -212,9 +277,11 @@ export class Composite {
         effect.setFloat('strength', ripple.strength);
         effect.setFloat('aspect', this.aspect);
       };
+      // 後処理の列が組み直されるたび、歪みを最後へ入れ直す。ブルームの入り切りで順番が前後しないように。
+      this.pipeline.onBuildObservable.add(() => this.restackShock());
       this.setPost(false);
       this.resize();
-      this.setActive(false);
+      this.hide();
       // 文脈が失われたら静止画が最前面に残ってしまうので、やめる経路へつなぐ。
       canvas.addEventListener('webglcontextlost', this.onContextLost);
     } catch (error) {
@@ -228,7 +295,8 @@ export class Composite {
   private stop() {
     if (this.gaveUp) return;
     this.gaveUp = true;
-    this.setActive(false);
+    this.allowed = false;
+    this.hide();
     this.canvas.dataset.gaveUp = 'true';
   }
 
@@ -282,11 +350,14 @@ export class Composite {
     if (internal) this.engine.updateDynamicTexture(internal, source, true, false);
   }
 
-  /** 背景は動かないので一度だけ貼る。表示の形に合わせて切り取る（CSSの cover と同じ）。 */
+  /**
+   * 背景は動かないので一度だけ貼る。表示の形に合わせて切り取る（CSSの cover と同じ）。
+   * 板は表示の大きさではなく実際に描く解像度で作る。表示の大きさで作ると細かい画面でぼけるため。
+   */
   private drawWorld() {
     const image = this.sources.world;
     if (!image.complete || !image.naturalWidth) return;
-    const w = Math.max(2, Math.round(this.width)), h = Math.max(2, Math.round(this.height));
+    const w = boardPixels(this.width, this.scaleLevel), h = boardPixels(this.height, this.scaleLevel);
     this.fit(this.boards.world, w, h);
     const context = this.boards.world.texture.getContext() as CanvasRenderingContext2D;
     const cover = Math.max(w / image.naturalWidth, h / image.naturalHeight);
@@ -297,18 +368,58 @@ export class Composite {
     this.worldDrawn = true;
   }
 
-  /** 合成を使うかどうか。使う間は元のHTMLの層を見えなくする（描くのは続ける）。 */
+  /**
+   * 合成を使ってよいかどうか。cast-scene が毎コマ渡す。
+   * ここで決まるのは「描いてよいか」だけで、実際に見せ始めるのは showFrom（既定は16.5秒）から。
+   */
   setActive(on: boolean) {
     if (this.gaveUp) on = false;
-    if (on === this.active) return;
-    this.active = on;
-    this.canvas.style.visibility = on ? 'visible' : 'hidden';
-    this.canvas.dataset.on = String(on);
-    // 元の四枚は透明にするだけ。場所も当たり判定もそのままなので、線を描く指も試験もこれまで通り。
-    for (const node of [this.sources.world, this.sources.knight, this.sources.spell, this.sources.magic]) node.style.opacity = on ? '0' : '';
+    if (on === this.allowed) return;
+    this.allowed = on;
+    if (!on) this.hide();
   }
 
-  get on() { return this.active; }
+  /** 元のHTMLの四枚。透明にするだけで場所も当たり判定もそのままなので、線を描く指も試験もこれまで通り。 */
+  private get layerNodes(): HTMLElement[] {
+    return [this.sources.world, this.sources.knight, this.sources.spell, this.sources.magic];
+  }
+
+  /**
+   * 見せ始める。切り替えの瞬間に絵が跳ばないよう、0.3秒かけて濃くしていき、
+   * その間は元のHTMLの層も見せたままにする。濃さが1になってから元の層を消す。
+   */
+  private reveal(t: number) {
+    if (!this.shown) {
+      this.shown = true;
+      this.shownAt = t;
+      this.fade = -1;
+      this.canvas.style.visibility = 'visible';
+      this.canvas.dataset.on = 'true';
+    }
+    const fade = showFadeAt(t, this.shownAt);
+    if (fade === this.fade) return;
+    this.fade = fade;
+    this.canvas.style.opacity = fade >= 1 ? '' : fade.toFixed(3);
+    const hide = fade >= 1;
+    if (hide === this.layersHidden) return;
+    this.layersHidden = hide;
+    for (const node of this.layerNodes) node.style.opacity = hide ? '0' : '';
+  }
+
+  /** 合成を隠して元のHTMLの層へ戻す。作った直後、やめた時、遊びが終わった時に呼ぶ。 */
+  private hide() {
+    this.shown = false;
+    this.fade = 0;
+    this.canvas.style.visibility = 'hidden';
+    this.canvas.style.opacity = '';
+    this.canvas.dataset.on = 'false';
+    if (!this.layersHidden) return;
+    this.layersHidden = false;
+    for (const node of this.layerNodes) node.style.opacity = '';
+  }
+
+  /** 今このコマで合成を見せているか。演出canvas内の色ずれを飛ばすかどうかの判断に使う。 */
+  get on() { return this.shown; }
 
   /** 重い後処理（ブルーム、色収差、歪み）の入り切り。 */
   private setPost(on: boolean) {
@@ -323,11 +434,37 @@ export class Composite {
     if (!on) this.canvas.dataset.ripple = '';
     if (on && !this.shockAttached) { this.camera.attachPostProcess(this.shockwave); this.shockAttached = true; }
     if (!on && this.shockAttached) { this.camera.detachPostProcess(this.shockwave); this.shockAttached = false; }
+    this.restackShock();
   }
 
-  /** 毎コマ呼ぶ。元のcanvasを板へ送り、後処理の値を決めて一回描く。 */
+  /** ブルームの入り切り。入れ切りのたびに後処理の列が組み直されるので、歪みの位置も直す。 */
+  private setBloom(on: boolean) {
+    if (this.pipeline.bloomEnabled === on) return;
+    this.pipeline.bloomEnabled = on;
+    this.restackShock();
+  }
+
+  /**
+   * 歪み（衝撃波）を後処理の列の最後へ入れ直す。
+   * ブルームなどを入り切りすると列が組み直され、入れた順で歪みが前にも後ろにもなるので、常に最後に固定する。
+   */
+  private restackShock() {
+    if (!this.shockAttached) return;
+    this.camera.detachPostProcess(this.shockwave);
+    this.camera.attachPostProcess(this.shockwave);
+  }
+
+  /**
+   * 毎コマ呼ぶ。元のcanvasを板へ送り、後処理の値を決めて一回描く。
+   * 描くのは、隠したままの慣らし（最初の150コマ）と、見せる時間帯（showFrom 以降）だけ。
+   * その間の時間は板への転送も描画もしないので、線を描いている間は合成のぶんの負荷がかからない。
+   */
   render(frame: CompositeFrame) {
-    if (!this.active) return;
+    if (!this.allowed || this.gaveUp) return;
+    const show = frame.t >= this.showFrom;
+    const warming = this.frames < WARMUP_FRAMES;
+    // 描かない間は速さの計測も数えもやめる。古い間隔や古い数で、見せ始めた直後に諦めないようにする。
+    if (!show && !warming) { this.lastFrameAt = 0; this.lowFrames = 0; return; }
     const now = performance.now();
     if (this.lastFrameAt) {
       const dt = now - this.lastFrameAt;
@@ -341,9 +478,11 @@ export class Composite {
     const slow = giveUpDecision(this.fps, this.lowFrames, this.frames, frame.t, this.bloomOn);
     this.lowFrames = slow.lowFrames;
     if (slow.giveUp) { this.stop(); return; }
+    // 見せ始めと、重ねている途中の濃さ。慣らしの間は隠したまま描く。
+    if (show) this.reveal(frame.t);
     if (!this.worldDrawn) this.drawWorld();
     const state = this.sources.knight.dataset.state ?? '';
-    if (shouldUploadKnight(state, this.knightState, frame.t, this.frames)) this.upload(this.boards.knight, this.sources.knight);
+    if (shouldUploadKnight(state, this.knightState, this.shown, this.frames)) this.upload(this.boards.knight, this.sources.knight);
     this.knightState = state;
     this.upload(this.boards.spell, this.sources.spell);
     this.upload(this.boards.magic, this.sources.magic);
@@ -361,12 +500,13 @@ export class Composite {
     this.boards.world.mesh.scaling.set(this.width / 2 * 1.03, this.height / 2 * 1.03, 1);
     this.boards.knight.mesh.scaling.set(this.width / 2 * 1.03, this.height / 2 * 1.03, 1);
 
-    const heavy = postHeavyActive(frame.t);
+    // 慣らしの間も後処理を通しておく。隠れているうちにシェーダーを用意し、重さも込みで速さを測るため。
+    const heavy = this.shown ? postHeavyActive(frame.t) : true;
     this.setPost(heavy);
     if (heavy) {
       // ?bloom=1 のときは速さに関わらず出し続ける（見え方の確認用）。
-      this.pipeline.bloomEnabled = this.keepBloom || this.bloomOn;
-      this.pipeline.bloomWeight = bloomWeightAt(frame.t, frame.calm);
+      this.setBloom(this.keepBloom || this.bloomOn);
+      this.pipeline.bloomWeight = bloomWeightAt(frame.t, frame.calm, this.shownAt);
       // 色収差は命中後0.5秒だけ。値は画面全体の効果から受け取る。控えめモードでは出さない。
       const chromatic = frame.calm ? 0 : frame.screen.chromatic;
       this.pipeline.chromaticAberration.aberrationAmount = chromatic * 6;
@@ -378,16 +518,30 @@ export class Composite {
       this.ripple = null;
     }
     this.scene.render();
+    // 慣らしが終わって見せない時間に入るときは、ここで後処理を切っておく。次に描き始める時の組み直しを減らす。
+    if (!this.shown && this.frames >= WARMUP_FRAMES) this.setPost(false);
   }
 
-  /** 記録に残す設定。 */
+  /**
+   * 記録に残す設定と、今の状態。
+   * - used：合成を使えている（遅すぎて諦めていない）。
+   * - gaveUp：遅すぎて合成を諦めた。
+   * - showing：今この瞬間、合成のcanvasを見せている。
+   * - showFrom：合成を見せ始める時刻（秒）。
+   * - scale：後処理の粗さ。大きいほど粗い。
+   * - bloomOn：今ブルームを付けている（fpsが落ちると切れる）。
+   * - postWindow：重い後処理をかける時間帯（秒）。
+   * - fps：合成が描いたコマから測った速さ。
+   */
   get report() {
-    return { used: !this.gaveUp, gaveUp: this.gaveUp, scale: Number(this.scaleLevel.toFixed(3)), bloom: this.bloomOn, postWindow: [POST_FROM, POST_TO], fps: Math.round(this.fps) };
+    return { used: !this.gaveUp, gaveUp: this.gaveUp, showing: this.shown, showFrom: this.showFrom,
+      scale: Number(this.scaleLevel.toFixed(3)), bloomOn: this.bloomOn, postWindow: [POST_FROM, POST_TO], fps: Math.round(this.fps) };
   }
 
   dispose() {
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
-    this.setActive(false);
+    this.allowed = false;
+    this.hide();
     this.shockwave.dispose();
     this.scene.dispose();
     this.engine.dispose();

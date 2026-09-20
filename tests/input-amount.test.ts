@@ -73,7 +73,8 @@ describe('入力の量が演出に効く', () => {
     const full = intensityOf(recipe(), presets.vivid, 1);
     expect(full).toBeGreaterThan(none);
     expect(full - none).toBeCloseTo(.6, 5);
-    expect(intensityOf(recipe(), presets.max, 1)).toBeLessThanOrEqual(3);
+    // 設定は倍率なので、最大の設定でも普通のレシピなら上限に張り付かない。
+    expect(intensityOf(recipe(), presets.max, 1)).toBeLessThan(3);
     expect(intensityOf(null, presets.calm, 1)).toBeGreaterThan(intensityOf(null, presets.calm));
     expect(intensityOf(recipe(), presets.vivid, 0)).toBe(none);
   });

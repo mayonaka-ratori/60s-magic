@@ -312,7 +312,8 @@ function animate(now:number) {
   stage.render(session?.motion.display??[],ms,session?.recipe??null,voice?.level??0,cursors,!session&&!countingDown,live);
   // 閃光、ビネット、グレイン、暗転、背景の彩度はHTMLの層で出す。
   overlay.update(magic.screen,magic.preset.palettes[session?.recipe?.element??'neutral'],calmMode);
-  if(session&&!resultShown)healthBar.update(ms,session.recipe);
+  // 体力も世界の時計で減らす。命中で止めている間は先へ進まない（stage.render の後に読む）。
+  if(session&&!resultShown)healthBar.update(stage.effectMs,session.recipe);
 }
 requestAnimationFrame(animate);
 void Promise.all([stage.ready,document.fonts.ready]).then(()=>show('loading',false)).catch(()=>{el('loading').textContent='背景と光を読み込めませんでした。再読み込みしてください。';});

@@ -4,6 +4,15 @@ import { IMPACT_AT } from './screen';
 import { hitDelay } from './release';
 import { few, glow, noise, ease, mixOf, type Frame } from './frame';
 
+/** 命中の白い火花の線の本数。派手さで増える。 */
+const SPARK_LINES = 22;
+/** 命中の後に残る帯電の、枝の本数と一本あたりの節の数。枝の本数だけ派手さで増える。 */
+const BOLT_BRANCHES = 9, BOLT_JOINTS = 9;
+/** 明滅の段、枝、節を別々の桁に置くための幅。足し合わせて同じ番号にならないよう、段の幅を大きくとる。 */
+const BOLT_STEP_SPAN = 1009, BOLT_BRANCH_SPAN = 17;
+/** 炎の余韻で昇る火の粉の数。派手さで増える。 */
+const FIRE_EMBERS = 8;
+
 /**
  * 地面の跡。命中の真下に属性ごとの跡を出し、2秒かけて薄れさせる。
  * 光を足す描き方では暗い色が出せないので、ここだけ普通の重ね方に切り替える。
@@ -69,8 +78,8 @@ export function drawImpact(f: Frame) {
   // floorY：床の高さ。命中の少し下と画面の下寄りの、低い方に置く。
   const many = r.count > 1, floorY = Math.max(g.y + radius * .9, f.h * .82);
 
-  /** 弾1発ぶんの粒。scale で量を変える。 */
-  const burst = (scale: number, at: { x: number; y: number }) => {
+  /** 弾1発ぶんの粒。scale で量を変える。連弾もすべて騎士の位置に届くので、出る場所は騎士のところ。 */
+  const burst = (scale: number) => {
     const n = Math.round(few(f, increase(preset.impactParticles, intensity, .5) * (violent ? 1 : .45) * scale));
     for (let i = 0; i < n; i++) {
       const a = f.pool.random() * Math.PI * 2, speed = (60 + f.pool.random() * 380) * (1 + intensity * .35) * (violent ? 1 : .5);
@@ -84,15 +93,15 @@ export function drawImpact(f: Frame) {
       if (element === 'light') { gravity = 0; kind = 0; drag = .06; }
       if (element === 'dark') { gravity = 40; kind = f.pool.random() < .5 ? 2 : 0; color = f.pool.random() < .5 ? pal.main : pal.edge; pull = 120 + f.pool.random() * 120; }
       if (r.purpose === 'enhance') { gravity = -160; vx *= .3; vy = -Math.abs(vy) * .6 - 40; kind = 0; life += .6; floor = 0; pull = 0; }
-      f.pool.spawn({ x: at.x + (f.pool.random() - .5) * 10, y: at.y + (f.pool.random() - .5) * 10, vx, vy, life, size: 1 + f.pool.random() * 2.6, gravity,
+      f.pool.spawn({ x: g.x + (f.pool.random() - .5) * 10, y: g.y + (f.pool.random() - .5) * 10, vx, vy, life, size: 1 + f.pool.random() * 2.6, gravity,
         drag: drag || (kind === 1 ? .1 : .4), floor, pull, px: g.x, py: g.y, color, core: pal.core, kind });
     }
   };
 
-  if (!many) f.once('impact', () => burst(1, g));
+  if (!many) f.once('impact', () => burst(1));
   else for (let i = 0; i < r.count; i++) {
     const last = i === r.count - 1;
-    if (impact >= hitDelay(i, r.count)) f.once('impact' + i, () => burst(last ? .7 : .9 / r.count, g));
+    if (impact >= hitDelay(i, r.count)) f.once('impact' + i, () => burst(last ? .7 : .9 / r.count));
   }
 
   // 余韻。命中の少し後に、属性ごとの消え方で粒を足す。出し方より消し方の方が属性が伝わる。
@@ -167,7 +176,7 @@ export function drawImpact(f: Frame) {
   }
   // 白い火花の線。一瞬で外へ。
   if (impact < .8 && violent) {
-    const n = Math.round(few(f, increase(22, intensity, .6))), step = mix.alt ? 2 : 1;
+    const n = Math.round(few(f, increase(SPARK_LINES, intensity, .6))), step = mix.alt ? 2 : 1;
     // 持続型のとき、火花の線は一本おきに二色目で描く。
     for (let pass = 0; pass < step; pass++) {
       c.strokeStyle = pass && mix.alt ? mix.alt.main : pal0.core; c.lineWidth = 1.4; c.globalAlpha = (1 - impact / .8) * .85; c.beginPath();
@@ -194,7 +203,17 @@ export function drawImpact(f: Frame) {
     // 明滅は毎秒3回まで（光に弱い人への配慮）。そのぶん枝を増やし、長くして派手さを出す。
     const k = Math.floor(t * 3), left = impact < .25 ? 1 - impact / .25 : (1 - clamp((impact - .25) / 1.35)) * .3;
     c.globalAlpha = left * (noise(k, 11) > .3 ? 1 : .3); c.lineWidth = 2; c.strokeStyle = pal0.core; c.beginPath();
-    for (let b = 0; b < Math.round(increase(9, intensity)); b++) { let x = g.x, y = g.y; c.moveTo(x, y); const a = noise(k + b, 12) * Math.PI * 2; for (let s = 0; s < 9; s++) { x += Math.cos(a + (noise(k * 7 + b * 13 + s, 13) - .5) * 1.6) * 17; y += Math.sin(a + (noise(k * 7 + b * 13 + s, 14) - .5) * 1.6) * 12; c.lineTo(x, y); } }
+    // 段と枝と節は桁を分けて混ぜる。足して同じ番号になる組み合わせが出ると、同じ形の枝が並んでしまう。
+    for (let b = 0; b < Math.round(increase(BOLT_BRANCHES, intensity)); b++) {
+      let x = g.x, y = g.y; c.moveTo(x, y);
+      const a = noise(k * BOLT_STEP_SPAN + b, 12) * Math.PI * 2;
+      for (let s = 0; s < BOLT_JOINTS; s++) {
+        const j = k * BOLT_STEP_SPAN + b * BOLT_BRANCH_SPAN + s;
+        x += Math.cos(a + (noise(j, 13) - .5) * 1.6) * 17;
+        y += Math.sin(a + (noise(j, 14) - .5) * 1.6) * 12;
+        c.lineTo(x, y);
+      }
+    }
     c.stroke();
   }
   if (element === 'light' && impact < 1.4) {
@@ -223,7 +242,7 @@ export function drawImpact(f: Frame) {
     c.globalAlpha = (1 - impact / 1.2) * .5; c.lineWidth = 3.4; c.strokeStyle = pal0.main; c.stroke();
     c.globalAlpha = (1 - impact / 1.2) * .8; c.lineWidth = 1.2; c.strokeStyle = pal0.core; c.stroke();
   }
-  if (element === 'fire' && impact < 1.6) for (let i = 0; i < Math.round(increase(8, intensity)); i++) { const u = (impact * .8 + noise(i, 15)) % 1; glow(f, g.x + (noise(i, 16) - .5) * radius * 1.4 + Math.sin(impact * 6 + i) * 6, g.y + 20 - u * (60 + intensity * 30), 4 * (1 - u), (1 - clamp(impact / 1.6)) * Math.sin(u * Math.PI) * .8, pal0.main, pal0.core); }
+  if (element === 'fire' && impact < 1.6) for (let i = 0; i < Math.round(increase(FIRE_EMBERS, intensity)); i++) { const u = (impact * .8 + noise(i, 15)) % 1; glow(f, g.x + (noise(i, 16) - .5) * radius * 1.4 + Math.sin(impact * 6 + i) * 6, g.y + 20 - u * (60 + intensity * 30), 4 * (1 - u), (1 - clamp(impact / 1.6)) * Math.sin(u * Math.PI) * .8, pal0.main, pal0.core); }
   // 囲う魔法は、包む輪を残す。
   if (r.enclosure) { c.globalAlpha = fade * .45; c.lineWidth = 1; c.strokeStyle = pal0.main; c.beginPath(); c.ellipse(g.x, g.y, radius * .7, radius, 0, 0, Math.PI * 2); c.stroke(); c.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI + impact * .5; c.moveTo(g.x + Math.cos(a) * radius * .7, g.y + Math.sin(a) * radius); c.lineTo(g.x - Math.cos(a) * radius * .7, g.y - Math.sin(a) * radius); } c.globalAlpha = fade * .2; c.stroke(); }
 }
