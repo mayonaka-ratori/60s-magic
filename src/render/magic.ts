@@ -1,7 +1,7 @@
 import { clamp, getNodes } from '../game/motion';
 import type { Point, Recipe, Element } from '../game/types';
 import { fitSpell, smoothStroke } from './spell-layout';
-import { getPreset, intensityOf, rgba, type EffectPreset } from './effects/presets';
+import { getPreset, intensityOf, type EffectPreset } from './effects/presets';
 import { GlowSprites } from './effects/sprites';
 import { ParticlePool } from './effects/particles';
 import { screenState, effectTime, hitStopOf, CHARGE_AT, RELEASE_AT, IMPACT_AT, FADE_OUT_AT, type ScreenState } from './effects/screen';

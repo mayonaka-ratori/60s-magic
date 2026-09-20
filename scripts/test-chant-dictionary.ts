@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { readFile,writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { defaultSpeechPython } from '../server/local-speech';
 import cases from '../tests/fixtures/chant-audio.json';
 import { readChant } from '../src/game/chant-dictionary';
 import { CastSession } from '../src/game/session';
@@ -9,7 +9,7 @@ async function run(command:string,args:string[]) {
   await new Promise<void>((ok,fail)=>{const child=spawn(command,args,{windowsHide:true,stdio:'inherit'});child.on('error',fail);child.on('exit',code=>code===0?ok():fail(new Error('音声の比較を完了できませんでした')));});
 }
 await run(process.execPath,['scripts/make-speech-fixtures.mjs','tests/fixtures/chant-audio.json']);
-await run(resolve('.venv-speech/Scripts/python.exe'),['-X','utf8','speech/benchmark-vocabulary.py']);
+await run(defaultSpeechPython(),['-X','utf8','speech/benchmark-vocabulary.py']);
 const report=JSON.parse(await readFile('.local-speech/vocabulary-raw-report.json','utf8'));
 report.results=report.results.map((r:{id:string;mode:string;text:string;processingMs:number})=>{
   const spec=cases.find(c=>c.id===r.id)!;const session=new CastSession(()=>0);

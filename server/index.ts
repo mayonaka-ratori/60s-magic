@@ -38,8 +38,9 @@ const speech=new WebSocketServer({noServer:true,maxPayload:8192});
 let speechClients=0;
 server.on('upgrade',(req,socket,head)=>{
   if(req.url!=='/api/speech')return; // 開発用の画面更新はViteへ渡す。
+  // ブラウザーは状況によって origin に "null" を送る。URLとして読めない値は例外にせず、そのまま断る。
   const origin=req.headers.origin;
-  if(!origin||new URL(origin).host!==req.headers.host||speechClients>=2){socket.destroy();return;}
+  if(!origin||!URL.canParse(origin)||new URL(origin).host!==req.headers.host||speechClients>=2){socket.destroy();return;}
   speech.handleUpgrade(req,socket,head,ws=>{
     speechClients++;ws.once('close',()=>speechClients--);
     if(speechProvider==='local')connectLocalSpeech(ws,localSpeech);

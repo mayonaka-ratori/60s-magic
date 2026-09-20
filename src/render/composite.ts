@@ -51,8 +51,6 @@ export const BLOOM_CALM_PEAK = 1.6;
 /** ブルームを切る目安のfpsと、戻す目安のfps。 */
 export const FPS_DROP = 55, FPS_BACK = 58;
 
-const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
-
 /** 重い後処理（ブルーム、色収差、歪み）を出す時間帯かどうか。 */
 export function postHeavyActive(t: number) { return t >= POST_FROM && t < POST_TO; }
 
@@ -69,6 +67,7 @@ export function rippleAt(t: number, impactAt = IMPACT_AT, life = RIPPLE_SECONDS)
  * 見せ始めの重なり具合。見せ始めた時刻で0、FADE_SECONDS 秒後に1。
  * 合成のcanvasの濃さとブルームの強さの両方に使う。切り替えの1コマで絵が跳ばないようにするため。
  */
+const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
 export function showFadeAt(t: number, shownAt: number) { return clamp01((t - shownAt) / FADE_SECONDS); }
 
 /** 後処理を切る手前の落とし具合。POST_TO の FADE_SECONDS 秒前から下がり始め、POST_TO で0になる。 */

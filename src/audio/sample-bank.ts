@@ -89,5 +89,4 @@ export class SampleBank {
     const turn=this.turn.get(key)??0;this.turn.set(key,turn+1);
     return {buffer:this.buffers.get(ready[turn%ready.length])!,gain:dbToGain(entry.gainDb),synth:entry.synth};
   }
-  get names(){return [...this.buffers.keys()];}
 }

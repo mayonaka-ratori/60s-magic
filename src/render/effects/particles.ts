@@ -68,9 +68,7 @@ export class ParticlePool {
         if (d < 6) { p.alive = false; this.release(i); continue; }
       }
       p.vy += p.gravity * dt;
-      // 抵抗1は速さをそのまま保つ。1以外のときだけ減らす。
-      const drag = p.drag === 1 ? 1 : Math.pow(p.drag, dt);
-      p.vx *= drag; p.vy *= drag;
+      if (p.drag !== 1) { const drag = Math.pow(p.drag, dt); p.vx *= drag; p.vy *= drag; }
       p.x += p.vx * dt; p.y += p.vy * dt;
       // 床に届いたかけらは、そこで止まって残る。
       if (p.floor > 0 && p.y >= p.floor) { p.y = p.floor; p.vy = 0; p.gravity = 0; p.vx *= Math.pow(.02, dt); }

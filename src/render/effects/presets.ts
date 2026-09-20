@@ -101,7 +101,6 @@ export function hexToRgb(hex: string) {
   const n = parseInt(hex.slice(1, 7), 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
-export const rgba = (hex: string, alpha: number) => { const { r, g, b } = hexToRgb(hex); return `rgba(${r},${g},${b},${clamp(alpha)})`; };
 
 /** 明るさを上げる。増幅型（相反する二属性）で主色をそのまま明るくするのに使う。 */
 export function lighten(hex: string, rate: number) {
