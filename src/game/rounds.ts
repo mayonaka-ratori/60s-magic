@@ -37,12 +37,6 @@ export const ROUNDS: Round[] = [
   { id: 'finish', index: 3, castId: 'cast-03', start: 40000, build: null, chant: 44000, inputEnd: 49000, lock: 51000, release: 52000, impact: 53600, finalBlow: 54500, handoff: 57000, end: 60000 },
 ];
 
-/**
- * とどめの回で当たる4回の時刻。最初の到達（impact）からのずれ（ms）。
- * 弾の数によらず固定にして、部品の飛ぶ時刻も体力の減り方も同じにする。設計の4.3。
- */
-export const FINISH_HIT_OFFSETS_MS = [0, 160, 320, 500];
-
 /** 戦いの終わり。回の表の最後の行から決まる。 */
 export const BATTLE_END = ROUNDS[ROUNDS.length - 1].end;
 /**
