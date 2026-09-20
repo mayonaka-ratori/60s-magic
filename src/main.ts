@@ -15,7 +15,7 @@ import { liveInput, emptyLive, wordless, type LiveInput } from './game/live-inpu
 import { resetLiveWords } from './game/live-words';
 import { resetInputAmount, speechKey } from './game/input-amount';
 import { ScreenOverlay } from './render/overlay';
-import { GUARD_STEP_MS, HealthBar } from './render/health-bar';
+import { GUARD_STEP_MS, HEALTH_HIDE_MS, HealthBar } from './render/health-bar';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas><canvas id="composite" aria-hidden="true"></canvas>
@@ -68,6 +68,10 @@ const calmSaved=(()=>{try{return localStorage.getItem(CALM_KEY)==='1';}catch{ret
 let calmMode=calmForced||calmSaved;
 const overlay=new ScreenOverlay(el('app'),{world:el('world')});
 const healthBar=new HealthBar(el('health'));
+// 体力の枠（名前とバー）。とどめの一撃のあとに薄くして消すので、消したかどうかを覚えておく。
+const healthWrapEl=document.querySelector<HTMLElement>('.enemy-health')!;
+let healthGone=false;
+function showHealthFrame(){healthGone=false;delete healthWrapEl.dataset.gone;}
 const sound=new CastAudio();
 const soundToggle=document.createElement('button');soundToggle.id='sound-toggle';soundToggle.className='sound-toggle';soundToggle.textContent='音を消す';el('hud').append(soundToggle);
 // 演出を控えめにする切り替え。開始画面は音の設定の隣、プレイ中は「音を消す」の隣に置く。
@@ -140,6 +144,7 @@ function toReady(message='') {
   show('last-record',!!lastReport);
   show('welcome',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);show('reveal',false);
   revealed.clear();el('reveal').classList.remove('in');el('deadline').style.opacity='0';el('app').dataset.deadline='';el('result').classList.remove('name-only');
+  showHealthFrame();
   el<HTMLButtonElement>('start').disabled=false;el<HTMLButtonElement>('demo').disabled=false;el('notice').textContent=message;
 }
 async function begin(isDemo=false) {
@@ -198,7 +203,7 @@ async function begin(isDemo=false) {
   begun.clear();ended.clear();requested.clear();lockLog.clear();revealed.clear();damaged.clear();lastRings=0;actShown='';resultShown=false;preparing=false;feedback=null;serviceNotice='';lastHandAt=performance.now();lastCameraLatency=0;frameIntervals.length=0;
   inputLags.length=0;pendingInputAt=0;
   el('reveal').classList.remove('in');show('reveal',false);el('deadline').style.opacity='0';el('app').dataset.deadline='';
-  const healthWrap=document.querySelector<HTMLElement>('.enemy-health')!;healthWrap.classList.remove('hit');delete healthWrap.dataset.hit;
+  healthWrapEl.classList.remove('hit');delete healthWrapEl.dataset.hit;showHealthFrame();
   show('welcome',false);show('result',false);show('hud',true);show('timer',true);show('bottom-hud',true);show('demo-tag',demo);show('recognized',false);
   show('input-panel',!voice&&!demo);show('meter',!!voice);show('voice-label',!!voice&&!demo);
   el('service-notice').textContent='';
@@ -309,11 +314,12 @@ function updateUi() {
   el<HTMLInputElement>('chant').disabled=!drawing;show('input-panel',typing&&drawing);
   show('meter',!!voice&&!voiceLost);
   // 当たった瞬間だけ体力バーを揺らす。減る量と速さは HealthBar が受け持つ。
-  for(const at of [ROUNDS[0].impact,GUARD_STEP_MS]) {
+  // とどめは一発目（53.6秒）と直撃（54.5秒）の2回だけで、間の3回ではゆらさない。
+  for(const at of [ROUNDS[0].impact,GUARD_STEP_MS,ROUNDS[2].impact,ROUNDS[2].finalBlow!]) {
     if(battle.elapsed<at||damaged.has(at))continue;
     damaged.add(at);
-    const healthWrap=document.querySelector<HTMLElement>('.enemy-health')!;healthWrap.classList.add('hit');healthWrap.dataset.hit='1';
-    setTimeout(()=>healthWrap.classList.remove('hit'),700);
+    healthWrapEl.classList.add('hit');healthWrapEl.dataset.hit='1';
+    setTimeout(()=>healthWrapEl.classList.remove('hit'),700);
   }
   showReveal(t,round,recipe);
   if(cast.locked&&recipe&&t>=round.lock/1000&&t<round.release/1000){show('recognized',true);el('recognized').textContent=[ELEMENT_LABELS[recipe.element],recipe.count>1?`${recipe.count}つ`:PURPOSE_LABELS[recipe.purpose]].join('　・　');}
@@ -533,6 +539,8 @@ function animate(now:number) {
   overlay.update(magic.screen,magic.preset.palettes[cast?.recipe?.element??'neutral'],calmMode);
   // 体力も世界の時計で減らす。命中で止めている間は先へ進まない（stage.render の後に読む）。
   if(cast)healthBar.update(stage.effectMs,session!.first.recipe);
+  // とどめの一撃の0.9秒後から、体力の枠を名前ごと薄くして消す。消したら戻さない。
+  if(cast&&!healthGone&&stage.effectMs>=HEALTH_HIDE_MS){healthGone=true;healthWrapEl.dataset.gone='1';}
   // 受け取った入力を描き終えた時刻との差を、手応えの記録に足す。
   if(pendingInputAt){inputLags.push(performance.now()-pendingInputAt);if(inputLags.length>3000)inputLags.shift();pendingInputAt=0;}
 }
