@@ -90,12 +90,12 @@ export class Knight {
       if(rim){m.emissiveColor=new Color3(.24*rim,.31*rim,.4*rim);m.emissiveFresnelParameters=new FresnelParameters({bias:.1,power:2.6,leftColor:Color3.White(),rightColor:Color3.Black()});}
       return m;
     };
-    this.armor=material('鎧','#353c46',.32,1);
-    const plate=material('当て板','#272d37',.24,.8);
+    this.armor=material('鎧','#33373d',.34,1);
+    const plate=material('当て板','#25282e',.26,.8);
     const cloth=material('布','#161a22',.05,.4);cloth.backFaceCulling=false;
     const hollow=material('隙間','#0b0f16',.02);hollow.emissiveColor=new Color3(.52,.23,.07);
     this.eyes=hollow;
-    const trim=material('金の縁','#94804a',.55,.7);
+    const trim=material('金の縁','#9b8449',.58,.7);
     const steel=material('刃と縁','#9aa3ae',.7,1.2);
     this.coreMaterial=material('胸の核','#2a2418',.1);this.coreMaterial.emissiveColor=Color3.FromHexString('#6f542e');
 
@@ -117,20 +117,24 @@ export class Knight {
       const back=side<0?-.07:.09,open=side*.05;
       const leg=new TransformNode('脚',this.scene);leg.parent=this.root;leg.position.set(side*.22,0,back);leg.rotation.z=open;
       cone('腿',leg,0,.98,0,.32,.26,.78);
-      cone('膝当て',leg,0,.57,-.02,.3,.27,.13,6,plate);
+      const knee=MeshBuilder.CreateSphere('膝当て',{diameter:.31,segments:6},this.scene);
+      knee.parent=leg;knee.position.set(0,.57,-.03);knee.scaling.set(1,.75,1.1);knee.material=plate;
       const shin=cone('脛当て',leg,side*.02,.32,0,.28,.23,.44);shin.rotation.z=-open*1.4;
-      const boot=box('具足',leg,side*.03,.09,-.09,.31,.19,.52,plate);boot.rotation.y=-side*.2;
+      const foot=new TransformNode('足',this.scene);foot.parent=leg;foot.position.set(side*.03,0,-.02);foot.rotation.y=-side*.2;
+      box('具足',foot,0,.1,-.06,.32,.2,.46,plate);
+      cone('具足の先',foot,0,.07,-.36,.1,.3,.24,4,plate).rotation.x=-Math.PI/2;
     }
-    // 腰布と帯。脚の付け根を隠し、上半身との境を金の帯で切る。
-    const skirt=cone('腰布',this.root,0,1.15,0,.58,.98,.94,8,cloth);skirt.rotation.y=Math.PI/8;
-    const hem=cone('裾の縁',this.root,0,.7,0,.96,1.02,.06,8,trim);hem.rotation.y=Math.PI/8;
-    // 腰布の正面に金の帯を一本。布の傾きに合わせて少しだけ寝かせる。
-    const front=box('腰布の帯',this.root,0,1.1,-.38,.12,.94,.025,trim);front.rotation.x=.19;
-    cone('帯',this.root,0,1.56,0,.56,.6,.12,8,trim);
-    cone('腹',this.root,0,1.7,0,.5,.54,.2,6,plate);
+    // 腰。板を3枚重ねて下へ広げ、その下に布を長く垂らす。元絵の裾広がりに合わせる。
+    for(const [i,y] of [1.5,1.35,1.2].entries()) {
+      const lame=cone('腰の板',this.root,0,y,0,.54+i*.11,.66+i*.11,.18,8,i?plate:this.armor);lame.rotation.y=Math.PI/8;
+    }
+    const skirt=cone('腰布',this.root,0,.85,0,.88,1.16,.95,6,cloth);skirt.rotation.y=Math.PI/6;
+    const hem=cone('裾の縁',this.root,0,.41,0,1.13,1.19,.055,6,trim);hem.rotation.y=Math.PI/6;
+    cone('帯',this.root,0,1.6,0,.54,.58,.12,8,trim);
+    cone('腹',this.root,0,1.72,0,.48,.52,.2,6,plate);
 
     this.body=new TransformNode('上半身',this.scene);this.body.parent=this.root;this.body.position.y=1.72;
-    cone('胸',this.body,0,.3,0,.74,.5,.64);
+    cone('胸',this.body,0,.3,0,.74,.5,.64,8);
     // 胸当てと金の線。核を頂点にしたV字で、狙う場所を分かりやすくする。
     cone('胸当て',this.body,0,.34,-.2,.5,.34,.5,6,plate);
     for(const side of [-1,1]) {
@@ -138,7 +142,7 @@ export class Knight {
     }
     this.core=MeshBuilder.CreateSphere('胸の核',{diameter:.15,segments:12},this.scene);
     this.core.parent=this.body;this.core.position.set(0,.22,-.31);this.core.material=this.coreMaterial;
-    cone('喉当て',this.body,0,.68,-.01,.3,.38,.2,6,plate);
+    cone('喉当て',this.body,0,.68,-.01,.28,.36,.2,8,plate);
 
     // 背中のマント。半分だけの角柱を後ろへ回し、肩から裾へ広げる。
     const cape=MeshBuilder.CreateCylinder('マント',{diameterTop:.72,diameterBottom:1.3,height:1.38,tessellation:6,arc:.5},this.scene);
@@ -146,24 +150,29 @@ export class Knight {
     cape.parent=this.body;cape.position.set(0,-.06,.09);cape.rotation.set(-.05,Math.PI,0);cape.material=cloth;
 
     this.head=new TransformNode('首',this.scene);this.head.parent=this.body;this.head.position.y=.78;
-    cone('兜',this.head,0,.17,0,.42,.52,.46);
-    for(const side of [-1,1])box('兜の目',this.head,side*.07,.13,-.25,.1,.055,.04,hollow);
-    cone('面覆い',this.head,0,.07,-.14,.34,.18,.18,6,plate);
-    // 兜の角。遠目に騎士と分かる輪郭を、この2本と頭頂の小さな先で作る。
+    cone('兜',this.head,0,.16,0,.34,.44,.44);
+    for(const side of [-1,1])box('兜の目',this.head,side*.065,.12,-.22,.085,.048,.04,hollow);
+    // 面。前へ尖らせて、平らな顔に見えないようにする。
+    const face=cone('面覆い',this.head,0,.08,-.17,0,.28,.24,4,plate);face.rotation.set(-Math.PI/2,0,Math.PI/4);
+    // 兜の角。外へ開きながら後ろへ寝かせる。
     for(const side of [-1,1]) {
-      const horn=cone('兜の角',this.head,side*.15,.28,.02,0,.14,.26,6,plate);horn.rotation.z=-side*.6;
+      const horn=cone('兜の角',this.head,side*.13,.27,.04,0,.12,.28,6,plate);horn.rotation.set(.4,0,-side*.5);
     }
-    cone('頭頂の先',this.head,0,.34,-.04,0,.13,.14,6,plate);
+    cone('頭頂の先',this.head,0,.32,-.02,0,.11,.13,6,plate);
 
     // 腕は肩と肘の2段。肘を少し前へ曲げ、手の位置から剣と盾を下げる。
     const arm=(name:string,side:number)=>{
       const node=new TransformNode(name,this.scene);
-      node.parent=this.body;node.position.set(side*.38,.32,0);
+      node.parent=this.body;node.position.set(side*.35,.32,0);
       // 肩当ては半球。外側へ小さな棘を付けて、正面から見た幅を出す。
-      const pauldron=MeshBuilder.CreateSphere('肩当て',{diameter:.46,segments:6,slice:.6},this.scene);
-      pauldron.parent=node;pauldron.position.set(side*.03,.03,0);pauldron.scaling.set(1,.85,1.05);pauldron.material=this.armor;
-      const spike=cone('肩の棘',node,side*.19,.07,0,0,.13,.2,6,plate);spike.rotation.z=-side*1.1;
-      cone('上腕',node,side*.01,-.23,0,.2,.17,.42,6,plate);
+      const pauldron=MeshBuilder.CreateSphere('肩当て',{diameter:.41,segments:6,slice:.6},this.scene);
+      const big=side>0?1.12:1;
+      pauldron.parent=node;pauldron.position.set(side*.03,.04,0);pauldron.scaling.set(big,.8*big,1.05*big);pauldron.material=this.armor;
+      // 肩当ての下に板を2枚重ね、外へ広げる。
+      cone('肩の板',node,side*.03,-.03,0,.39,.44,.1,8);
+      cone('肩の板',node,side*.03,-.12,0,.42,.46,.09,8,plate);
+      const spike=cone('肩の棘',node,side*.18,.08,0,0,.11,.19,6,plate);spike.rotation.z=-side*1.1;
+      cone('上腕',node,side*.01,-.27,0,.2,.17,.4,6,plate);
       const elbow=new TransformNode(name+'の肘',this.scene);
       elbow.parent=node;elbow.position.set(side*.02,-.46,0);elbow.rotation.x=.26;
       cone('肘当て',elbow,0,0,0,.2,.19,.1);
@@ -175,16 +184,19 @@ export class Knight {
     cone('握り',sword,0,.07,0,.07,.075,.2,6,plate);
     cone('柄頭',sword,0,.19,0,.09,.05,.08,6,trim);
     box('鍔',sword,0,-.04,0,.42,.07,.1,trim);
-    const blade=cone('刃',sword,0,-.72,0,.15,.02,1.3,4,steel);blade.scaling.z=.32;blade.rotation.y=Math.PI/4;
+    const blade=cone('刃',sword,0,-.8,0,.15,.02,1.46,4,steel);blade.scaling.z=.32;blade.rotation.y=Math.PI/4;
     const [shieldShoulder,shieldHand]=arm('盾を持つ腕',1);this.shieldArm=shieldShoulder;
     // 盾は四角柱を平たくし、縦へ伸ばした凧形。金の縁と中央の飾りを重ねる。
-    const mount=new TransformNode('盾の取り付け',this.scene);mount.parent=shieldHand;mount.position.set(.2,-.22,-.26);mount.rotation.set(-.26,-.2,.06);
+    const mount=new TransformNode('盾の取り付け',this.scene);mount.parent=shieldHand;mount.position.set(.3,-.3,-.2);mount.rotation.set(-.24,-.34,.1);
     const shield=new TransformNode('盾',this.scene);shield.parent=mount;shield.rotation.x=Math.PI/2;
-    const face=MeshBuilder.CreateCylinder('盾の面',{diameter:.82,height:.09,tessellation:4},this.scene);
-    face.parent=shield;face.scaling.set(.94,1,1.3);face.material=this.armor;
-    const edge=MeshBuilder.CreateCylinder('盾の縁',{diameter:.9,height:.05,tessellation:4},this.scene);
-    edge.parent=shield;edge.position.y=.012;edge.scaling.set(.94,1,1.3);edge.material=trim;
-    const band=box('盾の帯',shield,0,-.05,0,.1,.03,.96,trim);band.scaling.z=1;
+    // 縦へ伸ばす拡大と、五角形を回す回転を別の節に分ける。上が広く下が尖った形になる。
+    const stretch=new TransformNode('盾の伸ばし',this.scene);stretch.parent=shield;stretch.scaling.set(.96,1,1.26);
+    const spin=new TransformNode('盾の向き',this.scene);spin.parent=stretch;spin.rotation.y=-.314;
+    const shieldFace=MeshBuilder.CreateCylinder('盾の面',{diameter:.94,height:.09,tessellation:5},this.scene);
+    shieldFace.parent=spin;shieldFace.material=this.armor;
+    const edge=MeshBuilder.CreateCylinder('盾の縁',{diameter:1.02,height:.05,tessellation:5},this.scene);
+    edge.parent=spin;edge.position.y=.012;edge.material=trim;
+    const band=box('盾の帯',shield,0,-.05,0,.08,.03,.98,trim);band.scaling.z=1;
     const boss=MeshBuilder.CreateCylinder('盾の飾り',{diameterTop:.07,diameterBottom:.19,height:.12,tessellation:6},this.scene);
     boss.parent=shield;boss.position.y=-.08;boss.rotation.x=Math.PI;boss.material=trim;
 
