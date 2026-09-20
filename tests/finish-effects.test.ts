@@ -9,9 +9,9 @@ import { MagicCanvas } from '../src/render/magic';
 import type { Frame } from '../src/render/effects/frame';
 import type { Point, Recipe } from '../src/game/types';
 import {
-  FINISH_HOLD, FINISH_INHERITED, FINISH_PASS, FINISH_RING, FINISH_SETTLE,
+  FINISH_HOLD, FINISH_INHERITED, FINISH_PASS, FINISH_RING, FINISH_SETTLE, SPELL_LINE_WIDTH,
   drawFinish, finishBoost, finishHitPlan, finishHitTimes, finishTravel, holdTime,
-  inheritedSpot, passThrough, ringLayout, ringPassAt, settleFade,
+  inheritedSpot, passStrokeWidth, passThrough, ringLayout, ringPassAt, ringStrokeWidth, settleFade,
 } from '../src/render/effects/finish';
 
 const finishBeat = beatOf(ROUNDS[2]);
@@ -65,6 +65,22 @@ describe('術式が視界を通り抜ける', () => {
     expect(passThrough(FINISH_PASS.hold + .05)!.alpha).toBeLessThan(1);
     expect(passThrough(FINISH_PASS.seconds - .001)!.alpha).toBeLessThan(.01);
   });
+  it('線は今の術式の2倍より細くならず、広げるほど太くなる', () => {
+    const 太さ = (scale: number) => passStrokeWidth(720, 1.5, scale);
+    expect(太さ(1)).toBeGreaterThanOrEqual(SPELL_LINE_WIDTH * 2);
+    expect(太さ(1)).toBeGreaterThanOrEqual(720 * FINISH_PASS.width);
+    expect(太さ(FINISH_PASS.scale)).toBeGreaterThan(太さ(1));
+    // 派手さが小さくても、画面の高さに対する下限は割らない。
+    expect(passStrokeWidth(720, 0, 1)).toBeGreaterThanOrEqual(SPELL_LINE_WIDTH * 2);
+  });
+  it('広げた術式の線と光が、濃いまま描かれる', () => {
+    const log: string[] = [];
+    drawFinish(frame(finishBeat.release + .02, { c: stubContext(log) }));
+    const 太さ = log.filter(line => line.startsWith('lineWidth=')).map(line => Number(line.slice(10)));
+    const 濃さ = log.filter(line => line.startsWith('globalAlpha=')).map(line => Number(line.slice(12)));
+    expect(Math.max(...太さ)).toBeGreaterThanOrEqual(SPELL_LINE_WIDTH * 2);
+    expect(Math.max(...濃さ)).toBeGreaterThanOrEqual(.9);
+  });
   it('控えめモードでは8倍ではなく4倍までにする', () => {
     expect(passThrough(FINISH_PASS.seconds - .001, true)!.scale).toBeCloseTo(FINISH_PASS.calmScale, 1);
     expect(passThrough(.05, true)!.scale).toBeLessThan(passThrough(.05)!.scale);
@@ -114,6 +130,29 @@ describe('輪をくぐって奥へ伸びる', () => {
       expect(finishTravel(at).travel).toBeCloseTo(ringLayout(i).depth, 6);
     }
     expect(前).toBeLessThan(1);
+  });
+  it('輪の線は画面の高さの0.4%より細くならず、くぐった瞬間は太くなる', () => {
+    expect(ringStrokeWidth(720)).toBeGreaterThanOrEqual(720 * FINISH_RING.width);
+    expect(ringStrokeWidth(720, 1)).toBeGreaterThan(ringStrokeWidth(720));
+    expect(FINISH_RING.alpha).toBeGreaterThanOrEqual(.8);
+  });
+  it('52.3秒から53.5秒まで5枚の輪が出て、太さと濃さが決めた値を満たす', () => {
+    const 輪 = (t: number) => {
+      const log: string[] = [];
+      drawFinish(frame(t, { c: stubContext(log) }));
+      return {
+        枚数: log.filter(line => line.startsWith('ellipse:')).length,
+        太さ: log.filter(line => line.startsWith('lineWidth=')).map(line => Number(line.slice(10))),
+        濃さ: log.filter(line => line.startsWith('globalAlpha=')).map(line => Number(line.slice(12))),
+      };
+    };
+    expect(輪(52.29).枚数).toBe(0);
+    expect(輪(53.51).枚数).toBe(0);
+    const 途中 = 輪(52.9);
+    // 外側の輪と内側の輪で、5枚ぶん10個以上。
+    expect(途中.枚数).toBeGreaterThanOrEqual(FINISH_RING.count * 2);
+    expect(Math.max(...途中.太さ)).toBeGreaterThanOrEqual(720 * FINISH_RING.width);
+    expect(Math.max(...途中.濃さ)).toBeGreaterThanOrEqual(FINISH_RING.alpha);
   });
   it('飛翔の部品へ渡す倍率は、発動で1倍、到達で約2倍', () => {
     expect(finishBoost(frame(finishBeat.release)).size).toBeCloseTo(1, 6);
