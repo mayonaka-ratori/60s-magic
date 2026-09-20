@@ -22,7 +22,7 @@ REPORT = ROOT / '.local-speech/speed-report.json'
 LENGTHS = (3, 7, 11, 14)
 ROUNDS = 3
 # 14秒で入力を締めたあと、最後の文字を待てる時間。src/game/session.ts の SPEECH_WAIT_MS と同じ。
-WAIT_MS = 1100
+WAIT_MS = 1400
 # 途中結果を出す間隔。server/local-speech-session.ts と同じ。
 INTERVAL_MS = 650
 

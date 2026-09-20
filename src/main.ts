@@ -150,7 +150,6 @@ async function begin(isDemo=false) {
     show('welcome',false);show('result',false);show('hud',true);show('timer',false);show('bottom-hud',false);show('input-panel',false);show('recognized',false);show('demo-tag',false);
     show('meter',!!voice);show('voice-label',false);show('countdown',true);
     el('countdown-hint').textContent=mode==='camera'?'手を画面の前に出して、描き始める位置を決めよう':'マウスを、描き始めたい位置へ動かそう';
-    el<HTMLInputElement>('chant').value='';
     diag?.log('準備の合図を開始',{seconds:COUNTDOWN_SECONDS});
     for(let remaining=COUNTDOWN_SECONDS;remaining>0;remaining--) {
       el('countdown-number').textContent=String(remaining);
@@ -169,7 +168,6 @@ async function begin(isDemo=false) {
   el<HTMLInputElement>('chant').value='';el<HTMLInputElement>('chant').disabled=false;healthBar.reset();
   document.querySelectorAll('[data-feedback]').forEach(button=>button.classList.remove('selected'));
   if(demo)session.speech.add({id:0,revision:1,startMs:11000,endMs:13500,text:'雷よ、七つに分かれろ',final:true,stability:1,source:'typed'});
-  if(el<HTMLInputElement>('chant').value)addTypedChant();
   updateUi();
 }
 

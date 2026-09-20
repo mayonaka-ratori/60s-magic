@@ -42,12 +42,12 @@ URLに付けられる切り替えです。
 
 | コマンド | すること | かかる時間 |
 | --- | --- | --- |
-| `npm test` | 単体の試験（135件） | 数秒 |
+| `npm test` | 単体の試験（245件） | 数秒 |
 | `npm run build` | 型の検査と配布用の生成 | 数秒 |
 | `npm run test:speech` | 合成音声でこのPCの音声認識を確認。4種類×3回。結果は `.local-speech/test-report.json` | 1分 |
 | `node scripts/prepare-browser-audio.mjs` | 上の音から、ブラウザー試験用の音を作る | 数秒 |
 | `npm run test:browser` | ブラウザーの試験（16件）。うち1件が実際の音声認識を使い、上の音がなければ飛ばす | 10分 |
-| `npm run test:chants` | 詠唱辞書の読み方と変換を確認 | 数秒 |
+| `npm run test:chants` | 合成音声を認識させ、詠唱辞書の読み方と変換を確認（先に `setup:speech`） | 数分 |
 | `npm run benchmark:speech` | 認識モデルの速さを比べる（先に `npm run make:speech-fixtures`） | 数分 |
 
 ブラウザー試験は最初に `npx playwright install chromium` が要ります。Macで走らせるときは `npm run dev` を止めてからにしてください。カメラの試験はブラウザーが作った映像を使うので、実際の手の精度を示すものではありません。
