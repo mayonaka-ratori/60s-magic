@@ -68,3 +68,28 @@ describe('ローカル音声認識の受付',()=>{
     expect(s.freeze().speech.status).toBe('recognized');expect(s.state?.speech.provider).toBe('local');expect(s.report().speechEntries[0].processingMs).toBe(180);
   });
 });
+
+describe('確定が間に合わないときの扱い',()=>{
+  it('PC内の認識の確定が届かなければ、最後の途中結果を採用して記録に残す',()=>{
+    const book=new SpeechBook();
+    book.add({id:0,revision:1,startMs:1000,endMs:6000,text:'氷よ',final:false,stability:0.5,source:'local'});
+    book.add({id:0,revision:2,startMs:1000,endMs:11000,text:'氷よ壁となれ',final:false,stability:0.5,source:'local'});
+    expect(book.text()).toBe('');
+    expect(book.freeze().map(e=>e.text)).toEqual(['氷よ壁となれ']);expect(book.usedFallback).toBe(true);
+  });
+  it('Googleの途中結果は確定前に採用しない',()=>{
+    const book=new SpeechBook();
+    book.add({id:0,revision:1,startMs:1000,endMs:6000,text:'氷よ',final:false,stability:0.5,source:'google'});
+    expect(book.freeze()).toHaveLength(0);expect(book.usedFallback).toBe(false);
+  });
+  it('確定が届いていれば途中結果の採用はしない',()=>{
+    const book=new SpeechBook();
+    book.add({id:0,revision:3,startMs:1000,endMs:14000,text:'雷よ七つに分かれろ',final:true,stability:0.9,source:'local'});
+    expect(book.freeze().map(e=>e.text)).toEqual(['雷よ七つに分かれろ']);expect(book.usedFallback).toBe(false);
+  });
+  it('画面に出す最新の文字は安定していなくても返す',()=>{
+    const book=new SpeechBook();
+    book.add({id:0,revision:1,startMs:1000,endMs:6000,text:'氷よ',final:false,stability:0.5,source:'local'});
+    expect(book.latest()?.text).toBe('氷よ');
+  });
+});
