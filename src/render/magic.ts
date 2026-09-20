@@ -15,7 +15,7 @@ import { emptyLive, type LiveInput } from '../game/live-input';
 
 /** 属性ごとの主色。術式の線と結果の縮小図が使う。 */
 export const colors: Record<Element, string> = Object.fromEntries(Object.entries(getPreset(null).palettes).map(([k, v]) => [k, v.main])) as Record<Element, string>;
-const still: ScreenState = { shakeX: 0, shakeY: 0, flash: 0, darken: 0, chromatic: 0, hitStop: 0 };
+const still: ScreenState = { shakeX: 0, shakeY: 0, flash: 0, darken: 0, chromatic: 0, hitStop: 0, rotate: 0, zoom: 1, blackout: 0, saturate: 1 };
 /** 魔法が確定する前に部品へ渡す仮のレシピ。無属性の球。 */
 const pending: Recipe = { version: 'recipe-1', element: 'neutral', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .5, area: .5, duration: .5, concentration: .5,
   enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null };
@@ -120,8 +120,7 @@ export class MagicCanvas {
       const d = this.state.chromatic, cw = this.canvas.width, ch = this.canvas.height;
       c.drawImage(this.canvas, 0, 0, cw, ch, -d, 0, w, h); c.drawImage(this.canvas, 0, 0, cw, ch, d, 0, w, h); c.restore();
     }
-    // 閃光。属性の色を少し混ぜた白。
-    if (this.state.flash > .003) { c.save(); c.globalAlpha = this.state.flash; c.fillStyle = rgba(palette.core, 1); c.fillRect(0, 0, w, h); c.globalAlpha = this.state.flash * .5; c.fillStyle = palette.main; c.fillRect(0, 0, w, h); c.restore(); }
+    // 閃光と暗転の全画面の塗りは、HTMLの層（src/render/overlay.ts）が担当する。
   }
 
   /** 結果の枠に、本人の線を縮めて描く。 */

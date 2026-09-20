@@ -11,6 +11,8 @@ import { chantDictionary } from './game/chant-dictionary';
 import { CastAudio } from './audio/cast-audio';
 import { Diagnostics } from './game/diagnostics';
 import { liveInput, emptyLive } from './game/live-input';
+import { ScreenOverlay } from './render/overlay';
+import { HealthBar } from './render/health-bar';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas>
@@ -42,6 +44,10 @@ const show=(id:string,visible:boolean)=>{el(id).hidden=!visible;};
 // 見た目の設定は ?preset=calm|vivid|max で選べる。指定がなければ派手な設定。
 const presetName=new URLSearchParams(location.search).get('preset');
 const magic=new MagicCanvas(el<HTMLCanvasElement>('magic'),presetName);
+// 控えめモード。?calm=1 か画面のボタンで切り替える（担当2が実装）。
+let calmMode=new URLSearchParams(location.search).get('calm')==='1'||matchMedia('(prefers-reduced-motion: reduce)').matches;
+const overlay=new ScreenOverlay(el('app'),{world:el('world'),knight:el('knight'),spell:el('spell')});
+const healthBar=new HealthBar(el('health'));
 const sound=new CastAudio();
 const soundToggle=document.createElement('button');soundToggle.id='sound-toggle';soundToggle.className='sound-toggle';soundToggle.textContent='音を消す';el('hud').append(soundToggle);
 function setSound(enabled:boolean){sound.setEnabled(enabled);el<HTMLInputElement>('use-sound').checked=enabled;el<HTMLButtonElement>('test-sound').disabled=!enabled;soundToggle.textContent=enabled?'音を消す':'音を出す';soundToggle.setAttribute('aria-pressed',String(!enabled));if(enabled)void sound.prepare();}
@@ -137,7 +143,7 @@ async function begin(isDemo=false) {
   show('welcome',false);show('result',false);show('hud',true);show('timer',true);show('bottom-hud',true);show('demo-tag',demo);show('recognized',false);
   show('input-panel',!voice&&!demo);show('meter',!!voice);show('voice-label',!!voice&&!demo);
   el('service-notice').textContent='';
-  el<HTMLInputElement>('chant').value='';el<HTMLInputElement>('chant').disabled=false;el('health').style.width='100%';
+  el<HTMLInputElement>('chant').value='';el<HTMLInputElement>('chant').disabled=false;healthBar.reset();
   document.querySelectorAll('[data-feedback]').forEach(button=>button.classList.remove('selected'));
   if(demo)session.speech.add({id:0,revision:1,startMs:11000,endMs:13500,text:'雷よ、七つに分かれろ',final:true,stability:1,source:'typed'});
   if(el<HTMLInputElement>('chant').value)addTypedChant();
@@ -183,7 +189,6 @@ function updateUi() {
   if(t>=16||(t>=14&&!heard))show('voice-label',false);
   el('step-input').classList.toggle('active',t<14);el('step-complete').classList.toggle('active',t>=14&&t<17);el('step-release').classList.toggle('active',t>=17);
   el<HTMLInputElement>('chant').disabled=t>=14;show('input-panel',!voice&&!demo&&t<14);
-  if(t>=18.5)el('health').style.width='70%';
   if(session.locked&&session.recipe&&t>=16&&t<18.5){show('recognized',true);el('recognized').textContent=[ELEMENT_LABELS[session.recipe.element],session.recipe.count>1?`${session.recipe.count}つ`:PURPOSE_LABELS[session.recipe.purpose]].join('　・　');}
   else show('recognized',false);
   const level=voice?.level??0;

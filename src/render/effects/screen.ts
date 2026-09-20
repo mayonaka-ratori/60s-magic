@@ -2,7 +2,17 @@ import { clamp } from '../../game/motion';
 import type { EffectPreset } from './presets';
 import { increase } from './presets';
 
-export type ScreenState = { shakeX: number; shakeY: number; flash: number; darken: number; chromatic: number; hitStop: number };
+export type ScreenState = {
+  shakeX: number; shakeY: number; flash: number; darken: number; chromatic: number; hitStop: number;
+  /** 画面の傾き（度）。揺れと一緒に使う */
+  rotate: number;
+  /** 画面の寄り。1が等倍 */
+  zoom: number;
+  /** 放出直前の完全な暗転。0〜1 */
+  blackout: number;
+  /** 背景の彩度。1が通常、0で白黒 */
+  saturate: number;
+};
 export const RELEASE_AT = 17, IMPACT_AT = 18.5;
 
 /** 画面全体にかかる効果。時刻と設定から決まる純粋な計算。攻撃以外は揺らさない。
@@ -27,7 +37,7 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   const charge = clamp((t - 14) / 1.2), back = clamp((t - IMPACT_AT - .8) / 1.6);
   const darken = t < RELEASE_AT ? darkenMax * charge : darkenMax * (1 - clamp((t - RELEASE_AT) / .25)) * .3 + darkenMax * .45 * clamp((t - RELEASE_AT) / .25) * (1 - back);
   const chromatic = t >= IMPACT_AT && violent ? increase(preset.chromatic, intensity, .4) * Math.max(0, 1 - (t - IMPACT_AT) / .5) : 0;
-  return { shakeX, shakeY, flash: clamp(flash), darken: clamp(darken), chromatic, hitStop: preset.hitStop * clamp(.5 + intensity * .25, 0, 1) };
+  return { shakeX, shakeY, flash: clamp(flash), darken: clamp(darken), chromatic, hitStop: preset.hitStop * clamp(.5 + intensity * .25, 0, 1), rotate: 0, zoom: 1, blackout: 0, saturate: 1 };
 }
 
 /** 命中の一瞬だけ演出の時計を止める。騎士や音の時刻は変えない。 */
