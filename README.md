@@ -134,6 +134,7 @@ npx playwright test tests/browser/local-voice.spec.ts
 
 人に試してもらう手順は [docs/最初の24秒_確認手順.md](docs/最初の24秒_確認手順.md) にまとめています。
 今回の結果と未確認事項は [docs/実装と確認の記録.md](docs/実装と確認の記録.md) をご覧ください。
+文書の一覧と段階ごとの進み具合は [docs/README.md](docs/README.md) にまとめています。
 
 配布用の画面を使う場合は次のように起動します。同じサーバーが音声とJevの接続も担当します。
 

@@ -31,36 +31,76 @@
 ## プロジェクトの概要
 
 「60秒魔法ゲーム」の試作です。プレイヤーが手で線を描き、声で唱えた言葉から魔法を作り、敵の騎士へ放ちます。
-今は最初の24秒（一回目の魔法）だけを作っています。仕様の全体は `60秒魔法ゲーム_設計仕様.md`、作った範囲と使い方は `README.md`、確認の記録は `docs/` にあります。
+今は最初の24秒（一回目の魔法）だけを作っています。仕様の全体は `60秒魔法ゲーム_設計仕様.md`、作った範囲と使い方は `README.md`、確認の記録は `docs/`、文書の一覧と段階ごとの進み具合は `docs/README.md` にあります。
 速さや大きさを見積もるときは、確認に使っているPC（Apple M4のMac）の値を `docs/確認に使うPC.md` にまとめてあるので、そこを基準にしてください。
 
-主な構成：
+## 前提
 
-- `src/game/`：時計、手の軌跡、発話、魔法の決定
-- `src/input/`、`public/*worker*.js`、`public/audio-worklet.js`：カメラとマイク
-- `src/render/`：Babylon.jsの背景、騎士、術式と魔法の描画
-- `server/`：接続情報を持つサーバー、Jevへの12問、PC内とGoogleの音声認識
-- `speech/`：PC内で動かす音声認識（Kotoba-Whisper）。`engines.py` がPCに合わせて動かし方を選ぶ
-- `tests/`：単体の試験と、Playwrightによるブラウザーの試験
+- Node.js 22.12以上とChrome。
+- WindowsとMacの両方で動かします。`setup:speech` はPCに合わせてPowerShellかbashの手順を自動で選びます。
+- このPCでの音声認識は、NVIDIAのGPU、MacのGPU、CPUのどれでも動きます。CPUだけのPCでは小さいモデルが初期値になります。
+- JevとGoogleの接続情報がなくても、マウスと文字入力で一通り遊べます。
 
-## よく使うコマンド
+## コマンド
 
-```
-npm ci                 # 依存するソフトを入れる
-npm run setup:assets   # 手の認識に使うファイルを取得する
-npm run setup:speech   # PC内の音声認識を準備する（uvが必要。NVIDIA GPUがなければCPUで動く）
-npm run dev            # 開発用に起動する（http://localhost:5173）
-npm test               # 単体の試験
-npm run build          # 型の確認とビルド
-npm run test:browser   # ブラウザーの試験（先に npx playwright install chromium）
-npm run make:speech-fixtures  # 確認用の日本語音声をPC内で作る
-npm run benchmark:speech      # 認識モデルの速さを比べる
-```
+| コマンド | すること |
+| --- | --- |
+| `npm ci` | 依存するソフトの取得 |
+| `npm run setup:assets` | 手の認識に使うファイルの取得 |
+| `npm run setup:speech` | このPCの音声認識の準備。uvが必要。初回は数GBの通信が必要 |
+| `npm run dev` | 開発用に起動。http://localhost:5173 |
+| `npm run build` | 型の検査と配布用の生成 |
+| `npm start` | 配布用の画面で起動 |
+| `npm test` | vitestの単体試験 |
+| `npm run test:browser` | Playwrightのブラウザー試験 |
+| `npm run test:speech` | 合成音声でこのPCの音声認識を確認 |
+| `npm run test:chants` | 詠唱辞書の読み方と変換を確認 |
+| `npm run make:speech-fixtures` | 確認用の日本語音声をPC内で作る |
+| `npm run benchmark:speech` | 認識モデルの速さを比べる |
+
+変更したら `npm test` と `npm run build` を通してください。ブラウザー試験は `npx playwright install chromium` の後に走ります。音声の試験は `setup:speech` を済ませたPCでのみ動きます。
+
+## フォルダー
+
+| 場所 | 中身 |
+| --- | --- |
+| `src/game/` | 時計、手の軌跡、発話の更新、魔法の決定、確認用の記録 |
+| `src/input/` | カメラとマイクの取り込み。`public/*worker*.js` と `public/audio-worklet.js` も使う |
+| `src/render/` | Babylon.jsの背景と騎士、画面手前の術式と魔法 |
+| `src/audio/` | 効果音の合成と鳴らす時刻 |
+| `server/` | 接続情報を持つサーバー、Jevの12問、音声認識の中継 |
+| `speech/` | このPCの音声認識（Kotoba-Whisper）。`engines.py` がPCに合わせて動かし方を選ぶ。使うソフトとモデルの版を固定 |
+| `scripts/` | 準備と確認の補助 |
+| `public/` | 画像、音声の処理、手の認識の作業用ファイル |
+| `tests/` | 単体試験と `tests/browser/` のブラウザー試験 |
+| `docs/` | 作った範囲と確認の記録 |
+
+## 主な数値の置き場所
+
+24秒の進行を変えるときは、ここを見れば足ります。
+
+| 数値 | 場所 |
+| --- | --- |
+| 各場面の切り替わり時刻（6・11・14・17・23・24秒） | `src/game/session.ts` の `phaseAt` |
+| Jevへ送る時刻と打ち切り | `src/main.ts` と `src/game/session.ts` |
+| サーバー側のJevの打ち切り（900ms） | `server/jev.ts` |
+| 効果音の時刻と、録音中に鳴らさない境目（14.75秒） | `src/audio/cues.ts` |
+| Jevへの12問の文面と選択肢 | `server/questions.ts` |
+| 詠唱の110語 | `src/game/chant-dictionary.json` |
+| 魔法の種類と個数の決め方 | `src/game/recipe.ts` |
 
 ## 作業するときの決まり
 
-- 文章、コメント、コミットメッセージは日本語で書く。
+- 文章、コメント、コミットメッセージは日本語で書く。既存の文書と同じ調子に合わせる。
 - 秘密の値（APIキーなど）は `.env` にだけ置き、コードやチャットに貼らない。`.env.example` が見本。
-- 試験を通ったことと、実機や人で確認できたことは分けて記録する。
+- 試験を通ったことと、実機や人で確認できたことは分けて記録する。確認していないことを、確認したように書かない。
 - 仕様書にある時間の決まり（14秒で受付終了、16秒で魔法の内容を固定、17秒で発動など）を勝手に変えない。
 - 外部サービスからの返事が遅れても演出を延ばさない。自動の再試行はしない。
+- 新しい文書を足したら `docs/README.md` の一覧にも行を足す。
+
+## 気をつけること
+
+- `.env` と認証ファイルはコミットしません。接続情報の値を文書やチャットに書かないでください。
+- `.venv-speech`、`.local-speech`、`public/vision/` は大きいのでGitに含めません。`.gitignore` を確認してください。
+- 声とカメラの映像はファイルに保存しません。この方針を変える変更は入れないでください。
+- 音声認識の処理はこのPCの中で完結します。Googleへ切り替えるのは `SPEECH_PROVIDER=google` を設定した場合だけです。
