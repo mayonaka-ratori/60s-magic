@@ -88,7 +88,8 @@ test('締め切りが近づくと知らせ、発動では魔法名を大きく�
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
   // 描画が遅い環境でも取りこぼさないよう、1秒ごとに見て、出たものを集める。
   const 見たもの=new Set<string>();
-  for(let i=0;i<26&&await page.locator('#result').isHidden();i++) {
+  // 一回目と防御の回を合わせて40秒あるので、結果が出るまで最長50回（約47秒）見続ける。
+  for(let i=0;i<50&&await page.locator('#result').isHidden();i++) {
     const いま=await page.evaluate(()=>({
       段階:document.getElementById('app')!.dataset.deadline??'',
       時計:!(document.getElementById('timer') as HTMLElement).hidden,
@@ -105,7 +106,7 @@ test('締め切りが近づくと知らせ、発動では魔法名を大きく�
   }
   for(const 期待 of ['段階:soon','段階:urgent','外周の光','締め切り後は時計を消す','魔法名:7つの雷の連弾','発動中は案内を閉じる'])
     expect([...見たもの],`${期待}を見ていない`).toContain(期待);
-  await expect(page.locator('#result')).toBeVisible({timeout:12000});
+  await expect(page.locator('#result')).toBeVisible({timeout:20000});
   await page.waitForTimeout(1500);
   await expect(page.locator('#result')).not.toHaveClass(/name-only/);
   await expect(page.locator('#again')).toBeVisible();

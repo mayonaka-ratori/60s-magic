@@ -204,7 +204,6 @@ async function begin(isDemo=false) {
     session.first.speech.add({id:0,revision:1,startMs:11000,endMs:13500,text:'雷よ、七つに分かれろ',final:true,stability:1,source:'typed'});
     session.defend.speech.add({id:0,revision:1,startMs:4000,endMs:6500,text:'氷よ、壁となれ、弾き返せ',final:true,stability:1,source:'typed'});
   }
-  if(el<HTMLInputElement>('chant').value)addTypedChant();
   updateUi();
 }
 
