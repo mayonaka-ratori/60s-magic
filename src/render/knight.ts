@@ -145,8 +145,8 @@ export class Knight {
       g.addColorStop(0,color.replace('A',String(alpha)));g.addColorStop(1,color.replace('A','0'));
       c.fillStyle=g;c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fill();
     };
-    // 汚れ。しみと細かいざらつきで、広い面のべた塗りを崩す。
-    const grime=sheet('汚れ','#e6e6e6',(c,wrap)=>{
+    // 汚れ。しみと細かいざらつきで、広い面のべた塗りを崩す。紋章や飾りの絵でも下地に使う。
+    const paintGrime=(c:CanvasRenderingContext2D,wrap:(f:()=>void)=>void)=>{
       for(let i=0;i<20;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=26+rnd()*74,a=.34+rnd()*.44;
         wrap(()=>blot(c,x,y,r,'rgba(18,16,14,A)',a));}
       for(let i=0;i<14;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=20+rnd()*46;
@@ -156,7 +156,8 @@ export class Knight {
         c.fillStyle=`rgba(24,22,20,${(.14+rnd()*.24).toFixed(3)})`;c.fillRect(x,0,w,SHEET);}
       for(let i=0;i<1400;i++){const v=rnd()<.5?'0,0,0':'255,255,255';
         c.fillStyle=`rgba(${v},${(.06+rnd()*.16).toFixed(3)})`;c.fillRect(rnd()*SHEET,rnd()*SHEET,2+rnd()*4,2+rnd()*4);}
-    });
+    };
+    const grime=sheet('汚れ','#e6e6e6',paintGrime);
     // てかりむら。磨けた所と曇った所を作り、細い擦り傷を走らせる。
     const shine=sheet('てかりむら','#a8a8a8',(c,wrap)=>{
       for(let i=0;i<12;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=30+rnd()*64;
@@ -172,7 +173,7 @@ export class Knight {
     });
 
     // 打ち傷のへこみ、擦り傷、鋳物のざらつき。
-    const dents=relief('でこぼこ',4,(c,wrap)=>{
+    const paintDents=(c:CanvasRenderingContext2D,wrap:(f:()=>void)=>void)=>{
       for(let i=0;i<10;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=18+rnd()*40;
         wrap(()=>blot(c,x,y,r,'rgba(0,0,0,A)',.5+rnd()*.4));}
       for(let i=0;i<18;i++){const x=rnd()*SHEET,y=rnd()*SHEET,r=5+rnd()*12;
@@ -185,9 +186,64 @@ export class Knight {
       }
       for(let i=0;i<2200;i++){const v=rnd()<.5?'0,0,0':'255,255,255';
         c.fillStyle=`rgba(${v},${(.08+rnd()*.16).toFixed(3)})`;c.fillRect(rnd()*SHEET,rnd()*SHEET,1+rnd()*3,1+rnd()*3);}
+    };
+    const dents=relief('でこぼこ',4,paintDents);
+    dents.level=.6;
+
+    // 盾の紋章。術式と同じ丸と三角を彫る。絵の真ん中が盾の面の真ん中に来る。
+    const crest=(c:CanvasRenderingContext2D,color:string,width:number)=>{
+      c.strokeStyle=color;c.lineWidth=width;c.lineJoin='round';
+      for(const r of [76,65]){c.beginPath();c.arc(128,128,r,0,Math.PI*2);c.stroke();}
+      c.beginPath();
+      for(let i=0;i<3;i++){
+        const a=-Math.PI/2+i*Math.PI*2/3,x=128+Math.cos(a)*56,y=128+Math.sin(a)*56;
+        if(i)c.lineTo(x,y);else c.moveTo(x,y);
+      }
+      c.closePath();c.stroke();
+      c.beginPath();c.arc(128,128,17,0,Math.PI*2);c.stroke();
+      // 上下左右の短い印。
+      for(let i=0;i<4;i++){
+        const a=i*Math.PI/2;c.beginPath();
+        c.moveTo(128+Math.cos(a)*82,128+Math.sin(a)*82);c.lineTo(128+Math.cos(a)*93,128+Math.sin(a)*93);c.stroke();
+      }
+    };
+    const emblem=sheet('盾の絵','#e6e6e6',(c,wrap)=>{paintGrime(c,wrap);crest(c,'rgba(96,76,38,.5)',7);});
+    const emblemDents=relief('盾のでこぼこ',4,(c,wrap)=>{paintDents(c,wrap);crest(c,'rgba(0,0,0,.7)',7);});
+    emblemDents.level=.75;
+
+    // 帯の飾り。同じ形を横へ8つ並べる。横は帯を一周する向き。
+    const braid=sheet('帯の飾り','#e0e0e0',(c,wrap)=>{
+      paintGrime(c,wrap);
+      c.fillStyle='rgba(60,46,18,.55)';c.fillRect(0,0,SHEET,26);c.fillRect(0,SHEET-26,SHEET,26);
+      c.strokeStyle='rgba(255,246,214,.3)';c.lineWidth=3;
+      c.beginPath();c.moveTo(0,28);c.lineTo(SHEET,28);c.moveTo(0,SHEET-28);c.lineTo(SHEET,SHEET-28);c.stroke();
+      for(let i=0;i<8;i++) {
+        const x=i*SHEET/8+SHEET/16;
+        c.fillStyle='rgba(44,32,10,.66)';
+        c.beginPath();c.moveTo(x,54);c.lineTo(x+15,128);c.lineTo(x,202);c.lineTo(x-15,128);c.closePath();c.fill();
+        c.fillStyle='rgba(255,246,214,.45)';
+        c.beginPath();c.arc(x,128,8,0,Math.PI*2);c.fill();
+      }
     });
 
-    dents.level=.6;
+    // 腰布の裾を欠けさせる。横に並ぶ方向が裾の外周、絵の左端が裾の先。
+    const tatter=sheet('腰布の絵','#e6e6e6',(c,wrap)=>{
+      paintGrime(c,wrap);
+      c.globalCompositeOperation='destination-out';
+      c.fillStyle='#000';
+      // 裾全体をゆるく波打たせてから、深さの違う欠けを不ぞろいに入れる。
+      c.beginPath();c.moveTo(-2,-2);
+      for(let y=0;y<=SHEET;y+=8)c.lineTo(5+Math.sin(y/SHEET*Math.PI*4)*4+Math.sin(y/SHEET*Math.PI*14)*2,y);
+      c.lineTo(-2,SHEET+2);c.closePath();c.fill();
+      for(let y=rnd()*10;y<SHEET;y+=5+rnd()*15) {
+        const chance=rnd(),deep=chance<.34?10+rnd()*14:chance<.8?22+rnd()*22:44+rnd()*26;
+        const half=4+rnd()*(deep<26?6:11),at=y;
+        wrap(()=>{c.beginPath();c.moveTo(-2,at-half);c.quadraticCurveTo(deep*.55,at-half*.25,deep,at);
+          c.quadraticCurveTo(deep*.55,at+half*.25,-2,at+half);c.closePath();c.fill();});
+      }
+      c.globalCompositeOperation='source-over';
+    });
+    tatter.hasAlpha=true;
 
     const material=(name:string,color:string,specular=.24,rim=0)=>{
       const m=new StandardMaterial(name,this.scene);
@@ -212,10 +268,17 @@ export class Knight {
     this.armor=worn(metal(material('鎧','#5c6069',.3,1)));
     const plate=worn(metal(material('当て板','#464955',.23,.8),.8));
     const cloth=worn(material('布','#393c47',.05,.6),false);cloth.backFaceCulling=false;
+    // 腰布は裾を欠かせる。透けさせるのではなく、絵の薄い所を描かない形にして、重なりの順番で困らないようにする。
+    const skirt=worn(material('腰布','#393c47',.05,.6),false);skirt.backFaceCulling=false;
+    skirt.diffuseTexture=tatter;skirt.useAlphaFromDiffuseTexture=true;
+    skirt.transparencyMode=StandardMaterial.MATERIAL_ALPHATEST;skirt.alphaCutOff=.45;
     const hollow=material('隙間','#0b0f16',.02);hollow.emissiveColor=new Color3(.52,.23,.07);
     this.eyes=hollow;
     const trim=worn(metal(material('金の縁','#8c7749',.36,.7),.9));
+    const beltTrim=worn(metal(material('帯の飾り','#8c7749',.36,.7),.9));beltTrim.diffuseTexture=braid;
     const steel=worn(metal(material('刃と縁','#8a919d',.48,1.2),1.3));
+    const shieldPlate=worn(metal(material('盾の面','#8a919d',.48,1.2),1.3));
+    shieldPlate.diffuseTexture=emblem;shieldPlate.bumpTexture=emblemDents;
     this.coreMaterial=material('胸の核','#2a2418',.1);this.coreMaterial.emissiveColor=Color3.FromHexString('#6f542e');
 
     this.root=new TransformNode('遺跡の騎士',this.scene);
@@ -253,9 +316,8 @@ export class Knight {
     }
     // 腰。輪郭に段を3つ付けて重ね板にし、その下に布を長く垂らす。元絵の裾広がりに合わせる。
     lathe('腰の板',this.root,0,1.35,0,[[.45,-.25],[.42,-.24],[.44,-.19],[.4,-.13],[.37,-.12],[.39,-.07],[.35,-.01],[.33,0],[.34,.05],[.31,.12],[.28,.2],[.27,.25]]);
-    lathe('腰布',this.root,0,.85,0,[[.6,-.44],[.57,-.3],[.53,-.12],[.49,.08],[.46,.28],[.44,.44]],cloth,Mesh.NO_CAP);
-    cone('裾の縁',this.root,0,.41,0,1.17,1.23,.055,16,trim);
-    cone('帯',this.root,0,1.6,0,.54,.58,.12,16,trim);
+    lathe('腰布',this.root,0,.85,0,[[.6,-.44],[.57,-.3],[.53,-.12],[.49,.08],[.46,.28],[.44,.44]],skirt,Mesh.NO_CAP);
+    cone('帯',this.root,0,1.6,0,.54,.58,.12,16,beltTrim);
     cone('腹',this.root,0,1.72,0,.48,.52,.2,12,plate);
 
     this.body=new TransformNode('上半身',this.scene);this.body.parent=this.root;this.body.position.y=1.72;
@@ -322,7 +384,7 @@ export class Knight {
     const spin=new TransformNode('盾の向き',this.scene);spin.parent=stretch;spin.rotation.y=-.314;
     // 手前の面を一回り小さくして、縁に斜めの面を作る。平らな板に光の段が付く。
     const shieldFace=MeshBuilder.CreateCylinder('盾の面',{diameterTop:.96,diameterBottom:.86,height:.13,tessellation:5},this.scene);
-    shieldFace.parent=spin;shieldFace.material=steel;
+    shieldFace.parent=spin;shieldFace.material=shieldPlate;
     const edge=MeshBuilder.CreateCylinder('盾の縁',{diameter:1,height:.05,tessellation:5},this.scene);
     edge.parent=spin;edge.position.y=.03;edge.material=trim;
     // 角の鋲。5つ置くと、のっぺりした板に見えなくなる。
