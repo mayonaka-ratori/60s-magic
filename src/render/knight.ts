@@ -12,6 +12,9 @@ import { FresnelParameters } from '@babylonjs/core/Materials/fresnelParameters';
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer';
+import { CubeTextureCreateFromImages } from '@babylonjs/core/Materials/Textures/cubeTexture';
+import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator';
+import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
 import { colors } from './magic';
@@ -74,29 +77,53 @@ export class Knight {
     this.camera.setTarget(new Vector3(0,CAMERA_Y,0));
 
     const sky=new HemisphericLight('空の光',new Vector3(.15,1,-.4),this.scene);
-    sky.intensity=.88;sky.diffuse=new Color3(.56,.65,.77);sky.groundColor=new Color3(.11,.15,.21);sky.specular=new Color3(.22,.26,.32);
+    sky.intensity=.76;sky.diffuse=new Color3(.56,.65,.77);sky.groundColor=new Color3(.11,.15,.21);sky.specular=new Color3(.22,.26,.32);
     // 背景は空が明るく騎士は逆光。上と奥の面を強く起こし、手前は弱い光だけで形を見せる。
     const back=new DirectionalLight('奥からの光',new Vector3(-.3,-.7,-1),this.scene);
     back.intensity=1.35;back.diffuse=new Color3(.84,.89,.98);
     const fill=new DirectionalLight('床からの照り返し',new Vector3(.45,-.35,1),this.scene);
-    fill.intensity=.4;fill.diffuse=new Color3(.48,.56,.68);fill.specular=new Color3(.12,.14,.18);
+    fill.intensity=.56;fill.diffuse=new Color3(.52,.59,.7);fill.specular=new Color3(.12,.14,.18);
+    fill.position=new Vector3(-2.4,3.4,-3.6);
+    // 手前の光だけ影を落とす。剣や盾の影が体に掛かり、厚みが出る。
+    const shadows=new ShadowGenerator(1024,fill);
+    shadows.usePercentageCloserFiltering=true;shadows.filteringQuality=ShadowGenerator.QUALITY_MEDIUM;
+    shadows.darkness=.24;shadows.bias=.0009;
     // 蓄積と命中のときだけ胸の前から照らす。色は魔法の属性に合わせる。
     this.burst=new PointLight('魔法の光',new Vector3(0,2,-1.5),this.scene);this.burst.intensity=0;this.burst.range=5;
+
+    // 空と床を写した小さな絵を6面ぶん作り、金属の映り込みに使う。外部のファイルは使わない。
+    const paint=(stops:Array<[number,string]>)=>{
+      const canvas=document.createElement('canvas');canvas.width=canvas.height=64;
+      const context=canvas.getContext('2d')!,gradient=context.createLinearGradient(0,0,0,64);
+      for(const [at,color] of stops)gradient.addColorStop(at,color);
+      context.fillStyle=gradient;context.fillRect(0,0,64,64);return canvas.toDataURL();
+    };
+    const side=paint([[0,'#cdd6df'],[.42,'#93a0ad'],[.52,'#4e5866'],[1,'#191d23']]);
+    const backdrop=paint([[0,'#e8eef4'],[.44,'#a9b6c2'],[.52,'#525d6b'],[1,'#1a1e25']]);
+    const sight=CubeTextureCreateFromImages([side,paint([[0,'#dde5ec'],[1,'#c3ccd6']]),backdrop,side,paint([[0,'#15181d'],[1,'#0f1216']]),side],this.scene);
+    sight.level=.42;
 
     const material=(name:string,color:string,specular=.24,rim=0)=>{
       const m=new StandardMaterial(name,this.scene);
       m.diffuseColor=Color3.FromHexString(color);m.specularColor=new Color3(specular,specular*1.06,specular*1.14);m.specularPower=46;
       // 逆光の縁だけを明るくする。暗い鎧のまま輪郭を見せるための設定。
-      if(rim){m.emissiveColor=new Color3(.24*rim,.31*rim,.4*rim);m.emissiveFresnelParameters=new FresnelParameters({bias:.1,power:2.6,leftColor:Color3.White(),rightColor:Color3.Black()});}
+      if(rim){m.emissiveColor=new Color3(.16*rim,.21*rim,.28*rim);m.emissiveFresnelParameters=new FresnelParameters({bias:.1,power:2.6,leftColor:Color3.White(),rightColor:Color3.Black()});}
       return m;
     };
-    this.armor=material('鎧','#31353b',.34,1);
-    const plate=material('当て板','#25282e',.26,.8);
+    // 金属には空と床を映り込ませる。正面より縁のほうが強く映る。
+    const metal=(m:StandardMaterial,strength=1)=>{
+      m.reflectionTexture=sight;
+      m.reflectionFresnelParameters=new FresnelParameters({bias:.06,power:2.2,
+        leftColor:new Color3(strength,strength,strength),rightColor:new Color3(.13*strength,.15*strength,.18*strength)});
+      return m;
+    };
+    this.armor=metal(material('鎧','#2e3238',.34,1));
+    const plate=metal(material('当て板','#25282e',.26,.8),.8);
     const cloth=material('布','#1e232d',.06,.55);cloth.backFaceCulling=false;
     const hollow=material('隙間','#0b0f16',.02);hollow.emissiveColor=new Color3(.52,.23,.07);
     this.eyes=hollow;
-    const trim=material('金の縁','#9b8449',.58,.7);
-    const steel=material('刃と縁','#9aa3ae',.7,1.2);
+    const trim=metal(material('金の縁','#9b8449',.58,.7),.9);
+    const steel=metal(material('刃と縁','#9aa3ae',.7,1.2),1.3);
     this.coreMaterial=material('胸の核','#2a2418',.1);this.coreMaterial.emissiveColor=Color3.FromHexString('#6f542e');
 
     this.root=new TransformNode('遺跡の騎士',this.scene);
