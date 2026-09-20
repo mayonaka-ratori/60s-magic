@@ -10,7 +10,8 @@ self.onmessage = async ({ data }) => {
       detector = await HandLandmarker.createFromOptions(files, {
         baseOptions: { modelAssetPath: '/vision/hand_landmarker.task', delegate: 'CPU' },
         runningMode: 'VIDEO', numHands: 2,
-        minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+        // 見失いにくくするため、しきい値を低めにする。取り違えより、線が途切れる方が遊ぶ人には分かりやすい。
+        minHandDetectionConfidence: 0.4, minHandPresenceConfidence: 0.3, minTrackingConfidence: 0.3,
       });
       self.postMessage({ type: 'ready' });
     } catch (error) { self.postMessage({ type: 'error', reason: String(error) }); }

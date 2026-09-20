@@ -248,7 +248,7 @@ function animate(now:number) {
       if(!(t>4.2&&t<5.1)){const x=0.49+Math.sin(t*0.9)*0.18+Math.sin(t*1.8)*0.025,y=0.54+Math.cos(t*1.8)*0.17;current.motion.add(x,y,current.elapsed);cursors=[{x,y}];}
     }
     if(current.elapsed>=14000&&!endedInput){endedInput=true;voice?.stop(SPEECH_WAIT_MS);cursors=[];diag?.log('入力の受付を終了',{points:current.motion.raw.length});}
-    // 声の最後の文字が届いたら、待たずにJevへ送る。届かないときだけ15.1秒まで待つ。
+    // 声の最後の文字が届いたら、待たずにJevへ送る。届かないときだけ15.4秒まで待つ。
     if(!requested&&current.elapsed>=14100&&(!voice||voice.settled||current.elapsed>=SPEECH_LIMIT_MS)){
       requested=true;const state=current.freeze();voice?.disconnect();requestAbort=new AbortController();const abort=requestAbort;
       const record=diag;record?.log('入力を確定',{atMs:Math.round(current.elapsed),speechStatus:state.speech.status,transcript:state.speech.rawTranscript,usedFallback:current.speech.usedFallback,speechSettled:voice?.settled??null,corrections:current.corrections,jevConfigured:status.jev});
