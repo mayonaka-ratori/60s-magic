@@ -12,6 +12,7 @@ import { drawImpact } from './effects/impact';
 import { drawWordReactions } from './effects/words';
 import { drawStrokeReactions, newStrokeMemory, type StrokeMemory } from './effects/strokes';
 import { drawGuard } from './effects/guard';
+import { drawFinish, finishBoost, holdTime } from './effects/finish';
 import { emptyLive, type LiveInput } from '../game/live-input';
 import { AIM, type GuardPlan } from '../game/guard';
 import { BEATS, beatAt, type Beat } from '../game/rounds';
@@ -106,7 +107,9 @@ export class MagicCanvas {
     const preset = this.preset, palette = preset.palettes[recipe?.element ?? 'neutral'], intensity = intensityOf(recipe, preset, live.amount), accent = recipe?.accent ? preset.palettes[recipe.accent] : null;
     // 入力の量は派手さ（intensityOf）の中だけで効かせる。画面の効果には派手さだけを渡す。
     this.state = screenState(t, intensity, preset, recipe?.purpose ?? null, 0, 0, this.calm, beat);
-    const te = effectTime(t, this.state.hitStop, beat), dt = this.lastEffect < 0 ? 0 : clamp(te - this.lastEffect, 0, .05);
+    // とどめの回は、発動の0.4秒前から0.32秒だけ「描く値」を止める。世界の時計は進めたまま、見た目だけそのままにする。
+    const held = holdTime(t, beat);
+    const te = held ?? effectTime(t, this.state.hitStop, beat), dt = this.lastEffect < 0 ? 0 : clamp(te - this.lastEffect, 0, .05);
     this.lastEffect = te; this.lastEffectMs = te * 1000;
     // 放出直前の暗転の間は、粒も光も見せない。
     const lit = 1 - this.state.blackout;
@@ -161,13 +164,20 @@ export class MagicCanvas {
     if (beat.defend) { c.save(); drawGuard(frame); c.restore(); }
     if (recipe) {
       drawCharge(frame);
-      if (!beat.defend && te >= beat.release) { c.save(); drawRelease(frame); drawTravel(frame); drawImpact(frame); c.restore(); }
+      if (!beat.defend && te >= beat.release) {
+        c.save(); drawRelease(frame); drawTravel(frame, beat.finish ? finishBoost(frame) : undefined);
+        // とどめの回は当たる時刻を4回に固定して finish.ts が受け持つので、もとの命中は単発として一度だけ出す。
+        drawImpact(beat.finish && frame.recipe.count > 1 ? { ...frame, recipe: { ...frame.recipe, count: 1 } } : frame);
+        c.restore();
+      }
       c.globalCompositeOperation = 'lighter';
     } else if (t >= beat.inputEnd) {
       // 魔法が未確定でも蓄積の光は見せる。無属性の色で中心だけ。
       const charge = clamp((t - beat.inputEnd) / (beat.release - beat.inputEnd));
       this.sprites.draw(c, origin.x, origin.y, 5 + charge * 11, palette.core, palette.main, .4 + charge * .3);
     }
+    // とどめの回だけの見せ方。引き継いだ光点は魔法が決まる前から出すので、確定の有無によらず呼ぶ。
+    if (beat.finish) { c.save(); drawFinish(frame); c.restore(); }
     this.pool.update(dt);
     drawParticles(frame, fade);
     c.restore();

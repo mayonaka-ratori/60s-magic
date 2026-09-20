@@ -25,6 +25,10 @@ export const FINISH_STOPS = { impact: .10, finalBlow: .25 };
 export const FINISH_SLOW = { after: .3, seconds: .5, rate: .25 };
 /** 世界の時計の決まり。止めは3回まで、遅れの合計は0.8秒まで。余韻が削られないように守る。 */
 export const WARP_LIMITS = { stops: 3, delay: .8 };
+/** とどめの発動で、術式が視界を通り抜けるときの全画面の白。濃さと戻るまでの秒数。設計の4.1。 */
+export const FINISH_PASS_FLASH = { level: .85, seconds: .17 };
+/** とどめの一撃の全画面の白。通り抜ける術式より強くして、一撃を一番明るい瞬間にする。 */
+export const FINISH_BLOW_FLASH = { level: .9, seconds: .16 };
 /** とどめの一撃で足す傾き（度）と寄り。全画面の白と一緒に、一撃の重さを出す。 */
 export const FINISH_TILT = 2, FINISH_ZOOM = 1.2;
 /** 完全な暗転の長さ（秒）。放出の直前に置き、終わりがそのまま閃光につながる。 */
@@ -95,8 +99,12 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   let flash = 0;
   if (t >= beat.release) flash = Math.max(flash, flashMax * .55 * Math.max(0, 1 - (t - beat.release) / .16));
   if (t >= beat.impact) flash = Math.max(flash, flashMax * (beat.defend ? .85 : violent || beat.finish ? 1 : .5) * Math.max(0, 1 - (t - beat.impact) / .16));
+  // とどめの発動だけは、術式が通り抜けるぶん白を濃くする。ほかの回はここを通らない。
+  if (beat.finish && t >= beat.release)
+    flash = Math.max(flash, FINISH_PASS_FLASH.level * (calm ? 1 / 3 : 1) * Math.max(0, 1 - (t - beat.release) / FINISH_PASS_FLASH.seconds));
   // とどめの一撃だけは、全画面の白をいっぱいまで出す。
-  if (finalBlow !== null && t >= finalBlow) flash = Math.max(flash, flashMax * Math.max(0, 1 - (t - finalBlow) / .16));
+  if (finalBlow !== null && t >= finalBlow)
+    flash = Math.max(flash, Math.max(flashMax, FINISH_BLOW_FLASH.level * (calm ? 1 / 3 : 1)) * Math.max(0, 1 - (t - finalBlow) / FINISH_BLOW_FLASH.seconds));
   const darkenMax = preset.darken * clamp(.5 + intensity * .2, 0, 1);
   // 締め切りから暗くなり、放出で一度抜け、命中の後にゆっくり戻る。
   const charge = clamp((t - beat.inputEnd) / 1.2), back = clamp((t - beat.impact - .8) / 1.6);
@@ -152,6 +160,26 @@ export function warpTime(t: number, warp: TimeWarp) {
   }
   if (!last) return t;
   return last.at + last.rate * last.seconds + (t - lastStart - last.seconds);
+}
+
+/**
+ * 世界の時刻から実際の時刻を出す。warpTime の逆向き。
+ * 世界の時刻で決めた出来事（崩れ落ちる音など）を、実際の時計で鳴らすときに使う。
+ */
+export function warpReal(world: number, warp: TimeWarp) {
+  const events = [...warp.stops.map(stop => ({ at: stop.at, seconds: stop.hold, rate: 0 }))];
+  if (warp.slow) events.push({ at: warp.slow.from, seconds: warp.slow.seconds, rate: warp.slow.rate });
+  events.sort((a, b) => a.at - b.at);
+  let delay = 0;
+  for (const event of events) {
+    if (event.seconds <= 0) continue;
+    if (world <= event.at) break;
+    // この出来事の間に世界が進む長さ。止めなら0。
+    const span = event.rate * event.seconds;
+    if (world < event.at + span) return event.at + delay + (world - event.at) / event.rate;
+    delay += (1 - event.rate) * event.seconds;
+  }
+  return world + delay;
 }
 
 /**

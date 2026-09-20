@@ -1,4 +1,8 @@
 import { test,expect } from '@playwright/test';
+import { soundCues } from '../../src/audio/cues';
+
+/** 鳴るはずの音の並びと、素材を使うかどうか。素材を置いた合図だけが true になる。 */
+const 鳴る音=soundCues.filter(cue=>cue.name!=='book').map(cue=>[cue.name,cue.name==='complete'||cue.name==='impact']);
 
 /** 短い正弦波のWAVを作る。外部の素材の代わりに、読み込みと再生の経路だけを確かめる。 */
 function wav(seconds:number,frequency:number,level:number) {
@@ -41,15 +45,12 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばす',asy
   // 6秒より前は合図が無いので、ここで音が出ていれば曲が鳴っている。
   await page.waitForTimeout(1500);
   expect(await page.evaluate(()=>(window as any).__soundProbe.rms)).toBeGreaterThan(.001);
-  await expect(page.locator('#result')).toBeVisible({timeout:48000});
+  await expect(page.locator('#result')).toBeVisible({timeout:70000});
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.samples).toEqual({manifest:true,loaded:['bgm/test.wav','sfx/chime.wav','sfx/hit-1.wav','sfx/hit-2.wav'],missing:['sfx/missing.wav']});
   expect(report.audio.credits).toEqual(['テスト用の曲']);
   expect(report.audio.bgmStartedAtMs).toBeLessThan(1000);expect(report.audio.bgm).toBe('none');expect(report.audio.activeSources).toBe(0);
-  expect(report.audio.events.map((e:{name:string;sample:boolean})=>[e.name,e.sample])).toEqual([
-    ['trace',false],['chant',false],['build',false],['complete',true],['release',false],['impact',true],['settle',false],
-    ['chant',false],['build',false],['complete',true],['release',false],['block',false],['settle',false],
-  ]);
+  expect(report.audio.events.map((e:{name:string;sample:boolean})=>[e.name,e.sample])).toEqual(鳴る音);
   await page.locator('#sheet-close').click();
   // 曲は終了後に止まる。
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.rms),{timeout:2000,intervals:[50]}).toBeLessThan(.00001);

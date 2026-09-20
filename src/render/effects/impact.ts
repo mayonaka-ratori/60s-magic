@@ -18,7 +18,8 @@ const FIRE_EMBERS = 8;
  */
 function drawGroundMark(f: Frame, impact: number, radius: number, y: number) {
   const { c, target: g } = f, element = f.recipe.element;
-  const life = 1 - clamp(impact / 2);
+  // ふだんは命中から2秒で薄れる。とどめの回だけは余韻まで残し、余韻の始まりから2秒かけて薄れさせる。
+  const life = f.beat.finish ? 1 - clamp((f.t - f.beat.handoff) / 2) : 1 - clamp(impact / 2);
   if (life <= 0) return;
   const grow = ease(clamp(impact / .14));
   const rx = radius * (1 + impact * .12) * grow, ry = Math.max(1, rx * .3);

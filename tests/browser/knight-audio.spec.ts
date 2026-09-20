@@ -1,5 +1,12 @@
 import { test,expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
+import { soundCues } from '../../src/audio/cues';
+
+/**
+ * 鳴るはずの音の並び。回の表から作るので、回や合図を足しても書き直さなくてよい。
+ * 60秒の魔導書の音（book）は結果画面が受け持つため、戦いの間の合図だけを並べる。
+ */
+const 鳴る音=soundCues.filter(cue=>cue.name!=='book').map(cue=>cue.name);
 
 test('騎士が被弾して構えを戻し、効果音を鳴らして消音できる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
@@ -33,14 +40,11 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
   await page.screenshot({path:'test-results/knight-hit.png'});
   await expect(page.locator('#knight')).toHaveAttribute('data-state','recover');
   await page.screenshot({path:'test-results/knight-recover.png'});
-  await expect(page.locator('#result')).toBeVisible({timeout:25000});
-  // 40秒の時点は前屈して弱点を晒した姿勢で止まる。
-  await expect(page.locator('#knight')).toHaveAttribute('data-state','exposed');
+  // とどめの回まで進むので、結果画面は60秒すぎに出る。
+  await expect(page.locator('#result')).toBeVisible({timeout:45000});
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.activeSources).toBe(0);
-  expect(report.audio.events.map((e:{name:string})=>e.name)).toEqual([
-    'trace','chant','build','complete','release','impact','settle',
-    'chant','build','complete','release','block','settle']);
+  expect(report.audio.events.map((e:{name:string})=>e.name)).toEqual(鳴る音);
   const measured=await page.evaluate(()=>({peak:(window as any).__soundProbe.peak,rms:(window as any).__soundProbe.rms}));
   expect(measured.peak).toBeGreaterThan(.01);expect(measured.peak).toBeLessThan(.98);
   await writeFile('.local-speech/knight-audio-report.json',JSON.stringify({audio:report.audio,measurement:report.measurement,output:measured},null,2));

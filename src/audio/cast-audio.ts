@@ -1,4 +1,4 @@
-import { dueSounds, shouldDuck, type SoundCue } from './cues';
+import { dueSounds, hushAt, shouldDuck, type SoundCue } from './cues';
 import { SampleBank } from './sample-bank';
 import type { Recipe } from '../game/types';
 import { intensityOf, getPreset, type EffectPreset } from '../render/effects/presets';
@@ -34,6 +34,8 @@ export class CastAudio {
   private ducked=false;
   private enabled=true;
   private volume=.25;
+  /** とどめの回で音を抜く倍率（0〜1）。ふだんは1。 */
+  private hush=1;
   private unavailable=false;
   private previewVersion=0;
   private events:Array<{name:SoundCue;atMs:number;sample:boolean}>=[];
@@ -55,12 +57,12 @@ export class CastAudio {
   }
   setEnabled(value:boolean){this.enabled=value;this.applyVolume();if(!value)this.clearSources();}
   setVolume(value:number){this.volume=Math.max(0,Math.min(1,value));this.applyVolume();}
-  private applyVolume(){if(this.context&&this.master)this.master.gain.setTargetAtTime(this.enabled?this.volume:0,this.context.currentTime,.015);}
+  private applyVolume(seconds=.015){if(this.context&&this.master)this.master.gain.setTargetAtTime(this.enabled?this.volume*this.hush:0,this.context.currentTime,seconds);}
   start(microphone:boolean) {
     this.stop();this.running=true;this.microphone=microphone;this.lastMs=-1;this.events=[];
-    this.setDuck(microphone,.05);this.bgmStarted=false;this.bgmStartedAtMs=null;
+    this.setDuck(microphone,.05);this.bgmStarted=false;this.bgmStartedAtMs=null;this.hush=1;this.applyVolume();
   }
-  stop(){this.previewVersion++;this.running=false;this.ducked=false;this.bgmStarted=false;this.fadeBgm(.35);this.clearSources();}
+  stop(){this.previewVersion++;this.running=false;this.ducked=false;this.bgmStarted=false;this.hush=1;this.applyVolume();this.fadeBgm(.35);this.clearSources();}
   /** 狙いの印を囲えた合図。時刻ではなく出来事で鳴らすので、cues の表には入れない。 */
   ring(count:number) {
     if(!this.running||!this.enabled||!this.volume||this.context?.state!=='running'||!this.master)return;
@@ -81,6 +83,9 @@ export class CastAudio {
     // 録音している回の間だけ曲を下げる。回ごとに下げ直す。
     const duck=this.microphone&&shouldDuck(ms);
     if(duck!==this.ducked)this.setDuck(duck,duck?.05:.4);
+    // とどめの発動前の「間」と直撃の直前だけ、全体の音を抜く。抜くのは速く、戻すのはゆっくり。
+    const hush=hushAt(ms);
+    if(hush!==this.hush){const down=hush<this.hush;this.hush=hush;this.applyVolume(down?.02:.08);}
     if(!this.enabled||!this.volume||this.context?.state!=='running'||!this.master)return;
     // 素材の読み込みや音の許可が開始より遅れても、そのときの進み具合の位置から曲を始める。
     if(!this.bgmStarted&&this.bank.bgm){this.startBgm(ms/1000);this.bgmStartedAtMs=ms;}
@@ -172,8 +177,37 @@ export class CastAudio {
       this.tone(880*pitch,300*pitch,.6,.06);
       if(big>.3){this.noise(.5,.2*big,3000,600);this.tone(1760*pitch,440*pitch,.4,.05*big);}return;
     }
-    // とどめの一撃は、いまは命中と同じ音で鳴らす。専用の音は別に作る。
-    if(cue==='impact'||cue==='finish') {
+    if(cue==='finish') {
+      // とどめの一撃。低く重い。長く沈む低音、遅れて広がる胴鳴り、金属のきしみの三層。
+      this.tone(72,24,1.3,.5,'triangle');this.noise(.7,.72,1500,110);
+      this.tone(38,20,1.8,.4);
+      for(const frequency of [300,455,690])this.tone(frequency*pitch,frequency*pitch*.6,.95,.06);
+      if(big>.3){this.noise(1.2,.34*big,600,70);this.tone(96,28,1.4,.26*big,'triangle');}
+      return;
+    }
+    if(cue==='collapse-sword') {
+      // 剣が床に落ちる。金属の鳴りのあと、跳ねた小さな音が続く。
+      this.tone(1180*pitch,540*pitch,.5,.1,'triangle');this.tone(1870*pitch,900*pitch,.35,.05);
+      this.noise(.22,.2,3200,900);this.tone(880*pitch,420*pitch,.2,.04,'triangle');
+      return;
+    }
+    if(cue==='collapse-knee') {
+      // 膝をつく。鈍く短い。
+      this.tone(120,52,.4,.3,'triangle');this.noise(.26,.22,500,120);
+      return;
+    }
+    if(cue==='collapse-fall') {
+      // 倒れる。低く長い響きと、床の塵の音。
+      this.tone(64,22,1.4,.45,'triangle');this.tone(44,18,1.8,.3);
+      this.noise(1,.4,420,80);
+      return;
+    }
+    if(cue==='book') {
+      // 魔導書の静かな一音。長く伸びて消える。
+      this.tone(523,523,2.2,.05);this.tone(784,784,1.8,.03);
+      return;
+    }
+    if(cue==='impact') {
       this.tone(110,40,.65,.45,'triangle');this.noise(.38,.65,2800,350);
       if(big>.3){this.tone(48,30,.9,.35*big,'sine');this.noise(.7,.3*big,1200,120);}
       for(const frequency of [720,1103,1781])this.tone(frequency*pitch,frequency*pitch*.85,.5,.07);

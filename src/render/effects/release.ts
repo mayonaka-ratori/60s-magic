@@ -120,13 +120,17 @@ export function drawRelease(f: Frame) {
   }
 }
 
-/** 飛翔（17〜18.5秒）と持続する本体。球は尾を引き、光線は帯、壁と結界は面、拘束は輪。 */
-export function drawTravel(f: Frame) {
+/**
+ * 飛翔（17〜18.5秒）と持続する本体。球は尾を引き、光線は帯、壁と結界は面、拘束は輪。
+ * boost はとどめの回だけ渡す。道のりの進み具合（travel）を差し替え、本体を size 倍にする。
+ */
+export function drawTravel(f: Frame, boost?: { travel: number; size: number }) {
   const { c, t, origin: o, target: g, preset, intensity, recipe: r } = f;
   const time = t - f.beat.release, ARRIVAL = arrivalOf(f);
   if (time < 0 || time > 7) return;
   // 頭打ちにしない。弾ごとの遅れを引いた後に bodyPoint が0〜1へ丸めるので、遅れて届く弾も騎士まで進む。
-  const travel = time / ARRIVAL, fade = (1 - clamp((time - 3.2 - r.duration) / 2.8)) * (1 - clamp((time - 4) / 2));
+  const travel = boost ? boost.travel : time / ARRIVAL, swell = boost ? boost.size : 1;
+  const fade = (1 - clamp((time - 3.2 - r.duration) / 2.8)) * (1 - clamp((time - 4) / 2));
   if (fade <= 0) return;
   const radius = 24 + r.area * 70 + intensity * 10, focus = .7 + r.concentration * .6, mix = mixOf(f), pal0 = mix.pal;
   c.strokeStyle = pal0.main; c.fillStyle = pal0.main;
@@ -161,7 +165,7 @@ export function drawTravel(f: Frame) {
     const p = bodyPoint(f, i, travel, time), a = { x: o.x + (i - (r.count - 1) / 2) * 7, y: o.y };
     if (beam) {
       // 光線。太さが脈打ち、縁と芯の二重にする。粒が帯に沿って流れる。
-      const width = (5 + intensity * 3) * focus * (1 + Math.sin(time * 30) * .12), grow = clamp(time / .25);
+      const width = (5 + intensity * 3) * focus * swell * (1 + Math.sin(time * 30) * .12), grow = clamp(time / .25);
       const end = { x: a.x + (g.x - a.x) * grow, y: a.y + (g.y - a.y) * grow };
       // 光線の縁だけ二色目にする。芯は主属性のまま。
       // 光線の縁は合わせ方で色が変わる。芯は白のまま細くはっきり残す。
@@ -182,9 +186,9 @@ export function drawTravel(f: Frame) {
     for (let k = steps; k >= 1; k--) {
       const back = travel - (k / steps) * (span / ARRIVAL); if (back <= 0) continue;
       const q = bodyPoint(f, i, back, time - (k / steps) * span), u = 1 - k / steps;
-      glow(f, q.x, q.y, (r.count > 1 ? 5 : 14) * (0.3 + u * .7), fade * u * .6, trailPal.main, trailPal.core);
+      glow(f, q.x, q.y, (r.count > 1 ? 5 : 14) * swell * (0.3 + u * .7), fade * u * .6, trailPal.main, trailPal.core);
     }
-    drawBody(f, p.x, p.y, (r.count > 1 ? 6 : 20) * (1 + intensity * .12), r.element, fade, time, i, pal);
+    drawBody(f, p.x, p.y, (r.count > 1 ? 6 : 20) * swell * (1 + intensity * .12), r.element, fade, time, i, pal);
     if (travel < 1 && r.count === 1) line(f, a, p, 2, fade * .25);
   }
 }
