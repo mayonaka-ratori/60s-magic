@@ -11,6 +11,9 @@ export type LocalSpeechJobRecord = {id:number;at:string;audioMs:number;queuedMs:
 
 /** setup:speech が作るPython環境の場所。WindowsとMac/Linuxで置き場所が違う。 */
 export const defaultSpeechPython=()=>resolve(process.platform==='win32'?'.venv-speech/Scripts/python.exe':'.venv-speech/bin/python');
+/** 認識モデルの名前。speech/download_model.py の default_preset と同じ決まり。 */
+export const defaultSpeechPreset=()=>process.env.LOCAL_SPEECH_MODEL_ID||(process.platform==='darwin'?'small':'kotoba-v2.0');
+export const defaultSpeechModelDir=()=>resolve('.local-speech/models',defaultSpeechPreset());
 
 /** モデルは一度だけ読み込む。音声は子プロセスの標準入力へ渡し、保存しない。 */
 export class LocalSpeech {
@@ -25,8 +28,8 @@ export class LocalSpeech {
   private rejectedBusy=0;
   private failures=0;
   private startedAt=0;
-  private status:LocalSpeechStatus={state:'missing',message:'npm run setup:speech で音声認識を準備してください',model:'kotoba-whisper-v2.0',device:process.platform==='win32'?'cuda':'cpu'};
-  constructor(private python=process.env.LOCAL_SPEECH_PYTHON||defaultSpeechPython(),private model=process.env.LOCAL_SPEECH_MODEL||resolve('.local-speech/models/kotoba-v2.0')) {}
+  private status:LocalSpeechStatus={state:'missing',message:'npm run setup:speech で音声認識を準備してください',model:defaultSpeechPreset()==='kotoba-v2.0'?'kotoba-whisper-v2.0':`whisper-${defaultSpeechPreset()}`,device:process.platform==='win32'?'cuda':'cpu'};
+  constructor(private python=process.env.LOCAL_SPEECH_PYTHON||defaultSpeechPython(),private model=process.env.LOCAL_SPEECH_MODEL||defaultSpeechModelDir()) {}
   getStatus(){return {...this.status};}
   /** 確認用の記録。音声は含まない。 */
   diagnostics(){return {status:this.getStatus(),python:this.python,recentJobs:[...this.recent],rejectedBusy:this.rejectedBusy,failures:this.failures};}
@@ -46,7 +49,7 @@ export class LocalSpeech {
       if(message.type==='ready') {
         if(this.timer)clearTimeout(this.timer);this.timer=null;
         const device=typeof message.device==='string'?message.device:this.status.device;
-        this.status={...this.status,state:'ready',device,computeType:message.computeType,threads:message.threads,loadMs:Math.round(performance.now()-this.startedAt),message:device==='cpu'?'このPCで音声を認識できます（CPUで動作中。遅れることがあります）':'このPCで音声を認識できます'};return;
+        this.status={...this.status,state:'ready',device,model:typeof message.model==='string'?message.model:this.status.model,computeType:message.computeType,threads:message.threads,loadMs:Math.round(performance.now()-this.startedAt),message:device==='cpu'?'このPCで音声を認識できます（CPUで動作中。遅れることがあります）':'このPCで音声を認識できます'};return;
       }
       if(message.type==='unavailable'){this.fail(message.reason);return;}
       if(message.type==='result'&&this.active?.id===message.id) {

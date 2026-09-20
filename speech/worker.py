@@ -23,8 +23,12 @@ import numpy as np
 from faster_whisper import WhisperModel
 from vocabulary import load_hints
 
+from download_model import default_preset, model_dir
+
 ROOT = Path(__file__).resolve().parents[1]
-MODEL_DIR = Path(os.environ.get('LOCAL_SPEECH_MODEL') or str(ROOT / '.local-speech/models/kotoba-v2.0'))
+PRESET = default_preset()
+MODEL_DIR = Path(os.environ.get('LOCAL_SPEECH_MODEL') or str(model_dir(PRESET)))
+MODEL_NAME = {'kotoba-v2.0': 'kotoba-whisper-v2.0'}.get(PRESET, f'whisper-{PRESET}')
 
 
 def send(value):
@@ -53,7 +57,7 @@ def create_model():
         raise ValueError('LOCAL_SPEECH_DEVICE は auto、cuda、cpu のいずれかを設定してください')
     # CPUで動かすときは、描画を担当するブラウザーのために半分を空けておく。
     cores = os.cpu_count() or 4
-    threads = int(os.environ.get('LOCAL_SPEECH_THREADS') or max(2, min(4, cores // 2)))
+    threads = int(os.environ.get('LOCAL_SPEECH_THREADS') or max(2, min(6, cores // 2)))
     candidates = []
     # MacにはNVIDIAのGPUがないので、autoのときはCPUだけを試す。
     if requested == 'auto' and sys.platform == 'darwin':
@@ -85,7 +89,7 @@ def main():
                                       condition_on_previous_text=False, without_timestamps=True)
         list(segments)
         transcribe(model, warmup, hotwords)
-        send({'type': 'ready', 'model': 'kotoba-whisper-v2.0', 'device': device,
+        send({'type': 'ready', 'model': MODEL_NAME, 'preset': PRESET, 'device': device,
               'computeType': compute_type, 'threads': threads,
               'loadMs': round((time.perf_counter() - started) * 1000), 'vocabulary': vocabulary})
     except Exception as error:

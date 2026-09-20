@@ -49,7 +49,7 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
       if(isFinal&&requestVersion===version)record.finalDelivered=true;
       send({type:'transcript',entry:{id:0,revision:++revision,startMs:start/16,endMs:end/16,
         text:result.text,final:isFinal&&requestVersion===version,stability:sameTextCount>=2?0.9:0.5,
-        source:'local',model:'kotoba-whisper-v2.0',processingMs:result.processingMs}});
+        source:'local',model:recognizer.getStatus().model,processingMs:result.processingMs}});
       if(isFinal&&requestVersion===version)send({type:'ended'});
     }catch(error){entry.outcome='error';closeWith(error instanceof Error?error.message:'変換に失敗');if(!closed){send({type:'unavailable',reason:error instanceof Error?error.message:'音声を文字に変換できませんでした'});stop();ws.close(1011);}}
     finally {audio.fill(0);busy=false;if(ended&&!closed&&processedVersion!==version)void pump(true);}

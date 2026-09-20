@@ -58,7 +58,7 @@ Copy-Item .env.example .env
 
 ### このPCでの音声認識（初期設定）
 
-Kotoba-Whisper v2.0をfaster-whisperで動かします。Pythonの準備に使う [uv](https://docs.astral.sh/uv/getting-started/installation/) が必要です。WindowsとNVIDIAのGPUの組み合わせ（RTX 4070 SUPER 12GB）で動作を確認しました。NVIDIAのGPUがないPCやMacではCPUで動きます。CPUでは一回の認識に時間がかかり、14.7秒までに最後の結果が届かない場合があります。その場合は、それまでに届いた最後の途中結果を使います（PC内の認識は毎回それまでの音を全部聞き直すので、途中結果でも一続きの文になっています）。結果の画面に「途中の聞き取りを使用」と出ます。プレイ中は画面左下に聞き取った文字を出します。使うCPUの数は `LOCAL_SPEECH_THREADS` で変えられます。Macでの速度は未確認です。
+Kotoba-Whisper v2.0をfaster-whisperで動かします。Pythonの準備に使う [uv](https://docs.astral.sh/uv/getting-started/installation/) が必要です。WindowsとNVIDIAのGPUの組み合わせ（RTX 4070 SUPER 12GB）で動作を確認しました。NVIDIAのGPUがないPCやMacではCPUで動きます。CPUでKotoba-Whisperを動かすと一回の認識に約5秒かかり（10コアのMacで実測）、14秒の詠唱に間に合いません。そのためMacでは初期値を小さい `small` モデルにしています。日本語の聞き取りは粗くなりますが、短い詠唱の言葉を数秒以内に返すことを優先します。`.env` の `LOCAL_SPEECH_MODEL_ID` で `medium`、`base`、`kotoba-v2.0` に変えられます。変えたら `npm run setup:speech` をもう一度実行します。CPUでは一回の認識に時間がかかり、14.7秒までに最後の結果が届かない場合があります。その場合は、それまでに届いた最後の途中結果を使います（PC内の認識は毎回それまでの音を全部聞き直すので、途中結果でも一続きの文になっています）。結果の画面に「途中の聞き取りを使用」と出ます。プレイ中は画面左下に聞き取った文字を出します。使うCPUの数は `LOCAL_SPEECH_THREADS` で変えられます。Macでの速度は未確認です。
 
 `npm run setup:speech` で必要なソフトと認識用ファイルを取得し、起動まで確認します。WindowsではPowerShell、MacとLinuxではbashの手順が自動で選ばれます。初回は数GBの空き容量と通信が必要です。Python 3.12と必要なソフトは `.venv-speech`、認識用ファイルは `.local-speech/models/kotoba-v2.0` に置きます。PC全体のPythonや設定は変更しません。これらの大きなファイルはGitには含めません。
 
