@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BASELINE = '氷、炎、雷、風、光、闇、障壁、結界、雷霆、紅蓮、氷晶、穿て、七つ、分かれろ'
 
 
 def load_hints(tokenizer=None):

@@ -22,8 +22,9 @@ report.results=report.results.map((r:{id:string;mode:string;text:string;processi
 });
 type Result={id:string;mode:string;ok:boolean;termsOk:boolean;recipeOk:boolean;processingMs:number};
 const results:Result[]=report.results;
-report.summary=Object.fromEntries(['before','after'].map(mode=>{const rows=results.filter(r=>r.mode===mode);return [mode,{cases:rows.length,passed:rows.filter(r=>r.ok).length,terms:rows.filter(r=>r.termsOk).length,recipe:rows.filter(r=>r.recipeOk).length,maxMs:Math.max(...rows.map(r=>r.processingMs))}];}));
-report.regressions=results.filter(r=>r.mode==='after'&&!r.ok&&results.find(b=>b.mode==='before'&&b.id===r.id)?.ok).map(r=>r.id);
+// none は手掛かりなし、hints は辞書の14語を渡したとき。hints が none より悪くなった例を退行として数える。
+report.summary=Object.fromEntries(['none','hints'].map(mode=>{const rows=results.filter(r=>r.mode===mode);return [mode,{cases:rows.length,passed:rows.filter(r=>r.ok).length,terms:rows.filter(r=>r.termsOk).length,recipe:rows.filter(r=>r.recipeOk).length,maxMs:Math.max(...rows.map(r=>r.processingMs))}];}));
+report.regressions=results.filter(r=>r.mode==='hints'&&!r.ok&&results.find(b=>b.mode==='none'&&b.id===r.id)?.ok).map(r=>r.id);
 await writeFile('.local-speech/vocabulary-test-report.json',JSON.stringify(report,null,2));
 console.log(JSON.stringify({summary:report.summary,regressions:report.regressions,silence:report.silence,vocabulary:report.vocabulary},null,2));
 if(report.regressions.length||report.silence)process.exitCode=1;
