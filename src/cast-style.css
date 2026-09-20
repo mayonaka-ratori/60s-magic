@@ -50,3 +50,33 @@ body:not([data-dev]) .dev-only{display:none!important}
 
 /* 見出しを大きくしたぶん、案内の枠も広げる。1行に収める。 */
 @media(min-width:1700px){.bottom-hud{width:min(840px,72%);padding:18px 26px}}
+
+/* C 締め切りが近づくと、画面の外周が光って残りを知らせる。
+   タイマーは右上にしかないので、視線のある中央からでも分かるようにする。 */
+.deadline{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s linear;
+  background:radial-gradient(ellipse 84% 80% at 50% 50%,transparent var(--ring,60%),#c97b3a80 calc(var(--ring,60%) + 26%),#b9601fc4 100%)}
+#app[data-deadline=urgent] .deadline{
+  background:radial-gradient(ellipse 84% 80% at 50% 50%,transparent var(--ring,50%),#c4453190 calc(var(--ring,50%) + 24%),#ad2c1ad6 100%)}
+.timer{transition:color .3s,transform .3s}
+#app[data-deadline=soon] .timer{color:#f2d08a}
+#app[data-deadline=urgent] .timer{color:#f0897a;transform:scale(1.12);transform-origin:right bottom}
+#app[data-deadline=soon] .top-progress i{background:linear-gradient(90deg,#d8a45a,#f0dcae);box-shadow:0 0 15px #e0b06a}
+#app[data-deadline=urgent] .top-progress i{background:linear-gradient(90deg,#d96151,#f0a08e);box-shadow:0 0 15px #e8705f}
+
+/* D 発動の瞬間は下の案内を閉じ、魔法名だけを大きく、ゆっくり出す。 */
+.reveal{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:4;
+  opacity:0;transform:scale(1.07);transition:opacity .9s ease,transform 1.4s cubic-bezier(.2,.7,.2,1)}
+.reveal.in{opacity:1;transform:none}
+.reveal span{font-family:'Noto Serif JP',serif;font-size:clamp(34px,4.4vw,84px);letter-spacing:.18em;
+  color:#f3e7cc;padding:0 6vw;text-align:center;line-height:1.5;
+  text-shadow:0 0 3px #050e18,2px 0 0 #050e18f2,-2px 0 0 #050e18f2,0 2px 0 #050e18f2,0 -2px 0 #050e18f2,
+    1.4px 1.4px 0 #050e18f2,-1.4px 1.4px 0 #050e18f2,1.4px -1.4px 0 #050e18f2,-1.4px -1.4px 0 #050e18f2,
+    0 0 42px #e8d6a866,0 6px 24px #000a}
+@media(prefers-reduced-motion:reduce){.reveal{transition:opacity .4s ease}.reveal,.reveal.in{transform:none}}
+
+/* 結果は、まず魔法名だけを見せて、ひと呼吸おいてから残りを出す。 */
+.result .chapter,#result-spell,.spell-description,.transcript,.result-actions,.feedback,.report-actions{transition:opacity .6s ease}
+.result.name-only .chapter,.result.name-only #result-spell,.result.name-only .spell-description,
+.result.name-only .transcript,.result.name-only .result-actions,.result.name-only .feedback,
+.result.name-only .report-actions{opacity:0}
+.result h2{transition:opacity .7s ease}

@@ -79,3 +79,32 @@ test('1920×1080で、案内の文字が決めた大きさを下回らない',as
   const 行数=await page.locator('#instruction').evaluate(n=>{const range=document.createRange();range.selectNodeContents(n);return range.getClientRects().length;});
   expect(行数,'見出しが折り返している').toBe(1);
 });
+
+test('締め切りが近づくと知らせ、発動では魔法名を大きく出す',async({page})=>{
+  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
+  await page.locator('#chant').fill('雷よ、七つに分かれろ');
+  // 描画が遅い環境でも取りこぼさないよう、1秒ごとに見て、出たものを集める。
+  const 見たもの=new Set<string>();
+  for(let i=0;i<26&&await page.locator('#result').isHidden();i++) {
+    const いま=await page.evaluate(()=>({
+      段階:document.getElementById('app')!.dataset.deadline??'',
+      時計:!(document.getElementById('timer') as HTMLElement).hidden,
+      光:parseFloat(getComputedStyle(document.getElementById('deadline')!).opacity),
+      名前:(document.getElementById('reveal') as HTMLElement).hidden?'':document.getElementById('reveal-name')!.textContent??'',
+      案内:!(document.getElementById('bottom-hud') as HTMLElement).hidden,
+    }));
+    if(いま.段階)見たもの.add(`段階:${いま.段階}`);
+    if(いま.光>.05)見たもの.add('外周の光');
+    if(!いま.時計)見たもの.add('締め切り後は時計を消す');
+    if(いま.名前)見たもの.add(`魔法名:${いま.名前}`);
+    if(いま.名前&&!いま.案内)見たもの.add('発動中は案内を閉じる');
+    await page.waitForTimeout(900);
+  }
+  for(const 期待 of ['段階:soon','段階:urgent','外周の光','締め切り後は時計を消す','魔法名:7つの雷の連弾','発動中は案内を閉じる'])
+    expect([...見たもの],`${期待}を見ていない`).toContain(期待);
+  await expect(page.locator('#result')).toBeVisible({timeout:12000});
+  await page.waitForTimeout(1500);
+  await expect(page.locator('#result')).not.toHaveClass(/name-only/);
+  await expect(page.locator('#again')).toBeVisible();
+});

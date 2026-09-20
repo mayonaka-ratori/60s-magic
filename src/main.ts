@@ -25,6 +25,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <section class="hud" id="hud" hidden><div class="top-progress"><i id="progress"></i></div><div class="enemy-health">遺跡の騎士<i><b id="health"></b></i></div><button class="exit" id="cancel">中止する</button><div class="demo-tag" id="demo-tag" hidden>見本の再生</div>
     <div class="recognized" id="recognized" hidden></div><div class="voice-meter" id="meter" aria-hidden="true">${'<i></i>'.repeat(22)}</div><div class="voice-label" id="voice-label" hidden>声を受け付けています</div><p class="service-notice" id="service-notice" role="status"></p>
     <div class="input-panel" id="input-panel"><label for="chant">声の代わりに、文字で試す</label><input id="chant" type="text" maxlength="160" autocomplete="off" placeholder="例：雷よ、七つに分かれろ"><p>描きながら14秒まで変更できます。<br>何も入れず、線だけでも遊べます。</p></div>
+    <div class="deadline" id="deadline" aria-hidden="true"></div><div class="reveal" id="reveal" hidden><span id="reveal-name"></span></div>
     <div class="bottom-hud" id="bottom-hud"><h2 class="instruction" id="instruction">手を動かしてみよう</h2><div class="hint" id="hint"></div><div class="steps"><span id="step-input" class="active"><b>1</b>描く・唱える</span><i></i><span id="step-complete"><b>2</b>術式完成</span><i></i><span id="step-release"><b>3</b>発動</span></div></div>
   </section>
   <section class="result" id="result" hidden><div class="chapter">あなたの魔法ができました</div><h2 id="spell-name"></h2><p class="spell-description" id="spell-description"></p><p class="transcript" id="transcript"></p><div class="result-actions"><button class="primary" id="again">もう一度つくる</button><button class="secondary" id="back">最初へ戻る</button></div><div class="feedback dev-only" id="feedback"><span>自分の魔法を放ったと感じましたか？</span><button data-feedback="yes">そう感じた</button><button data-feedback="unclear">まだ分かりにくい</button></div><div class="report-actions dev-only"><button class="text-button" id="record">確認用の記録を見る</button><button class="text-button" id="download">記録を保存する</button></div></section>
@@ -51,7 +52,7 @@ const resultCanvas=document.createElement('canvas');resultCanvas.id='result-spel
 const resultMagic=new MagicCanvas(resultCanvas);
 let session:CastSession|null=null,camera:HandCamera|null=null,voice:VoiceInput|null=null;
 let cursors:Array<{x:number;y:number}>=[],lastHandAt=0,mode='pointer',demo=false,preparing=false;
-let endedInput=false,requested=false,resultShown=false,lastUi=0,feedback:string|null=null;
+let endedInput=false,requested=false,resultShown=false,lastUi=0,feedback:string|null=null,revealed=false;
 let requestAbort:AbortController|null=null;
 let status:{jev:boolean;speech:boolean;handModel:boolean;model:string;speechProvider:'local'|'google'|'off';localSpeech:{state:string;message:string;model:string;device:string}|null}={jev:false,speech:false,handModel:false,model:'',speechProvider:'local',localSpeech:null};
 let serviceNotice='',prepareVersion=0;
@@ -69,7 +70,8 @@ function cleanup(){sound.stop();camera?.dispose();camera=null;voice?.dispose();v
 function toReady(message='') {
   el('app').dataset.screen='ready';
   prepareVersion++;session?.cancel();cleanup();session=null;preparing=false;
-  show('welcome',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);
+  show('welcome',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);show('reveal',false);
+  revealed=false;el('reveal').classList.remove('in');el('deadline').style.opacity='0';el('app').dataset.deadline='';el('result').classList.remove('name-only');
   el<HTMLButtonElement>('start').disabled=false;el<HTMLButtonElement>('demo').disabled=false;el('notice').textContent=message;
 }
 async function begin(isDemo=false) {
@@ -102,7 +104,7 @@ async function begin(isDemo=false) {
   session=new CastSession(undefined,id);voice?.start(performance.now()-session.startMs);
   sound.start(!!voice);
   el('app').dataset.screen='playing';
-  endedInput=false;requested=false;resultShown=false;preparing=false;feedback=null;serviceNotice='';lastHandAt=performance.now();frameIntervals.length=0;
+  endedInput=false;requested=false;resultShown=false;preparing=false;feedback=null;serviceNotice='';revealed=false;el('reveal').classList.remove('in');show('reveal',false);el('deadline').style.opacity='0';el('app').dataset.deadline='';lastHandAt=performance.now();frameIntervals.length=0;
   show('welcome',false);show('result',false);show('hud',true);show('timer',true);show('bottom-hud',true);show('demo-tag',demo);show('recognized',false);
   show('input-panel',!voice&&!demo);show('meter',!!voice);show('voice-label',!!voice&&!demo);
   el('service-notice').textContent='';
@@ -129,8 +131,17 @@ el('chant').addEventListener('input',()=>{if(session?.accepting)session.speech.a
 function updateUi() {
   if(!session)return;
   const t=session.elapsed/1000,phase=session.phase;
-  const left=Math.max(0,Math.ceil(24-t));
+  // のこり秒は、描いて唱えられる14秒までを数える。過ぎたら消して、画面を魔法に渡す。
+  const toDeadline=14-t,left=Math.max(0,Math.ceil(toDeadline));
   if(timerValue.textContent!==String(left))timerValue.textContent=String(left);
+  show('timer',t<14);
+  const urgency=toDeadline>0&&toDeadline<=5?1-toDeadline/5:0;
+  el('timer').dataset.left=toDeadline<=0?'':toDeadline<=2.5?'urgent':toDeadline<=5?'soon':'';
+  el('app').dataset.deadline=el('timer').dataset.left;
+  // 残り3秒からは、秒が変わるたびに一度だけ強く光らせる。光りっぱなしにはしない。
+  const beat=toDeadline<=3?.74+.26*(1-(toDeadline-Math.floor(toDeadline))):.7;
+  el('deadline').style.opacity=String(urgency?urgency*beat:0);
+  if(urgency)el('deadline').style.setProperty('--ring',`${64-urgency*18}%`);
   el('progress').style.width=`${Math.min(100,t/24*100)}%`;
   const labels:Partial<Record<Phase,[string,string]>>={
     draw:[mode==='pointer'?'押したまま、自由に描こう':'手を動かしてみよう','止まっても、また描き足せます'],
@@ -145,19 +156,32 @@ function updateUi() {
   if(mode==='camera'&&t<14&&!cursors.length&&performance.now()-lastHandAt>800)el('hint').textContent='手を画面の前へ。描いた線は残っています';
   el('service-notice').textContent=serviceNotice;
   if(t>=14)show('voice-label',false);
+  showReveal(t);
   el('step-input').classList.toggle('active',t<14);el('step-complete').classList.toggle('active',t>=14&&t<17);el('step-release').classList.toggle('active',t>=17);
   el<HTMLInputElement>('chant').disabled=t>=14;show('input-panel',!voice&&!demo&&t<14);
   if(t>=18.5)el('health').style.width='70%';
-  if(session.locked&&session.recipe&&t>=16&&t<18.5){show('recognized',true);el('recognized').textContent=[ELEMENT_LABELS[session.recipe.element],session.recipe.count>1?`${session.recipe.count}つ`:PURPOSE_LABELS[session.recipe.purpose]].join('　・　');}
+  if(session.locked&&session.recipe&&t>=16&&t<17){show('recognized',true);el('recognized').textContent=[ELEMENT_LABELS[session.recipe.element],session.recipe.count>1?`${session.recipe.count}つ`:PURPOSE_LABELS[session.recipe.purpose]].join('　・　');}
   else show('recognized',false);
   const level=voice?.level??0;
   el('meter').querySelectorAll<HTMLElement>('i').forEach((bar,i)=>{bar.style.height=`${3+level*23*(0.3+Math.abs(Math.sin(i*1.73+t*4))*0.7)}px`;});
 }
 
+// 17秒で下の案内を閉じ、魔法名を画面の中央へゆっくり出す。22.5秒で引く。
+function showReveal(t:number) {
+  const name=session?.recipe?.name;
+  if(t>=17&&t<23.2&&name) {
+    if(!revealed){revealed=true;el('reveal-name').textContent=name;show('reveal',true);show('bottom-hud',false);
+      requestAnimationFrame(()=>requestAnimationFrame(()=>el('reveal').classList.add('in')));}
+    if(t>=22.5)el('reveal').classList.remove('in');
+  } else if(revealed&&t>=23.2){show('reveal',false);}
+}
+
 function finish() {
   sound.stop();
   if(!session?.recipe)return;resultShown=true;voice?.dispose();voice=null;camera?.dispose();camera=null;cursors=[];
-  show('bottom-hud',false);show('input-panel',false);show('meter',false);show('voice-label',false);show('result',true);show('feedback',!demo);
+  show('bottom-hud',false);show('input-panel',false);show('meter',false);show('voice-label',false);show('reveal',false);
+  el('result').classList.add('name-only');show('result',true);show('feedback',!demo);
+  setTimeout(()=>el('result').classList.remove('name-only'),900);
   const r=session.recipe;
   el('spell-name').textContent=r.name;el('spell-description').textContent=`${ELEMENT_LABELS[r.element]}の${PURPOSE_LABELS[r.purpose]}。${r.count>1?`${r.count}つの`:''}${FORM_LABELS[r.form]}のかたち。`;
   el('transcript').textContent=session.state?.speech.rawTranscript?`「${session.state.speech.rawTranscript}」${session.state.speech.status==='typed'?'（文字で入力）':''}`:'詠唱なし。描いた線から魔法をつくりました。';
