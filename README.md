@@ -64,6 +64,7 @@ PC内の音声認識だけなら `.env` は不要です。JevやGoogleを使う�
 | `SPEECH_PROVIDER` | `local`（初期値）、`google`、`off` |
 | `LOCAL_SPEECH_MODEL_ID` | 認識モデル。空欄なら Apple SiliconのMacは `kotoba-v2.0-mlx`、WindowsとNVIDIAのGPUは `kotoba-v2.0`、それ以外は `small`。変えたら `setup:speech` をやり直す |
 | `LOCAL_SPEECH_ENGINE` `LOCAL_SPEECH_DEVICE` `LOCAL_SPEECH_THREADS` | 普段は空欄。動かし方やGPU/CPUを強制したいときだけ |
+| `LOCAL_SPEECH_HINTS` | 辞書の14語を認識の手掛かりとして渡すか。空欄（auto）ならMacのGPUでは渡さない。渡すと悪くなるため |
 | `GOOGLE_CLOUD_PROJECT` ほか | Googleへ切り替えるときだけ |
 
 ## フォルダー

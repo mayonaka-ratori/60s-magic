@@ -1,4 +1,7 @@
-"""同じ合成音声を、追加前後の手掛かりで比較する。人の声の精度とは分ける。"""
+"""同じ合成音声を、手掛かりなしと手掛かりありで認識して比べる。人の声の精度とは分ける。
+
+以前は「前」にも同じ14語を渡していたため、前後の結果が必ず同じになっていた。
+"""
 import json
 import time
 import wave
@@ -6,11 +9,13 @@ import wave
 import numpy as np
 
 from engines import create_engine
-from vocabulary import BASELINE
+from vocabulary import load_hints
 from worker import MODEL_DIR, PRESET, ROOT
 
 engine = create_engine(MODEL_DIR)
-hints, metadata = engine.hints, engine.vocabulary
+# 設定で手掛かりを切っていても、比較では14語を渡した側を必ず測る。
+hints, metadata = load_hints(None, True)
+metadata['hintsUsedInGame'] = engine.vocabulary['hintsUsed']
 warm = np.zeros(16000, dtype=np.float32)
 for _ in range(2):
     engine.transcribe(warm)
@@ -20,7 +25,7 @@ for case in cases:
     with wave.open(str(ROOT / '.local-speech/test-audio' / (case['id'] + '.wav'))) as wav:
         assert wav.getframerate() == 16000 and wav.getnchannels() == 1 and wav.getsampwidth() == 2
         audio = np.frombuffer(wav.readframes(wav.getnframes()), dtype='<i2').astype(np.float32) / 32768.0
-    for mode, words in [('before', BASELINE), ('after', hints)]:
+    for mode, words in [('none', ''), ('hints', hints)]:
         engine.hints = words
         start = time.perf_counter()
         text = engine.transcribe(audio)
