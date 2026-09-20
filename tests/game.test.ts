@@ -35,7 +35,7 @@ describe('最初の24秒',()=>{
     let now=0;const s=new CastSession(()=>now),snapshot=s.freeze();
     expect(s.receive({...reply(snapshot,{}),sessionId:'other'})).toBe(false);
     expect(s.receive({...reply(snapshot,{}),inputRevision:2})).toBe(false);
-    now=15700;expect(s.receive(reply(snapshot,{}))).toBe(false);
+    now=15900;expect(s.receive(reply(snapshot,{}))).toBe(false);
     const other=new CastSession(()=>0),o=other.freeze();other.cancel();expect(other.receive(reply(o,{}))).toBe(false);expect(other.accepting).toBe(false);
   });
 });
@@ -65,7 +65,7 @@ describe('詠唱の受付',()=>{
   });
 });
 describe('形と言葉を魔法へ反映する',()=>{
-  it.each([['炎よ、球となれ','fire','orb',1],['氷よ、壁となれ','ice','wall',1],['雷よ、七つに分かれろ','lightning','swarm',7],['風よ、すべてを押し流せ','wind','wave',1],['光よ、貫け','light','beam',1],['闇よ、結界となれ','dark','dome',1]] as const)('%s', (text,element,form,count)=>{
+  it.each([['炎よ、球となれ','fire','orb',1],['氷よ、壁となれ','ice','wall',1],['雷よ、七つに分かれろ','lightning','swarm',7],['風よ、すべてを押し流せ','wind','wave',1],['光よ、貫け','light','beam',1],['カメナリよ7つに分かれろ','lightning','swarm',7],['闇よ、結界となれ','dark','dome',1]] as const)('%s', (text,element,form,count)=>{
     const r=makeRecipe(state(text));expect(r.element).toBe(element);expect(r.form).toBe(form);expect(r.count).toBe(count);
   });
   it('否定・言い直し・最大個数を扱う',()=>{

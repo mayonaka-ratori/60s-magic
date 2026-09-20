@@ -21,12 +21,12 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
       return (connect as any).call(this,destination,...args);
     };
   });
-  await page.goto('/');await page.locator('#test-sound').click();
+  await page.goto('/?dev=1');await page.locator('#test-sound').click();
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.peak)).toBeGreaterThan(.001);
   await page.locator('#use-sound').uncheck();
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.rms)).toBeLessThan(.00001);
   await expect(page.locator('#test-sound')).toBeDisabled();
-  await page.locator('#use-sound').check();await page.locator('#start').click();
+  await page.locator('#use-sound').check();await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
   await expect(page.locator('#knight')).toHaveAttribute('data-state','idle');
   await expect(page.locator('#knight')).toHaveAttribute('data-state','hit',{timeout:21000});
@@ -55,6 +55,6 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
   await page.evaluate(()=>{(window as any).__soundProbe.peak=0;});await page.locator('#sound-toggle').click();
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.peak),{timeout:6500,intervals:[50]}).toBeGreaterThan(.0001);
   await page.locator('#cancel').click();await expect(page.locator('#welcome')).toBeVisible();
-  await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.rms),{timeout:300,intervals:[20]}).toBeLessThan(.00001);
+  await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.rms),{timeout:1500,intervals:[20]}).toBeLessThan(.00001); // 中止時は曲を0.35秒かけて絞る
   expect(errors).toEqual([]);
 });

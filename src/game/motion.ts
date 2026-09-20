@@ -11,7 +11,7 @@ export class MotionRecorder {
     if (![x, y, t].every(Number.isFinite) || t < 0 || t >= 14000) return false;
     const previous = this.last.get(hand);
     if (previous && t <= previous.t) return false;
-    const broken = !previous || t-previous.t > 150 || distance({x,y}, previous) > 0.3;
+    const broken = !previous || t-previous.t > 350 || distance({x,y}, previous) > 0.3;
     const point: Point = { x: clamp(x), y: clamp(y), t, hand, stroke: broken ? ++this.stroke : previous.stroke };
     // 保存する点は補正しない。表示だけ、ごく小さい揺れを抑える。
     this.raw.push(point);

@@ -19,7 +19,7 @@ export function readPcm(wav:Buffer) {
 }
 
 await new Promise<void>((resolvePromise,reject)=>{
-  const child=spawn('powershell',['-NoProfile','-ExecutionPolicy','Bypass','-File',resolve('scripts/make-speech-fixtures.ps1')],{windowsHide:true,stdio:'inherit'});
+  const child=spawn(process.execPath,[resolve('scripts/make-speech-fixtures.mjs')],{windowsHide:true,stdio:'inherit'});
   child.on('error',reject);child.on('exit',code=>code===0?resolvePromise():reject(new Error('確認用音声を作れませんでした')));
 });
 const local=new LocalSpeech();local.start();

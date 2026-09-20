@@ -2,7 +2,7 @@ import { ELEMENTS, FORMS, PURPOSES, TRAJECTORIES, ELEMENT_LABELS, FORM_LABELS, t
 import { clamp } from './motion';
 import { readChant } from './chant-dictionary';
 
-const elementWords: Array<[Element,RegExp]> = [['fire',/炎|火|紅蓮|燃/],['ice',/氷|凍|氷晶/],['lightning',/雷|稲妻|電撃/],['wind',/風|嵐|気流/],['light',/光|輝|照ら/],['dark',/闇|影|冥府/]];
+const elementWords: Array<[Element,RegExp]> = [['fire',/炎|火|紅蓮|燃/],['ice',/氷|凍|氷晶/],['lightning',/雷|稲妻|電撃|かみなり|カミナリ|カメナリ|亀なり|神鳴/],['wind',/風|嵐|気流/],['light',/光|輝|照ら/],['dark',/闇|影|冥府/]];
 
 export function affirmativeText(text:string) {
   // 明示的な言い直しは後半を使う。否定した属性・用途を辞書で拾わない。

@@ -5,8 +5,9 @@ import { writeFile } from 'node:fs/promises';
 
 test('PC内の実際の認識処理で最後の声を取り込み、描いた線と一緒に発動する',async()=>{
   test.skip(!existsSync('.local-speech/test-audio/browser-seven.wav'),'npm run test:speech と node scripts/prepare-browser-audio.mjs で確認用の音を用意');
+  const gpuArgs=process.platform==='win32'?['--use-angle=d3d11']:[];
   const browser=await chromium.launch({channel:'chromium',headless:true,args:[
-    '--use-angle=d3d11','--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream',
+    ...gpuArgs,'--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream',
     `--use-file-for-fake-audio-capture=${resolve('.local-speech/test-audio/browser-seven.wav')}`,
   ]});
   try {
@@ -14,9 +15,11 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     const page=await context.newPage();const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
     const outsideAudio:string[]=[];
     page.on('websocket',socket=>{if(!socket.url().startsWith('ws://127.0.0.1:5173/'))outsideAudio.push(socket.url());});
-    await page.goto('http://127.0.0.1:5173/');
-    await expect(page.locator('#use-voice')).toBeEnabled({timeout:15000});await expect(page.locator('#privacy')).toContainText('音声もこのPC内');
-    await page.locator('#use-voice').check();await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
+    await page.goto('http://127.0.0.1:5173/?dev=1');
+    await expect(page.locator('#use-voice')).toBeEnabled({timeout:15000});await expect(page.locator('#privacy')).toContainText('このPCの中だけ');
+    await page.locator('#use-voice').check();await page.locator('#start').click();
+    // マイクと音声認識のつなぎ込みが終わってから3秒の合図が出るので、まず合図の画面を待つ。
+    await expect(page.locator('#hud')).toBeVisible({timeout:30000});await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
     await page.mouse.move(500,420);await page.mouse.down();
     for(let i=0;i<18;i++){await page.mouse.move(620+Math.sin(i/4)*140,420+Math.cos(i/4)*120);await page.waitForTimeout(30);}
     await page.mouse.up();await expect(page.locator('#instruction')).toHaveText('描きながら、詠唱せよ',{timeout:13000});

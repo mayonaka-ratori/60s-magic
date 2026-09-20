@@ -2,7 +2,17 @@ import { MotionRecorder, summarizeMotion } from './motion';
 import { SpeechBook } from './speech-book';
 import { affirmativeText, explicitCount, makeRecipe } from './recipe';
 import type { JevReply, Phase, Recipe, SpellState } from './types';
-import { readChant } from './chant-dictionary';
+import { readChant, type ChantCorrection } from './chant-dictionary';
+
+// 16秒の確定は仕様の決まりなので動かさない。その手前をどう割るかだけを決める。
+/** 14秒で入力を締めたあと、声の最後の文字を待てる時間。MacのGPUでの認識一回分（約1.3秒）が入る長さにする。 */
+export const SPEECH_WAIT_MS=1400;
+/** 声を待つのをやめ、Jevへ送る時刻。声が先に届けばもっと早く送る。 */
+export const SPEECH_LIMIT_MS=15400;
+/** Jevの返事を受け取れる最後の時刻。確定の手前で必ず打ち切る。 */
+export const REPLY_LIMIT_MS=15900;
+/** 魔法を確定する時刻。 */
+export const LOCK_MS=16000;
 
 export function phaseAt(ms:number):Phase {
   if(ms<0)return 'ready';if(ms<6000)return 'draw';if(ms<11000)return 'build';if(ms<14000)return 'chant';
@@ -22,13 +32,15 @@ export class CastSession {
   frozen=false;
   locked=false;
   cancelled=false;
+  /** 辞書の読みへ寄せた言葉。元の聞き取りは state.speech.rawTranscript に残る。 */
+  corrections:ChantCorrection[]=[];
   constructor(private clock:()=>number=()=>performance.now(), id=crypto.randomUUID()) {this.startMs=clock();this.id=id;}
   tick() {
     if(this.cancelled)return;
     this.elapsed=Math.max(0,this.clock()-this.startMs);
     const next=phaseAt(this.elapsed);
     if(next!==this.phase) {this.phase=next;this.events.push({name:next,atMs:{complete:14000,release:17000,handoff:23000,finished:24000}[next as 'complete']??this.elapsed,observedMs:this.elapsed});}
-    if(this.elapsed>=16000&&!this.locked)this.lock();
+    if(this.elapsed>=LOCK_MS&&!this.locked)this.lock();
   }
   get accepting() {return !this.cancelled&&this.clock()-this.startMs<14000;}
   freeze() {
@@ -36,6 +48,7 @@ export class CastSession {
     const entries=this.speech.freeze();
     const text=entries.map(e=>e.text).join('、');
     const chant=readChant(text);
+    this.corrections=chant.corrections;
     const motion=summarizeMotion(this.motion.raw);
     this.state={schemaVersion:'spell-state-2',sessionId:this.id,castId:'cast-01',inputRevision:1,phase:'free',
       currentTask:'自分の線と言葉から最初の魔法を作り、目の前の騎士へ作用させる',
@@ -54,14 +67,14 @@ export class CastSession {
     return result;
   }
   receive(reply:JevReply) {
-    if(this.cancelled||this.locked||this.clock()-this.startMs>=15700||reply.sessionId!==this.id||reply.castId!=='cast-01'||reply.inputRevision!==1)return false;
+    if(this.cancelled||this.locked||this.clock()-this.startMs>=REPLY_LIMIT_MS||reply.sessionId!==this.id||reply.castId!=='cast-01'||reply.inputRevision!==1)return false;
     this.reply=reply;return true;
   }
   lock() {
     if(this.locked||this.cancelled)return;
     this.recipe=makeRecipe(this.freeze(),this.reply);this.locked=true;
-    this.events.push({name:'recipe-locked',atMs:16000,observedMs:this.clock()-this.startMs});
+    this.events.push({name:'recipe-locked',atMs:LOCK_MS,observedMs:this.clock()-this.startMs});
   }
   cancel() {this.cancelled=true;this.phase='cancelled';this.speech.freeze();}
-  report() {return {sessionId:this.id,scope:'first-24-seconds',state:this.state,recipe:this.recipe,jev:this.reply??null,speechEntries:this.speech.snapshot(),events:this.events,rawPoints:this.motion.raw,displayPoints:this.motion.display,cancelled:this.cancelled};}
+  report() {return {sessionId:this.id,scope:'first-24-seconds',state:this.state,recipe:this.recipe,jev:this.reply??null,speechEntries:this.speech.snapshot(),corrections:this.corrections,events:this.events,rawPoints:this.motion.raw,displayPoints:this.motion.display,cancelled:this.cancelled};}
 }

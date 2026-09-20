@@ -8,7 +8,8 @@ import { createServer as createViteServer } from 'vite';
 import { evaluateJev, validState } from './jev';
 import { connectSpeech } from './speech';
 import { LocalSpeech } from './local-speech';
-import { connectLocalSpeech } from './local-speech-session';
+import { connectLocalSpeech, speechSessionDiagnostics } from './local-speech-session';
+import { cpus, platform, release } from 'node:os';
 
 const app=express();
 const speechProvider=process.env.SPEECH_PROVIDER??'local';
@@ -21,6 +22,10 @@ app.get('/api/status',(_req,res)=>res.json({jev:!!process.env.JEV_API_KEY,
   speech:speechProvider==='local'?localSpeech.getStatus().state==='ready':speechProvider==='google'&&!!process.env.GOOGLE_CLOUD_PROJECT,
   speechProvider,localSpeech:speechProvider==='local'?localSpeech.getStatus():null,
   handModel:existsSync(resolve('public/vision/hand_landmarker.task')),model:process.env.JEV_MODEL??'jev-1.13.0'}));
+// 確認用。音声認識の処理時間や受付の記録を返す。音声や秘密の値は含まない。
+app.get('/api/diagnostics',(_req,res)=>res.json({generatedAt:new Date().toISOString(),speechProvider,jevConfigured:!!process.env.JEV_API_KEY,
+  machine:{platform:platform(),release:release(),cpus:cpus().length,node:process.version},
+  localSpeech:speechProvider==='local'?localSpeech.diagnostics():null,speechSessions:speechProvider==='local'?speechSessionDiagnostics():[]}));
 app.post('/api/interpret',async(req,res)=>{
   if(!validState(req.body)){res.status(400).json({error:'入力の形式が正しくありません'});return;}
   const abort=new AbortController();

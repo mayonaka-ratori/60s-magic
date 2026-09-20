@@ -16,6 +16,34 @@ export function fitSpell(points: readonly Point[], width: number, height: number
   }));
 }
 
+/**
+ * 表示する線のガタつきを抑える。保存する点列には使わない。
+ * 1) 前後2点までの重みつき平均（1,2,3,2,1）で手の細かな震えを消す。
+ * 2) 角を丸める方法（Chaikin）を1回かけて折れ目をなめらかにする。
+ * 始点と終点は動かさない。動く量は隣の点との間隔程度までで、意図した大きな形は変えない。
+ */
+export function smoothStroke<T extends { x: number; y: number }>(points: readonly T[]): T[] {
+  if (points.length < 3) return [...points];
+  const weights = [1, 2, 3, 2, 1];
+  const averaged: T[] = points.map((p, i) => {
+    if (i === 0 || i === points.length - 1) return p;
+    let x = 0, y = 0, total = 0;
+    for (let k = -2; k <= 2; k++) {
+      const q = points[i + k]; if (!q) continue;
+      const w = weights[k + 2]; x += q.x * w; y += q.y * w; total += w;
+    }
+    return { ...p, x: x / total, y: y / total };
+  });
+  const rounded: T[] = [averaged[0]];
+  for (let i = 0; i < averaged.length - 1; i++) {
+    const a = averaged[i], b = averaged[i + 1];
+    rounded.push({ ...a, x: a.x * .75 + b.x * .25, y: a.y * .75 + b.y * .25 });
+    rounded.push({ ...b, x: a.x * .25 + b.x * .75, y: a.y * .25 + b.y * .75 });
+  }
+  rounded.push(averaged[averaged.length - 1]);
+  return rounded;
+}
+
 export function completedSpellFrame(width: number, height: number): SpellFrame {
   return { x: width * .5, y: height * .66, width: Math.min(width * .68, height * .49), height: height * .32 };
 }

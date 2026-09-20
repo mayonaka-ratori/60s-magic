@@ -18,11 +18,13 @@ function wave(audio) {
 }
 const ice=pcm(await readFile('.local-speech/test-audio/ice.wav'));
 const seven=pcm(await readFile('.local-speech/test-audio/seven.wav'));
-// カメラとマイクの準備後にも無音を残し、最後の数秒で発話する。
+// マイクは開始ボタンの直後に開き、そのあと音声認識のつなぎ込み（約0.4秒）と3秒の合図を経て24秒が始まる。
+// 24秒の中の13.3秒ごろに声が終わるように、そのぶん後ろへ置く。
+const LEAD_MS=3400,END_MS=13300;
 for (const [name,voice] of [['ice',ice],['seven',seven]]) {
   const audio=Buffer.alloc(32000*30);
-  const startMs=13500-voice.length/32;
+  const startMs=LEAD_MS+END_MS-voice.length/32;
   voice.copy(audio,Math.round(startMs*32));
   await writeFile(`.local-speech/test-audio/browser-${name}.wav`,wave(audio));
-  console.log(`${name}: ${startMs.toFixed(0)}〜13500ms に合成した声を配置`);
+  console.log(`${name}: 音の先頭から${startMs.toFixed(0)}〜${LEAD_MS+END_MS}ms に合成した声を配置（24秒の中では約${END_MS-voice.length/32|0}〜${END_MS}ms）`);
 }
