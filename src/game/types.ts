@@ -8,7 +8,7 @@ export type Purpose = typeof PURPOSES[number];
 export type Trajectory = typeof TRAJECTORIES[number];
 export type Phase = 'ready' | 'draw' | 'build' | 'chant' | 'complete' | 'release' | 'handoff' | 'finished' | 'cancelled';
 export type Point = { x: number; y: number; t: number; hand: number; stroke: number };
-export type SpeechEntry = { id: number; revision: number; startMs: number; endMs: number; text: string; final: boolean; stability: number; source: 'google' | 'typed' };
+export type SpeechEntry = { id: number; revision: number; startMs: number; endMs: number; text: string; final: boolean; stability: number; source: 'google' | 'local' | 'typed'; model?:string; processingMs?:number };
 export type Motion = {
   version: 'motion-1'; coordinateSpace: 'mirrored-normalized-screen';
   sampleCount: number; trackedHands: number; durationMs: number;
@@ -22,7 +22,7 @@ export type SpellState = {
   inputWindow: { startSessionMs: number; endSessionMs: number; chantPromptSessionMs: number; motionAndSpeechConcurrent: true };
   motion: Motion;
   timedEvents: Array<{ startMs: number; endMs: number; motion?: string; speech?: string; speechTiming?: 'utterance' | 'typed' }>;
-  speech: { status: 'recognized' | 'typed' | 'unavailable'; locale: 'ja-JP'; rawTranscript: string; normalizedTranscript: string; explicitCount: number | null; explicitNegation: boolean };
+  speech: { status: 'recognized' | 'typed' | 'unavailable'; provider?:'local'|'google'|'typed'|null; locale: 'ja-JP'; rawTranscript: string; normalizedTranscript: string; explicitCount: number | null; explicitNegation: boolean };
   previous: null;
   enemy: { attackKind: 'none'; encounterMode: 'exhibition_success' };
 };

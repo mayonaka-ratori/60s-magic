@@ -1,0 +1,31 @@
+import { test, expect } from '@playwright/test';
+
+test('見本と比較し、自分の線を完成形にできる', async ({page}) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/?view=look');
+  await expect(page.locator('#loading')).toBeHidden();
+  await expect(page.locator('#spell')).toHaveAttribute('data-state','complete');
+  await page.screenshot({path:'test-results/look-complete.png'});
+  await page.getByRole('button',{name:'見本と並べる'}).click();
+  await expect(page.locator('#reference')).toBeVisible();
+  await page.screenshot({path:'test-results/look-compare.png'});
+  await page.getByRole('button',{name:'一画面に戻す'}).click();
+  await page.getByRole('button',{name:'自分の線で試す'}).click();
+  const box = (await page.locator('#spell').boundingBox())!;
+  await page.mouse.move(box.x+box.width*.04, box.y+box.height*.2); await page.mouse.down();
+  await page.mouse.move(box.x+box.width*.94, box.y+box.height*.82,{steps:25}); await page.mouse.up();
+  await page.mouse.move(box.x+box.width*.2, box.y+box.height*.85); await page.mouse.down();
+  await page.mouse.move(box.x+box.width*.75, box.y+box.height*.1,{steps:25}); await page.mouse.up();
+  const count = await page.locator('#spell').getAttribute('data-points');
+  expect(Number(count)).toBeGreaterThan(30);
+  await page.getByRole('button',{name:'完成形を見る'}).click();
+  await expect(page.locator('#spell')).toHaveAttribute('data-points', count!);
+  await expect(page.locator('#spell')).toHaveAttribute('data-state','complete');
+  await page.screenshot({path:'test-results/look-own-lines.png'});
+  await page.getByRole('button',{name:'見本の線に戻す'}).click();
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:'test-results/look-mobile.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(390);
+  expect(errors).toEqual([]);
+});

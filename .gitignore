@@ -8,3 +8,6 @@ test-results/
 playwright-report/
 public/vision/
 *.log
+.venv-speech/
+.local-speech/
+__pycache__/

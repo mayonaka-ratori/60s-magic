@@ -1,0 +1,16 @@
+[
+  {"id":"ice","text":"氷よ、壁となれ。","element":"ice","form":"wall"},
+  {"id":"seven","text":"雷よ、七つに分かれろ。","element":"lightning","count":7},
+  {"id":"correction","text":"雷ではなく、氷よ、壁となれ。","element":"ice","form":"wall"},
+  {"id":"negation","text":"攻撃しないで、我を守れ。","purpose":"defend","noAttack":true},
+  {"id":"guren","text":"ぐれんよ、七つのまだんとなれ。","terms":["紅蓮","魔弾"],"element":"fire","count":7},
+  {"id":"raitei","text":"らいていよ、らせんを描き、敵をうがて。","terms":["雷霆","螺旋","穿て"],"element":"lightning","trajectory":"spiral"},
+  {"id":"hyosho","text":"ひょうしょうよ、しょうへきとなれ。","terms":["氷晶","障壁"],"element":"ice","form":"wall"},
+  {"id":"tokoyami","text":"とこやみよ、けっかいとなれ。我を守れ。","terms":["常闇","結界"],"element":"dark","form":"dome","purpose":"defend"},
+  {"id":"shin_en","text":"しんえんより、けんげんせよ。鎖となり、敵をふういんせよ。","terms":["深淵","顕現","封印"],"element":"dark","purpose":"bind"},
+  {"id":"goka","text":"ごうかではなく、ひょうしょうよ、壁となれ。","terms":["氷晶"],"element":"ice","form":"wall"},
+  {"id":"hekireki","text":"へきれきよ、敵を貫け。","terms":["霹靂"],"element":"lightning","form":"beam"},
+  {"id":"kurohitsugi","text":"はどうの九十、くろひつぎ。","terms":["黒棺"]},
+  {"id":"domain","text":"りょういきてんかい。ちゅうぶくしし。","terms":["領域展開","誅伏賜死"]},
+  {"id":"ordinary","text":"今日は、無料の動画を見ます。","element":"neutral","forbidden":["黒棺","領域展開","魔弾","紅蓮","雷霆"]}
+]

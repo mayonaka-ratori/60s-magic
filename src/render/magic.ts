@@ -1,78 +1,54 @@
 import { clamp, getNodes } from '../game/motion';
 import type { Point, Recipe, Element } from '../game/types';
+import { fitSpell } from './spell-layout';
 
-export const colors:Record<Element,string>={fire:'#ffa05e',ice:'#8cddff',lightning:'#c5b4ff',wind:'#8cf0cf',light:'#ffeac0',dark:'#b792e6',neutral:'#b5e6f1'};
+export const colors:Record<Element,string>={fire:'#ff994d',ice:'#73ceff',lightning:'#8ea6ff',wind:'#7bdfba',light:'#a7d2ff',dark:'#ad81e9',neutral:'#75aaff'};
 const ease=(x:number)=>1-Math.pow(1-clamp(x),3);
 export class MagicCanvas {
   private ctx:CanvasRenderingContext2D;
   private width=0;private height=0;
   constructor(readonly canvas:HTMLCanvasElement){this.ctx=canvas.getContext('2d')!;this.resize();}
   resize(){const rect=this.canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio,1.5);this.width=rect.width;this.height=rect.height;this.canvas.width=rect.width*dpr;this.canvas.height=rect.height*dpr;this.ctx.setTransform(dpr,0,0,dpr,0,0);}
-  render(points:Point[],ms:number,recipe:Recipe|null,voice:number,cursors:Array<{x:number;y:number}>,ready=false,target={x:0.5,y:0.48}) {
-    const c=this.ctx,w=this.width,h=this.height,t=ms/1000;
-    c.clearRect(0,0,w,h);c.lineCap='round';c.lineJoin='round';
-    for(let i=0;i<42;i++) {
-      const x=((i*137.13)%w+Math.sin(t*0.09+i)*15+w)%w;
-      const y=((i*79.9)%h-t*(2+i%3)+h*20)%h;
-      c.fillStyle=`rgba(171,206,220,${0.07+Math.sin(i+t)*0.045})`;c.beginPath();c.arc(x,y,i%3===0?1.4:0.7,0,Math.PI*2);c.fill();
-    }
-    if(ready)return;
-    let shape=points;
-    if(!points.length&&t>=14)shape=[{x:0.5,y:0.6,t:0,hand:0,stroke:0}];
-    const center=shape.length?{x:shape.reduce((n,p)=>n+p.x,0)/shape.length,y:shape.reduce((n,p)=>n+p.y,0)/shape.length}:{x:0.5,y:0.6};
-    const range=shape.length?Math.max(Math.max(...shape.map(p=>p.x))-Math.min(...shape.map(p=>p.x)),Math.max(...shape.map(p=>p.y))-Math.min(...shape.map(p=>p.y))):0;
-    const complete=ease((t-14)/3),scale=1+(clamp(0.45/Math.max(range,0.04),1,2.2)-1)*complete;
-    const shift={x:(0.5-center.x)*complete,y:(0.57-center.y)*complete};
-    const position=(p:{x:number;y:number})=>({x:((p.x-center.x)*scale+center.x+shift.x)*w,y:((p.y-center.y)*scale+center.y+shift.y)*h});
-    const origin=position(center);
-    const color=recipe?colors[recipe.element]:colors.neutral;
-    const charge=clamp(t/14)*0.6+clamp((t-14)/3)*0.4;
-    const residue=t>=17?0.34+0.3*(1-clamp((t-17)/6)):1;
-    const strokes=new Map<number,Point[]>();
-    for(const p of shape){const list=strokes.get(p.stroke)??[];list.push(p);strokes.set(p.stroke,list);}
-    c.save();c.globalCompositeOperation='lighter';
-    for(const pass of [0,1]) {
-      c.strokeStyle=color;c.globalAlpha=(pass===0?0.15+charge*0.14:0.68+charge*0.26)*residue;
-      c.lineWidth=pass===0?8+charge*6:1.8+charge*1.5;
-      c.shadowColor=color;c.shadowBlur=pass===0?22+charge*13:6;
-      for(const stroke of strokes.values()) {
-        c.beginPath();stroke.forEach((p,i)=>{const q=position(p);if(i===0)c.moveTo(q.x,q.y);else c.lineTo(q.x,q.y);});c.stroke();
-        if(stroke.length===1){const q=position(stroke[0]);this.glow(q.x,q.y,3,color,0.8);}
+  renderEffects(points:Point[],ms:number,recipe:Recipe|null,voice:number,cursors:Array<{x:number;y:number}>,ready:boolean,target:{x:number;y:number},origin:{x:number;y:number}) {
+    const c=this.ctx,w=this.width,h=this.height,t=ms/1000,color=recipe?colors[recipe.element]:colors.neutral;
+    c.clearRect(0,0,w,h);if(ready||t>=23)return;
+    c.save();c.globalCompositeOperation='lighter';c.lineCap='round';
+    const fade=1-clamp((t-21)/2),nodes=getNodes(points,5);
+    if(t>=6&&t<17) {
+      for(const p of nodes)this.glow(p.x*w,p.y*h,2+voice*3,color,.5);
+      for(let i=0;i<Math.min(8,points.length);i++) {
+        const index=Math.floor(((t*.16+i/8)%1)*points.length),p=points[index];
+        this.glow(p.x*w,p.y*h,1.8,color,.7);
       }
-    }
-    c.shadowBlur=0;
-    const nodes=getNodes(shape);
-    if(t>=6) {
-      c.lineWidth=1;c.strokeStyle=color;c.globalAlpha=0.18*residue;
-      let connections=0;
-      for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++) {
-        if(connections>=18)break;
-        const distance=Math.hypot(nodes[i].x-nodes[j].x,nodes[i].y-nodes[j].y);
-        if(distance>0.04&&distance<0.15){const a=position(nodes[i]),b=position(nodes[j]);c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();connections++;}
-      }
-      nodes.forEach((p,i)=>{const q=position(p),pulse=(Math.sin(t*3+i)+1)/2;this.glow(q.x,q.y,2+charge*2+voice*2,color,(0.5+pulse*0.5)*residue);});
-    }
-    // 光は本人の線をたどる。既成の円への置き換えはしない。
-    if(shape.length>1&&t>=6)for(let i=0;i<Math.min(14,shape.length);i++) {
-      const index=Math.floor(((t*(0.12+charge*0.15)+i/14)%1)*shape.length),q=position(shape[index]);
-      this.glow(q.x,q.y,1.4+charge*1.2,color,0.7*residue);
     }
     if(t>=14&&t<17) {
-      const radius=14+complete*28+Math.sin(t*8)*2;
-      this.glow(origin.x,origin.y,radius,color,0.2+complete*0.25);
-      for(let i=0;i<nodes.length;i++){const q=position(nodes[i]),p=(t*0.7+i/nodes.length)%1;this.glow(q.x+(origin.x-q.x)*p,q.y+(origin.y-q.y)*p,2,color,p*0.7);}
+      const charge=clamp((t-14)/3);
+      this.glow(origin.x,origin.y,5+charge*11,color,.4+charge*.3);
+      for(let i=0;i<nodes.length;i++) {
+        const p=(t*.8+i/nodes.length)%1,a=nodes[i];
+        this.glow(a.x*w+(origin.x-a.x*w)*p,a.y*h+(origin.y-a.y*h)*p,2,color,p*.7);
+      }
     }
-    if(t<14)for(const p of cursors){const q={x:p.x*w,y:p.y*h};this.glow(q.x,q.y,5+voice*2,color,1);c.globalAlpha=0.4;c.strokeStyle=color;c.lineWidth=1;c.beginPath();c.arc(q.x,q.y,13+voice*5,0,Math.PI*2);c.stroke();}
+    if(t<14)for(const p of cursors)this.glow(p.x*w,p.y*h,4+voice*2,color,1);
     c.restore();
-    if(t>=17&&recipe)this.release(origin,{x:w*target.x,y:h*target.y},t-17,recipe);
-    if(t>=11&&t<14){const p=(14-t)/3;c.strokeStyle=color;c.globalAlpha=0.6;c.lineWidth=2;c.beginPath();c.moveTo(w*0.5-w*0.28*p,h-8);c.lineTo(w*0.5+w*0.28*p,h-8);c.stroke();c.globalAlpha=1;}
+    if(t>=17&&recipe){c.save();c.globalAlpha=fade;this.release(origin,{x:target.x*w,y:target.y*h},t-17,recipe);c.restore();}
+  }
+  thumbnail(points:Point[],color:string,source:{width:number;height:number}) {
+    this.resize();const c=this.ctx,w=this.width,h=this.height;
+    c.clearRect(0,0,w,h);c.save();c.globalCompositeOperation='lighter';c.strokeStyle=color;c.lineWidth=1.1;c.shadowColor=color;c.shadowBlur=9;
+    const normalized=points.map(p=>({...p,x:p.x*source.width/w,y:p.y*source.height/h}));
+    const shape=fitSpell(normalized,w,h,{x:w/2,y:h/2,width:w*.7,height:h*.7});
+    let stroke=-1;c.beginPath();
+    for(const p of shape){if(p.stroke!==stroke){c.moveTo(p.x*w,p.y*h);stroke=p.stroke;}else c.lineTo(p.x*w,p.y*h);}c.stroke();
+    for(const p of getNodes(shape,5))this.glow(p.x*w,p.y*h,2.5,color,.9);
+    this.glow(w/2,h/2,5,color,.9);c.restore();
   }
   private glow(x:number,y:number,r:number,color:string,alpha:number) {
     const c=this.ctx;c.save();c.globalAlpha=clamp(alpha);const gradient=c.createRadialGradient(x,y,0,x,y,r*4);gradient.addColorStop(0,'#fff8e9');gradient.addColorStop(0.18,color);gradient.addColorStop(1,color+'00');c.fillStyle=gradient;c.beginPath();c.arc(x,y,r*4,0,Math.PI*2);c.fill();c.restore();
   }
   private release(origin:{x:number;y:number},target:{x:number;y:number},time:number,r:Recipe) {
     if(time>7)return;
-    const c=this.ctx,color=colors[r.element],arrival=1.5,travel=clamp(time/arrival),fade=1-clamp((time-3.2-r.duration)/2.8);
+    const c=this.ctx,color=colors[r.element],arrival=1.5,travel=clamp(time/arrival),fade=(1-clamp((time-3.2-r.duration)/2.8))*(1-clamp((time-4)/2));
     if(fade<=0)return;
     c.save();c.globalCompositeOperation='lighter';c.strokeStyle=color;c.fillStyle=color;c.shadowColor=color;c.shadowBlur=18;
     const focus=0.7+r.concentration*0.6;
@@ -89,6 +65,13 @@ export class MagicCanvas {
       return {x,y};
     };
     this.glow(origin.x,origin.y,22*clamp(1-time/0.7),color,clamp(1-time/0.7));
+    // 手前から奥へ小さくなる輪で、術式から放出した向きを見せる。
+    if(time<2.3&&r.purpose==='attack')for(let i=0;i<3;i++) {
+      const depth=.12+i*.2,ringSize=(55-i*13)*Math.min(1,time*5);
+      const x=origin.x+(target.x-origin.x)*depth,y=origin.y+(target.y-origin.y)*depth;
+      c.globalAlpha=(1-clamp((time-1.2)/1.1))*(.4-i*.07);c.lineWidth=1.2;
+      c.beginPath();c.ellipse(x,y,ringSize,ringSize*.38,-.25,0,Math.PI*2);c.stroke();
+    }
     if(r.purpose==='bind'&&r.count===1) {
       c.globalAlpha=fade;c.lineWidth=3;
       for(let i=0;i<3;i++){c.beginPath();c.ellipse(target.x,target.y+25*i-15,(25+radius*0.4)*ease(time),10,Math.sin(time+i)*0.2,0,Math.PI*2);c.stroke();}
@@ -113,6 +96,14 @@ export class MagicCanvas {
       const impact=time-arrival,ring=ease(impact/1.1);
       c.globalAlpha=(1-ring)*0.8;c.lineWidth=3;c.beginPath();c.ellipse(target.x,target.y,Math.max(1,ring*radius*1.7),Math.max(1,ring*radius*0.58),0,0,Math.PI*2);c.stroke();
       this.glow(target.x,target.y,30*(1-clamp(impact/1.3))+5,color,fade*0.7);
+      if(impact<.8) {
+        c.strokeStyle='#e6f4ff';c.lineWidth=1.4;c.globalAlpha=(1-impact/.8)*.85;
+        for(let i=0;i<22;i++) {
+          const a=i*2.399,spread=(25+(i*19)%100)*Math.min(1,impact*4),length=8+20*(1-impact/.8);
+          c.beginPath();c.moveTo(target.x+Math.cos(a)*spread,target.y+Math.sin(a)*spread*.7);
+          c.lineTo(target.x+Math.cos(a)*(spread+length),target.y+Math.sin(a)*(spread+length)*.7);c.stroke();
+        }
+      }
       for(let i=0;i<30;i++){
         const a=i*2.399,spread=(22+(i*13)%80)*Math.min(impact*1.1,1.6),x=target.x+Math.cos(a)*spread,y=target.y+Math.sin(a)*spread*0.65+impact*impact*5;
         this.glow(x,y,1.4,color,fade*(1-clamp(impact/4)));

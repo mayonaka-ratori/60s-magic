@@ -13,8 +13,12 @@ test('最初の24秒を最後まで遊び、線と七つの雷を記録できる
   await expect(page.locator('#instruction')).toHaveText('描きながら、言葉を添えて',{timeout:7000});
   await page.mouse.move(550,480);await page.mouse.down();await page.mouse.move(580,300,{steps:15});await page.mouse.up();
   await expect(page.locator('#step-complete')).toHaveClass('active',{timeout:5000});await page.screenshot({path:'test-results/03-complete.png'});
+  await expect(page.locator('#spell')).toHaveAttribute('data-phase','complete');
+  await page.waitForTimeout(2400);await page.screenshot({path:'test-results/03b-formed.png'});
   await expect(page.locator('#step-release')).toHaveClass('active',{timeout:4500});await page.waitForTimeout(650);await page.screenshot({path:'test-results/04-release.png'});
+  await page.waitForTimeout(950);await page.screenshot({path:'test-results/04b-impact.png'});
   await expect(page.locator('#result')).toBeVisible({timeout:9000});await expect(page.locator('#spell-name')).toHaveText('7つの雷の連弾');
+  await expect(page.locator('#spell')).toHaveAttribute('data-visible','false');await expect(page.locator('#result-spell')).toBeVisible();
   await expect(page.locator('#transcript')).toContainText('文字で入力');await page.screenshot({path:'test-results/05-result.png'});
   await page.locator('[data-feedback="yes"]').click();await page.locator('#record').click();
   const record=JSON.parse(await page.locator('#sheet-body pre').innerText());

@@ -9,7 +9,7 @@ export class SpeechBook {
     if(prior && (prior.revision>=entry.revision || (prior.final&&!entry.final)))return;
     this.entries.set(entry.id,{...entry});
   }
-  snapshot() { return [...this.entries.values()].filter(e=>e.final||e.stability>=0.8).sort((a,b)=>a.startMs-b.startMs); }
+  snapshot() { return [...this.entries.values()].filter(e=>e.text.trim()&&(e.final||e.stability>=0.8)).sort((a,b)=>a.startMs-b.startMs); }
   freeze() {this.locked=true;return this.snapshot();}
   text() {return this.snapshot().map(e=>e.text).join('、');}
 }

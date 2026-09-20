@@ -2,6 +2,7 @@ import { MotionRecorder, summarizeMotion } from './motion';
 import { SpeechBook } from './speech-book';
 import { affirmativeText, explicitCount, makeRecipe } from './recipe';
 import type { JevReply, Phase, Recipe, SpellState } from './types';
+import { readChant } from './chant-dictionary';
 
 export function phaseAt(ms:number):Phase {
   if(ms<0)return 'ready';if(ms<6000)return 'draw';if(ms<11000)return 'build';if(ms<14000)return 'chant';
@@ -34,12 +35,13 @@ export class CastSession {
     if(this.state)return this.state;
     const entries=this.speech.freeze();
     const text=entries.map(e=>e.text).join('、');
+    const chant=readChant(text);
     const motion=summarizeMotion(this.motion.raw);
     this.state={schemaVersion:'spell-state-2',sessionId:this.id,castId:'cast-01',inputRevision:1,phase:'free',
       currentTask:'自分の線と言葉から最初の魔法を作り、目の前の騎士へ作用させる',
       inputWindow:{startSessionMs:0,endSessionMs:14000,chantPromptSessionMs:11000,motionAndSpeechConcurrent:true},motion,
       timedEvents:[...this.motionEvents(),...entries.map(e=>({startMs:e.startMs,endMs:e.endMs,speech:e.text,speechTiming:e.source==='typed'?'typed' as const:'utterance' as const}))].sort((a,b)=>a.startMs-b.startMs),
-      speech:{status:entries.length?(entries.some(e=>e.source==='google')?'recognized':'typed'):'unavailable',locale:'ja-JP',rawTranscript:text,normalizedTranscript:text,explicitCount:explicitCount(affirmativeText(text)),explicitNegation:/ない|なく|するな/.test(text)},previous:null,
+      speech:{status:entries.length?(entries.some(e=>e.source!=='typed')?'recognized':'typed'):'unavailable',provider:entries[0]?.source??null,locale:'ja-JP',rawTranscript:text,normalizedTranscript:chant.normalized,explicitCount:explicitCount(affirmativeText(chant.meaning)),explicitNegation:/ない|なく|するな/.test(text)},previous:null,
       enemy:{attackKind:'none',encounterMode:'exhibition_success'}};
     this.frozen=true;return this.state;
   }
@@ -61,5 +63,5 @@ export class CastSession {
     this.events.push({name:'recipe-locked',atMs:16000,observedMs:this.clock()-this.startMs});
   }
   cancel() {this.cancelled=true;this.phase='cancelled';this.speech.freeze();}
-  report() {return {sessionId:this.id,scope:'first-24-seconds',state:this.state,recipe:this.recipe,jev:this.reply??null,events:this.events,rawPoints:this.motion.raw,displayPoints:this.motion.display,cancelled:this.cancelled};}
+  report() {return {sessionId:this.id,scope:'first-24-seconds',state:this.state,recipe:this.recipe,jev:this.reply??null,speechEntries:this.speech.snapshot(),events:this.events,rawPoints:this.motion.raw,displayPoints:this.motion.display,cancelled:this.cancelled};}
 }

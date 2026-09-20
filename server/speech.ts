@@ -1,7 +1,7 @@
 import { v2 } from '@google-cloud/speech';
 import type { WebSocket } from 'ws';
+import { speechPhrases as phrases } from '../src/game/chant-dictionary';
 
-const phrases=['雷霆','らいてい','紅蓮','ぐれん','冥府','めいふ','常闇','とこやみ','氷晶','ひょうしょう','顕現','けんげん','穿て','うがて','爆ぜよ','はぜよ','滅せよ','めっせよ','障壁','しょうへき','結界','けっかい','氷よ壁となれ','雷よ七つに分かれろ','炎よ燃やせ','風よ押し流せ','我を守れ','光よ貫け','闇よ包め','集え','広がれ','分かれろ','砕けろ','攻撃しないで','雷ではなく氷','球','波','壁','光線','螺旋','追え','囲め','縛れ','解き放て','強くなれ','我に力を','一つ','二つ','三つ','四つ','五つ','六つ','七つ','八つ','七本','七発','氷の槍','風の刃','炎の球','雷の矢','光の輪','闇の結界','止まれ','守り続けろ','突き抜けろ','凍れ','燃えろ','輝け','影','電撃','稲妻'];
 export function connectSpeech(ws:WebSocket, project:string|undefined, location='us') {
   let stream:ReturnType<InstanceType<typeof v2.SpeechClient>['_streamingRecognize']>|null=null;
   let client:InstanceType<typeof v2.SpeechClient>|null=null;

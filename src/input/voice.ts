@@ -32,16 +32,18 @@ export class VoiceInput {
     this.runId=sessionId;
     const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/speech`);this.ws=ws;
     await new Promise<void>((resolve,reject)=>{
+      let ready=false;
       const timer=setTimeout(()=>{ws.close();reject(new Error('音声認識に接続できませんでした'));},5000);
       ws.onopen=()=>ws.send(JSON.stringify({type:'start',sessionId}));
       ws.onerror=()=>{clearTimeout(timer);reject(new Error('音声認識に接続できませんでした'));};
       ws.onmessage=({data})=>{
         let message;try{message=JSON.parse(data);}catch{return;}
         if(message.sessionId!==this.runId)return;
-        if(message.type==='ready'){clearTimeout(timer);resolve();}
+        if(message.type==='ready'){clearTimeout(timer);ready=true;resolve();}
         if(message.type==='transcript')this.onEntry(message.entry);
         if(message.type==='unavailable'){clearTimeout(timer);this.onStatus(message.reason);reject(new Error(message.reason));}
       };
+      ws.onclose=()=>{clearTimeout(timer);if(this.runId!==sessionId)return;if(!ready)reject(new Error('音声認識との接続が切れました'));else this.onStatus('音声認識との接続が切れました。描いた線で続けます。');};
     });
   }
   start(offset=0){this.node?.port.postMessage({type:'start',offset});}

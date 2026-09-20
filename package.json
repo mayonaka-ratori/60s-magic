@@ -12,7 +12,10 @@
     "start": "tsx server/index.ts --production",
     "test": "vitest run",
     "test:browser": "playwright test",
-    "setup:assets": "node scripts/setup-assets.mjs"
+    "setup:assets": "node scripts/setup-assets.mjs",
+    "setup:speech": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-speech.ps1",
+    "test:speech": "tsx scripts/test-local-speech.ts",
+    "test:chants": "tsx scripts/test-chant-dictionary.ts"
   },
   "dependencies": {
     "@babylonjs/core": "9.27.1",

@@ -1,12 +1,13 @@
 import { ELEMENTS, FORMS, PURPOSES, TRAJECTORIES, ELEMENT_LABELS, FORM_LABELS, type Answer, type Element, type Form, type Purpose, type Recipe, type SpellState, type JevReply } from './types';
 import { clamp } from './motion';
+import { readChant } from './chant-dictionary';
 
 const elementWords: Array<[Element,RegExp]> = [['fire',/炎|火|紅蓮|燃/],['ice',/氷|凍|氷晶/],['lightning',/雷|稲妻|電撃/],['wind',/風|嵐|気流/],['light',/光|輝|照ら/],['dark',/闇|影|冥府/]];
 
 export function affirmativeText(text:string) {
   // 明示的な言い直しは後半を使う。否定した属性・用途を辞書で拾わない。
   return text.replace(/[^、。！？]*?(?:ではなく|じゃなく|でなく)/g,'')
-    .replace(/(?:攻撃|防御|炎|火|氷|雷|風|光|闇|壁|結界)(?:は|を|で)?(?:使わない|いらない|要らない|出さない|しないで|するな)/g,'')
+    .replace(/(?:攻撃|防御|炎|火|氷|雷|風|光|闇|壁|結界|縛る|強化|追尾|螺旋)(?:は|を|で)?(?:使わない|いらない|要らない|出さない|しないで|するな)/g,'')
     .replace(/守らないで|守るな|守らなくていい/g,'');
 }
 export function explicitCount(text:string):number|null {
@@ -29,7 +30,7 @@ function score(a:Answer|undefined) {return a?.type==='score'&&typeof a.score==='
 function noul(a:Answer|undefined) {return a?.type==='noul'&&typeof a.noul==='number'&&Number.isFinite(a.noul)&&a.noul>=0&&a.noul<=1?(a.noul>=0.75?true:a.noul<=0.25?false:null):null;}
 
 export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
-  const text=affirmativeText(state.speech.normalizedTranscript);
+  const text=affirmativeText(readChant(state.speech.normalizedTranscript).meaning);
   const motion=state.motion;
   const matchedElements=elementWords.filter(([,re])=>re.test(text));
   const wordElement=matchedElements.length===1?matchedElements[0][0]:null;
@@ -55,6 +56,8 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   if(wordElement)recipe.decisions.element={source:'word',reason:'現在の肯定された属性語'};
   if(wordPurpose)recipe.decisions.purpose={source:'word',reason:'現在の用途の言葉'};
   if(wordForm)recipe.decisions.form={source:'word',reason:count&&count>1?'明示された個数':'現在の形の言葉'};
+  if(/追尾|追え/.test(text)){recipe.trajectory='homing';recipe.decisions.trajectory={source:'word',reason:'追う指示を明示'};}
+  else if(/螺旋/.test(text)){recipe.trajectory='spiral';recipe.decisions.trajectory={source:'word',reason:'螺旋の指示を明示'};}
   if(wordPurpose==='defend')recipe.decisions.defense={source:'word',reason:'守る意味を明示'};
   for(const key of ['enclosure','split'] as const)if(recipe[key])recipe.decisions[key]={source:'word',reason:'現在の変化の言葉'};
   const valid=reply?.sessionId===state.sessionId&&reply.castId===state.castId&&reply.inputRevision===state.inputRevision&&reply.status==='ok';
