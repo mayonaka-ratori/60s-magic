@@ -16,6 +16,7 @@ import { resetLiveWords } from './game/live-words';
 import { resetInputAmount, speechKey } from './game/input-amount';
 import { ScreenOverlay } from './render/overlay';
 import { GUARD_STEP_MS, HealthBar } from './render/health-bar';
+import { DELIVERY_MESSAGES, PlayRecorder, nameParts, playOf, resultRows, type ResultRow } from './game/record';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas><canvas id="composite" aria-hidden="true"></canvas>
@@ -36,7 +37,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
     <div class="deadline" id="deadline" aria-hidden="true"></div><div class="reveal" id="reveal" hidden><span id="reveal-name"></span></div>
     <div class="bottom-hud" id="bottom-hud"><h2 class="instruction" id="instruction">手を動かしてみよう</h2><div class="hint" id="hint"></div><div class="steps"><span id="step-input" class="active"><b>1</b><em id="step-1-label">線を描く</em></span><i></i><span id="step-complete"><b>2</b><em id="step-2-label">形になる</em></span><i></i><span id="step-release"><b>3</b><em id="step-3-label">放つ</em></span></div></div>
   </section>
-  <section class="result" id="result" hidden><div class="chapter">三つの魔法を放った</div><h2 id="spell-name"></h2><p class="spell-description" id="spell-description"></p><p class="transcript" id="transcript"></p><ul class="spell-list" id="spell-list"></ul><div class="result-actions"><button class="primary" id="again">もう一度つくる</button><button class="secondary" id="back">最初へ戻る</button></div><div class="feedback dev-only" id="feedback"><span>自分の魔法を放ったと感じましたか？</span><button data-feedback="yes">そう感じた</button><button data-feedback="unclear">まだ分かりにくい</button></div><div class="report-actions dev-only"><button class="text-button" id="record">確認用の記録を見る</button><button class="text-button" id="download">記録を保存する</button></div><p class="credits" id="credits" hidden></p></section>
+  <section class="result grimoire" id="result" hidden><div class="chapter">三つの魔法を放った</div>
+    <div class="grimoire-main"><div class="spell-frame" id="spell-frame"></div>
+      <div class="spell-side"><h2 id="spell-name"></h2><p class="spell-description" id="spell-description"></p><p class="transcript" id="transcript"></p>
+        <div class="keepsake"><div class="qr-slot" id="qr-slot">持ち帰りの準備中</div><p class="confirm-code"><small>確認番号</small><b id="confirm-number">------</b></p><p class="save-state" id="save-state"></p></div>
+      </div>
+    </div>
+    <ul class="spell-list" id="spell-list"></ul>
+    <div class="grimoire-foot"><div class="result-actions"><button class="primary" id="again">もう一度つくる</button><button class="secondary" id="back">最初へ戻る</button></div><div class="feedback dev-only" id="feedback"><span>自分の魔法を放ったと感じましたか？</span><button data-feedback="yes">そう感じた</button><button data-feedback="unclear">まだ分かりにくい</button></div><div class="report-actions dev-only"><button class="text-button" id="record">確認用の記録を見る</button><button class="text-button" id="download">記録を保存する</button></div><p class="credits" id="credits" hidden></p></div>
+  </section>
   <div class="status-sheet" id="sheet" hidden><section class="status-content" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="sheet-head"><h2 id="sheet-title"></h2><button class="secondary" id="sheet-close">閉じる</button></div><div id="sheet-body"></div></section></div>
   <div class="loading" id="loading">魔法の準備をしています…</div>`;
 
@@ -95,8 +104,14 @@ el<HTMLInputElement>('sound-volume').addEventListener('input',event=>{const valu
 let stage:CastScene;
 try {stage=new CastScene(el<HTMLCanvasElement>('spell'),el<HTMLImageElement>('world'),magic,el<HTMLCanvasElement>('knight'),el<HTMLCanvasElement>('composite'));}catch {el('loading').textContent='光の表示を準備できませんでした。Chromeの画像処理の設定を確認してください。';throw new Error('WebGL初期化に失敗');}
 calmTarget=stage;stage.setCalm(calmMode);
-const resultCanvas=document.createElement('canvas');resultCanvas.id='result-spell';resultCanvas.setAttribute('aria-label','今回描いた術式');el('result').prepend(resultCanvas);
+const resultCanvas=document.createElement('canvas');resultCanvas.id='result-spell';resultCanvas.setAttribute('aria-label','最後に描いた術式');el('spell-frame').append(resultCanvas);
 const resultMagic=new MagicCanvas(resultCanvas);
+// 結果の下の帯に並べる三件の絵。使い回すので、最初に一度だけ作る。線を描くだけなので控えめの設定でよい。
+const ROW_LABELS=['一回目の術式','防御の盾の形','とどめの術式'];
+const rowCanvases=ROW_LABELS.map(label=>{const canvas=document.createElement('canvas');canvas.className='spell-thumb';canvas.setAttribute('aria-label',label);return canvas;});
+const rowMagic=rowCanvases.map(canvas=>new MagicCanvas(canvas,'calm'));
+/** 今の結果画面に並べている三件。画面の大きさが変わったときに描き直すため覚えておく。 */
+let shownRows:ResultRow[]=[];
 let session:Battle|null=null,camera:HandCamera|null=null,voice:VoiceInput|null=null;
 let cursors:Array<{x:number;y:number}>=[],lastHandAt=0,mode='pointer',demo=false,preparing=false;
 let resultShown=false,lastUi=0,feedback:string|null=null,lastCameraLatency=0;
@@ -113,6 +128,8 @@ let serviceNotice='',prepareVersion=0;
 // 入力から描き終わるまでの手応えも測る。pendingInputAt は、まだ描画で受け止めていない入力の時刻。
 const frameIntervals:number[]=[],inputLags:number[]=[];let lastFrame=performance.now(),pendingInputAt=0;
 let diag:Diagnostics|null=null,lastReport:ReturnType<typeof report>|null=null;
+// このPCの中への保存係。開始のときに作り、確認番号を先に決めておく。
+let recorder:PlayRecorder|null=null,savedRounds=0;
 /** 回が始まる何ミリ秒前に、声の受付をつなぎ直すか。 */
 const VOICE_RECONNECT_MS=2500;
 /** 24秒の前に置く準備の秒数。手や声の位置を決める時間で、24秒にも60秒にも含めない。 */
@@ -192,6 +209,9 @@ async function begin(isDemo=false) {
   }
   resetLiveWords();resetInputAmount();liveKey='';liveBase=emptyLive;
   session=new Battle(undefined,id);diag?.rebase(session.startMs);diag?.log('60秒を開始');
+  // 確認番号を先に決める。保存済みの番号を読むので少し待つが、使うのは60秒後なので間に合う。
+  recorder=null;savedRounds=0;
+  {const battle=session;void PlayRecorder.open().then(made=>{if(session===battle){recorder=made;diag?.log('確認番号を用意',{code:made.code,storage:made.available?'このPCの中に保存する':'保存先を使えない'});}});}
   voice?.start(Math.max(0,performance.now()-session.startMs));if(voice)voiceRound='first';
   sound.start(!!voice);
   el('app').dataset.screen='playing';
@@ -416,27 +436,55 @@ function demoInput(battle:Battle) {
   battle.active.motion.add(x,y,battle.elapsed);cursors=[{x,y}];
 }
 
+/** 魔法名にふりがなを振った中身を作る。読みが引けない語にはふりがなを付けない。 */
+function rubyName(name:string) {
+  const box=document.createDocumentFragment();
+  for(const part of nameParts(name)) {
+    if(!part.reading){box.append(part.text);continue;}
+    const ruby=document.createElement('ruby');ruby.append(part.text);
+    const reading=document.createElement('rt');reading.textContent=part.reading;ruby.append(reading);
+    box.append(ruby);
+  }
+  return box;
+}
+
+/** 結果画面の下の帯。三件それぞれに、術式の小さい絵と三行の文字を並べる。 */
+function fillSpellList(rows:ResultRow[]) {
+  const list=el('spell-list');list.replaceChildren();
+  rows.forEach((row,index)=>{
+    const item=document.createElement('li');
+    if(row.main)item.dataset.main='true';
+    item.append(rowCanvases[index]);
+    const text=document.createElement('div');text.className='row-text';
+    const title=document.createElement('b');title.textContent=row.title;
+    const name=document.createElement('span');name.append(rubyName(row.name));
+    const note=document.createElement('small');note.textContent=row.note;
+    text.append(title,name,note);item.append(text);list.append(item);
+  });
+}
+
 function finish() {
   const battle=session;if(!battle)return;
-  const main=battle.defend.recipe??battle.first.recipe;if(!main)return;
+  const last=battle.finish.recipe?battle.finish:battle.defend.recipe?battle.defend:battle.first;
+  const main=last.recipe;if(!main)return;
   resultShown=true;sound.stop();voice?.dispose();voice=null;camera?.dispose();camera=null;cursors=[];
   show('bottom-hud',false);show('input-panel',false);show('meter',false);show('voice-label',false);show('act-title',false);show('reveal',false);
-  // はじめの0.9秒は魔法名だけを見せ、そのあとに説明と記録の欄を出す。
+  // はじめの0.9秒は魔法名だけを見せ、そのあとに残りを出す。
   el('result').classList.add('name-only');show('result',true);show('feedback',!demo);
   setTimeout(()=>el('result').classList.remove('name-only'),900);
-  const guard=battle.defend.guard;
-  el('spell-name').textContent=main.name;
-  el('spell-description').textContent=`${ELEMENT_LABELS[main.element]}の${PURPOSE_LABELS[main.purpose]}。${main.count>1?`${main.count}つの`:''}${FORM_LABELS[main.form]}のかたち。${guard?`騎士の一撃を${GUARD_LABELS[guard.style]}。`:''}`;
-  const spoken=battle.defend.state?.speech.rawTranscript||battle.first.state?.speech.rawTranscript||'';
-  el('transcript').textContent=spoken?`「${spoken}」${battle.defend.state?.speech.status==='typed'?'（文字で入力）':battle.defend.speech.usedFallback?'（確定が間に合わず、途中の聞き取りを使用）':''}`:'詠唱はなく、描いた線だけで魔法をつくりました';
-  const rows=battle.casts.map(cast=>{
-    const name=cast.recipe?.name??'（作れませんでした）';
-    const note=cast.round.id==='defend'&&guard?`${guard.shield.enclosed?`印を${guard.shield.rings}重に囲んだ`:'印の前へ運んだ'}${guard.shield.layers>1?`　${guard.shield.layers}枚重ね`:''}`:'';
-    const title=cast.round.id==='first'?'一回目':cast.round.id==='defend'?'防御':'とどめ';
-    return `<li><b>${title}</b><span>${name}</span>${note?`<small>${note}</small>`:''}</li>`;
-  });
-  el('spell-list').innerHTML=rows.join('');
-  diag?.log('結果を表示',{transcript:spoken,usedFallback:battle.defend.speech.usedFallback});
+  el('spell-name').replaceChildren(rubyName(main.name));
+  // 属性と用途の札。Jevの確信度、開発用の評価値、内部の番号は出さない。
+  const tags=[ELEMENT_LABELS[main.element],PURPOSE_LABELS[main.purpose],`${main.count>1?`${main.count}つの`:''}${FORM_LABELS[main.form]}`];
+  el('spell-description').replaceChildren(...tags.map(label=>{const chip=document.createElement('i');chip.textContent=label;return chip;}));
+  const spoken=last.state?.speech.rawTranscript||battle.defend.state?.speech.rawTranscript||battle.first.state?.speech.rawTranscript||'';
+  el('transcript').textContent=spoken?`「${spoken}」${last.state?.speech.status==='typed'?'（文字で入力）':last.speech.usedFallback?'（確定が間に合わず、途中の聞き取りを使用）':''}`:'詠唱はなく、描いた線だけで魔法をつくりました';
+  // 並べる三件は、保存する形（記録）から作る。画面に出るものと保存したものを同じにするため。
+  shownRows=resultRows(playOf(battle,recorder?.code??'',recorder?.startedAt??new Date().toISOString()));
+  fillSpellList(shownRows);
+  // 持ち帰りの場所。公開ページがまだ無いので、嘘のQRは出さず、確認番号と一行だけを出す。
+  el('confirm-number').textContent=recorder?.code??'------';
+  el('save-state').textContent=recorder?recorder.message:DELIVERY_MESSAGES['local-only'];
+  diag?.log('結果を表示',{transcript:spoken,usedFallback:last.speech.usedFallback,code:recorder?.code??null,stored:recorder?.stored??false});
   const credits=sound.snapshot.credits;el('credits').textContent=credits.join('　');show('credits',credits.length>0);
   el('app').dataset.screen='result';show('hud',false);show('timer',false);drawResult();
   // 結果が出た時点から数え直す。ここから誰も触らなければ、いずれタイトルへ戻る。
@@ -446,8 +494,14 @@ function finish() {
 }
 
 function drawResult() {
-  const cast=session?.defend.recipe?session.defend:session?.first;
-  if(cast?.recipe)resultMagic.thumbnail(cast.motion.display,colors[cast.recipe.element],{width:magic.canvas.clientWidth,height:magic.canvas.clientHeight});
+  const battle=session;if(!battle)return;
+  // 縮小の絵は、遊んでいるときの画面の縦横に合わせてから枠に収める。
+  const source={width:magic.canvas.clientWidth,height:magic.canvas.clientHeight};
+  const last=battle.finish.recipe?battle.finish:battle.defend.recipe?battle.defend:battle.first;
+  if(last.recipe)resultMagic.thumbnail(last.motion.display,colors[last.recipe.element],source);
+  shownRows.forEach((row,index)=>{
+    if(row.points.length>1&&row.element)rowMagic[index].thumbnail(row.points,colors[row.element],source);
+  });
 }
 
 function report() {
@@ -456,6 +510,8 @@ function report() {
   return {...session?.report(),mode:demo?'demo':mode,feedback,calmMode,audio:sound.snapshot,composite:stage.composite?stage.composite.report:{used:false,reason:new URLSearchParams(location.search).get('composite')==='0'?'?composite=0 で切っている':'WebGLを用意できず、HTMLの層のまま'},speechFallback:session?session.casts.some(cast=>cast.speech.usedFallback):false,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:at(sorted,0.99),cameraProcessingMs:lastCameraLatency||null,
     inputToDrawMs:{median:at(lags,0.5),p95:at(lags,0.95),samples:lags.length},
     note:'inputToDrawMsは、入力を受け取った時刻から、その入力を含む描画を終えるまでの時間。0.1秒以内を目安にする。カメラ処理時間とは別。'},
+    // 確認番号は、あとから記録どうしを突き合わせるために入れる。個人を指す値は入れない。
+    confirmCode:recorder?.code??null,storedLocally:recorder?.stored??false,storeAvailable:recorder?.available??false,
     diagnostics:diag?.summary()??null,recordedAt:new Date().toISOString(),userAgent:navigator.userAgent,screen:{width:innerWidth,height:innerHeight,pixelRatio:devicePixelRatio}};
 }
 /** サーバー側の記録（音声認識の処理時間など）も合わせて一つのJSONにする。 */
@@ -505,6 +561,9 @@ function animate(now:number) {
     const battle=session;battle.tick();
     if(demo)demoInput(battle);
     for(const cast of battle.casts)driveRound(battle,cast);
+    // 魔法が確定するたび（16、33、51秒）に、このPCの中へ保存し直す。増えたときだけ書く。
+    const locked=battle.casts.filter(cast=>cast.locked&&cast.recipe).length;
+    if(recorder&&locked>savedRounds){savedRounds=locked;void recorder.save(battle);}
     // 二回目からの回は、その少し前に声の受付を作り直す。
     for(const round of ROUNDS.slice(1))
       if(battle.elapsed>=round.start-VOICE_RECONNECT_MS&&battle.elapsed<round.inputEnd)prepareRoundVoice(battle,round);
