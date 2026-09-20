@@ -212,7 +212,7 @@ function animate(now:number) {
   const ms=session?Math.min(24000,session.elapsed):now;
   if(session&&!resultShown)sound.update(ms,session.recipe,magic.preset);
   // 描いている間の言葉と動きを、確定前から演出へ渡す。
-  const live=session&&!resultShown&&ms<17000?liveInput(session.motion.raw,session.speech.snapshot(),voice?.level??0):emptyLive;
+  const live=session&&!resultShown?liveInput(session.motion.raw,session.speech.live(),voice?.level??0):emptyLive;
   stage.render(session?.motion.display??[],ms,session?.recipe??null,voice?.level??0,cursors,!session,live);
 }
 requestAnimationFrame(animate);

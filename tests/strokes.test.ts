@@ -1,0 +1,120 @@
+import { describe, it, expect } from 'vitest';
+import { along, lastStrokes, ringClosure, spawnCount, speedRatio, tipSpeed, unit } from '../src/render/effects/strokes-math';
+import type { Point } from '../src/game/types';
+
+/** 試験用の点列を作る。位置を並べ、一定の間隔で時刻を進める。 */
+const path = (xy: [number, number][], from = 0, step = 16, stroke = 1, hand = 0): Point[] =>
+  xy.map(([x, y], i) => ({ x, y, t: from + i * step, hand, stroke }));
+
+/** 中心 (cx,cy)、半径 r の輪を n 点で作る。closeGap を足すと始点に戻りきらない。 */
+const circle = (n: number, r = .2, cx = .5, cy = .5, sweep = 1) =>
+  path([...Array(n)].map((_, i) => {
+    const a = i / (n - 1) * Math.PI * 2 * sweep;
+    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r] as [number, number];
+  }));
+
+describe('筆ごとの取り出し', () => {
+  it('筆の番号で分かれ、新しい筆が先頭に来る', () => {
+    const points = [...path([[0, 0], [.1, .1]], 0, 16, 1), ...path([[.5, .5], [.6, .6], [.7, .7]], 400, 16, 2)];
+    const groups = lastStrokes(points);
+    expect(groups.length).toBe(2);
+    expect(groups[0][0].stroke).toBe(2);
+    expect(groups[0].length).toBe(3);
+    expect(groups[1][0].stroke).toBe(1);
+  });
+  it('手が二つで点が混ざっても筆ごとにまとまり、本数は上限で切れる', () => {
+    const a = path([[0, 0], [.1, 0]], 0, 16, 1, 0), b = path([[.9, .9], [.8, .9]], 8, 16, 2, 1), c = path([[.5, .1]], 500, 16, 3, 0);
+    const mixed = [a[0], b[0], a[1], b[1], c[0]];
+    expect(lastStrokes(mixed).map(g => g[0].stroke)).toEqual([3, 2, 1]);
+    expect(lastStrokes(mixed, 1).length).toBe(1);
+    expect(lastStrokes([]).length).toBe(0);
+  });
+});
+
+describe('筆先の速さ', () => {
+  it('点が足りない、時刻が進まないときは0', () => {
+    expect(tipSpeed([]).speed).toBe(0);
+    expect(tipSpeed(path([[0, 0]])).speed).toBe(0);
+    expect(tipSpeed(path([[0, 0], [.5, 0]], 0, 0)).speed).toBe(0);
+  });
+  it('同じ道のりを短い時間で動くほど速い', () => {
+    const slow = tipSpeed(path([[.1, .5], [.15, .5], [.2, .5]], 0, 50), 1000, 1000);
+    const fast = tipSpeed(path([[.1, .5], [.15, .5], [.2, .5]], 0, 10), 1000, 1000);
+    expect(fast.speed).toBeGreaterThan(slow.speed * 3);
+    // 0.1 を 0.02秒で動けば、毎秒5。
+    expect(fast.speed).toBeCloseTo(5, 3);
+    expect(fast.dir.x).toBeCloseTo(1, 6);
+    expect(fast.dir.y).toBeCloseTo(0, 6);
+  });
+  it('横長の画面では、横の動きが画素の見た目どおりに長くなる', () => {
+    const across = tipSpeed(path([[0, .5], [.1, .5]], 0, 100), 2000, 1000).speed;
+    const down = tipSpeed(path([[.5, 0], [.5, .1]], 0, 100), 2000, 1000).speed;
+    expect(across).toBeCloseTo(down * 2, 6);
+    expect(unit(2000, 1000)).toEqual({ sx: 2, sy: 1 });
+  });
+  it('行ったり来たりの震えも道のりとして数え、向きは行き先を指す', () => {
+    const shake = tipSpeed(path([[.5, .5], [.55, .5], [.5, .5], [.55, .5]], 0, 30), 1000, 1000);
+    expect(shake.speed).toBeGreaterThan(1);
+    expect(shake.dir.x).toBeCloseTo(1, 6);
+  });
+});
+
+describe('速さの度合い', () => {
+  it('ゆっくりなら0、速ければ1で、間は増えていく', () => {
+    expect(speedRatio(0)).toBe(0);
+    expect(speedRatio(.2)).toBe(0);
+    expect(speedRatio(9)).toBe(1);
+    expect(speedRatio(.8)).toBeGreaterThan(0);
+    expect(speedRatio(.8)).toBeLessThan(1);
+    expect(speedRatio(1.1)).toBeGreaterThan(speedRatio(.6));
+  });
+});
+
+describe('輪が閉じた判定', () => {
+  it('始点へ戻った十分な長さの輪だけを認める', () => {
+    const closed = ringClosure(circle(40), 1000, 1000);
+    expect(closed).not.toBeNull();
+    expect(closed!.center.x).toBeCloseTo(.5, 1);
+    expect(closed!.center.y).toBeCloseTo(.5, 1);
+    expect(closed!.size).toBeGreaterThan(.3);
+  });
+  it('点が20個に満たない輪は認めない', () => {
+    expect(ringClosure(circle(12), 1000, 1000)).toBeNull();
+  });
+  it('四分の三で止めた弧は、始点から離れているので認めない', () => {
+    expect(ringClosure(circle(40, .2, .5, .5, .75), 1000, 1000)).toBeNull();
+  });
+  it('始点の近くで震えただけの線は輪にしない', () => {
+    const tiny = path([...Array(30)].map((_, i) => [.5 + (i % 2) * .005, .5] as [number, number]));
+    expect(ringClosure(tiny, 1000, 1000)).toBeNull();
+  });
+  it('短辺の4%より広い隙間があれば閉じていない', () => {
+    const open = circle(40, .2, .5, .5, .9);
+    expect(ringClosure(open, 1000, 1000)).toBeNull();
+    // 判定をゆるめれば同じ線でも閉じたことになる。
+    expect(ringClosure(open, 1000, 1000, .15)).not.toBeNull();
+  });
+});
+
+describe('輪郭の上の位置', () => {
+  it('0で始点、1で終点、間は点と点の間を進む', () => {
+    const line = path([[0, 0], [1, 0], [1, 1]]);
+    expect(along(line, 0)).toEqual({ x: 0, y: 0 });
+    expect(along(line, 1)).toEqual({ x: 1, y: 1 });
+    expect(along(line, .25).x).toBeCloseTo(.5, 6);
+    expect(along(line, -3)).toEqual({ x: 0, y: 0 });
+    expect(along(line, 9)).toEqual({ x: 1, y: 1 });
+    expect(along([], .5)).toEqual({ x: .5, y: .5 });
+  });
+});
+
+describe('一コマに出す粒の数', () => {
+  it('端数は確率で1個になり、上限と0を守る', () => {
+    expect(spawnCount(30, 1 / 60, () => .99)).toBe(0);
+    expect(spawnCount(30, 1 / 60, () => 0)).toBe(1);
+    expect(spawnCount(300, 1 / 60, () => .5)).toBe(4);
+    expect(spawnCount(300, 1 / 60, () => .5, 2)).toBe(2);
+    expect(spawnCount(-10, 1 / 60, () => 0)).toBe(0);
+    expect(spawnCount(60, 0, () => 0)).toBe(0);
+  });
+});
