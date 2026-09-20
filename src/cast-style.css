@@ -6,6 +6,9 @@
 .sound-options button{font-size:10px;padding:5px 7px;background:#102234;color:#d8e5ed;border:1px solid #c0d7e74d;white-space:nowrap}
 @media(max-width:520px){.sound-options{gap:6px;font-size:11px}.sound-options input[type=range]{width:72px}}
 #world:not(.spell-finished){transition:none}
+/* 揺れと傾きと寄りは画面の中央を軸にする。背景と騎士は常時1.03倍の余白を持たせ、端に黒帯を出さない。 */
+#world,#knight,#spell{transform-origin:50% 50%;will-change:transform}
+#world,#knight{transform:scale(1.03)}
 .vignette{background:linear-gradient(180deg,#06101b80,transparent 24%,transparent 74%,#040b1470)}
 #app:not([data-screen=playing]):not([data-screen=result]) .vignette{background:linear-gradient(90deg,#04101aeb,#07111cba 34%,#050e1720 62%,#050e1715),linear-gradient(0deg,#030c18b0,transparent 30%)}
 .welcome{left:6%;transform:translateY(-47%)}.privacy{color:#b8c6d0}.intro{color:#d0dce4}

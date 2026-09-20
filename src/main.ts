@@ -11,6 +11,8 @@ import { chantDictionary } from './game/chant-dictionary';
 import { CastAudio } from './audio/cast-audio';
 import { Diagnostics } from './game/diagnostics';
 import { liveInput, emptyLive } from './game/live-input';
+import { ScreenOverlay } from './render/overlay';
+import { HealthBar } from './render/health-bar';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas>
@@ -42,8 +44,29 @@ const show=(id:string,visible:boolean)=>{el(id).hidden=!visible;};
 // 見た目の設定は ?preset=calm|vivid|max で選べる。指定がなければ派手な設定。
 const presetName=new URLSearchParams(location.search).get('preset');
 const magic=new MagicCanvas(el<HTMLCanvasElement>('magic'),presetName);
+// 控えめモード。?calm=1 と「動きを減らす」設定が一番強く、次に画面のボタン（前回の選択を覚えている）。
+const CALM_KEY='calm-mode';
+const calmForced=new URLSearchParams(location.search).get('calm')==='1'||matchMedia('(prefers-reduced-motion: reduce)').matches;
+const calmSaved=(()=>{try{return localStorage.getItem(CALM_KEY)==='1';}catch{return false;}})();
+let calmMode=calmForced||calmSaved;
+const overlay=new ScreenOverlay(el('app'),{world:el('world'),knight:el('knight'),spell:el('spell')});
+const healthBar=new HealthBar(el('health'));
 const sound=new CastAudio();
 const soundToggle=document.createElement('button');soundToggle.id='sound-toggle';soundToggle.className='sound-toggle';soundToggle.textContent='音を消す';el('hud').append(soundToggle);
+// 演出を控えめにする切り替え。開始画面は音の設定の隣、プレイ中は「音を消す」の隣に置く。
+const calmToggle=document.createElement('button');calmToggle.id='calm-toggle';calmToggle.className='calm-toggle';calmToggle.type='button';el('hud').append(calmToggle);
+const calmOption=document.createElement('button');calmOption.id='calm-option';calmOption.className='calm-option';calmOption.type='button';document.querySelector('.sound-options')?.append(calmOption);
+function setCalm(on:boolean,remember=true){
+  // ?calm=1 と「動きを減らす」設定のときは、ボタンで派手にはできない。
+  calmMode=calmForced||on;
+  magic.setCalm(calmMode);
+  const label=calmMode?'演出を派手にする':'演出を控えめにする';
+  for(const button of [calmToggle,calmOption]){button.textContent=label;button.setAttribute('aria-pressed',String(calmMode));button.disabled=calmForced&&calmMode;}
+  if(remember&&!calmForced){try{localStorage.setItem(CALM_KEY,calmMode?'1':'0');}catch{/* 保存できなくても遊べます。 */}}
+}
+calmToggle.addEventListener('click',()=>setCalm(!calmMode));
+calmOption.addEventListener('click',()=>setCalm(!calmMode));
+setCalm(calmMode,false);
 function setSound(enabled:boolean){sound.setEnabled(enabled);el<HTMLInputElement>('use-sound').checked=enabled;el<HTMLButtonElement>('test-sound').disabled=!enabled;soundToggle.textContent=enabled?'音を消す':'音を出す';soundToggle.setAttribute('aria-pressed',String(!enabled));if(enabled)void sound.prepare();}
 el('test-sound').addEventListener('click',()=>void sound.preview().then(()=>{if(sound.snapshot.state==='unavailable')el('notice').textContent='このブラウザーでは音を使えません。音なしで続けられます。';}));
 el('use-sound').addEventListener('change',()=>setSound(el<HTMLInputElement>('use-sound').checked));
@@ -137,7 +160,7 @@ async function begin(isDemo=false) {
   show('welcome',false);show('result',false);show('hud',true);show('timer',true);show('bottom-hud',true);show('demo-tag',demo);show('recognized',false);
   show('input-panel',!voice&&!demo);show('meter',!!voice);show('voice-label',!!voice&&!demo);
   el('service-notice').textContent='';
-  el<HTMLInputElement>('chant').value='';el<HTMLInputElement>('chant').disabled=false;el('health').style.width='100%';
+  el<HTMLInputElement>('chant').value='';el<HTMLInputElement>('chant').disabled=false;healthBar.reset();
   document.querySelectorAll('[data-feedback]').forEach(button=>button.classList.remove('selected'));
   if(demo)session.speech.add({id:0,revision:1,startMs:11000,endMs:13500,text:'雷よ、七つに分かれろ',final:true,stability:1,source:'typed'});
   if(el<HTMLInputElement>('chant').value)addTypedChant();
@@ -183,7 +206,6 @@ function updateUi() {
   if(t>=16||(t>=14&&!heard))show('voice-label',false);
   el('step-input').classList.toggle('active',t<14);el('step-complete').classList.toggle('active',t>=14&&t<17);el('step-release').classList.toggle('active',t>=17);
   el<HTMLInputElement>('chant').disabled=t>=14;show('input-panel',!voice&&!demo&&t<14);
-  if(t>=18.5)el('health').style.width='70%';
   if(session.locked&&session.recipe&&t>=16&&t<18.5){show('recognized',true);el('recognized').textContent=[ELEMENT_LABELS[session.recipe.element],session.recipe.count>1?`${session.recipe.count}つ`:PURPOSE_LABELS[session.recipe.purpose]].join('　・　');}
   else show('recognized',false);
   const level=voice?.level??0;
@@ -206,7 +228,7 @@ function drawResult(){if(session?.recipe)resultMagic.thumbnail(session.motion.di
 
 function report() {
   const sorted=[...frameIntervals].sort((a,b)=>a-b);
-  return {...session?.report(),mode:demo?'demo':mode,feedback,audio:sound.snapshot,speechFallback:session?.speech.usedFallback??false,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:sorted[Math.floor(sorted.length*0.99)]??null,cameraProcessingMs:lastCameraLatency||null,note:'手を動かしてから表示されるまでの遅れは未計測。カメラ処理時間とは別。マウスの入力から描画までは diagnostics.drawing にある。'},
+  return {...session?.report(),mode:demo?'demo':mode,feedback,calmMode,audio:sound.snapshot,speechFallback:session?.speech.usedFallback??false,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:sorted[Math.floor(sorted.length*0.99)]??null,cameraProcessingMs:lastCameraLatency||null,note:'手を動かしてから表示されるまでの遅れは未計測。カメラ処理時間とは別。マウスの入力から描画までは diagnostics.drawing にある。'},
     diagnostics:diag?.summary()??null,recordedAt:new Date().toISOString(),userAgent:navigator.userAgent,screen:{width:innerWidth,height:innerHeight,pixelRatio:devicePixelRatio}};
 }
 /** サーバー側の記録（音声認識の処理時間など）も合わせて一つのJSONにする。 */
@@ -272,6 +294,9 @@ function animate(now:number) {
   // 描いている間の言葉と動きを、確定前から演出へ渡す。
   const live=session&&!resultShown?liveInput(session.motion.raw,session.speech.live(),voice?.level??0):emptyLive;
   stage.render(session?.motion.display??[],ms,session?.recipe??null,voice?.level??0,cursors,!session&&!countingDown,live);
+  // 閃光、ビネット、グレイン、暗転、背景の彩度はHTMLの層で出す。
+  overlay.update(magic.screen,magic.preset.palettes[session?.recipe?.element??'neutral'],calmMode);
+  if(session&&!resultShown)healthBar.update(ms,session.recipe);
 }
 requestAnimationFrame(animate);
 void Promise.all([stage.ready,document.fonts.ready]).then(()=>show('loading',false)).catch(()=>{el('loading').textContent='背景と光を読み込めませんでした。再読み込みしてください。';});

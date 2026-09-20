@@ -71,8 +71,9 @@ export function drawImpact(f: Frame) {
   }
   // 属性ごとの作用。
   if (element === 'lightning' && impact < .6) {
-    const k = Math.floor(t * 20); c.globalAlpha = (1 - impact / .6) * (noise(k, 11) > .3 ? 1 : .3); c.lineWidth = 2; c.strokeStyle = f.palette.core; c.beginPath();
-    for (let b = 0; b < Math.round(increase(4, intensity)); b++) { let x = g.x, y = g.y; c.moveTo(x, y); const a = noise(k + b, 12) * Math.PI * 2; for (let s = 0; s < 6; s++) { x += Math.cos(a + (noise(k * 7 + b * 13 + s, 13) - .5) * 1.6) * 14; y += Math.sin(a + (noise(k * 7 + b * 13 + s, 14) - .5) * 1.6) * 10; c.lineTo(x, y); } }
+    // 明滅は毎秒3回まで（光に弱い人への配慮）。そのぶん枝を増やし、長くして派手さを出す。
+    const k = Math.floor(t * 3); c.globalAlpha = (1 - impact / .6) * (noise(k, 11) > .3 ? 1 : .3); c.lineWidth = 2; c.strokeStyle = f.palette.core; c.beginPath();
+    for (let b = 0; b < Math.round(increase(9, intensity)); b++) { let x = g.x, y = g.y; c.moveTo(x, y); const a = noise(k + b, 12) * Math.PI * 2; for (let s = 0; s < 9; s++) { x += Math.cos(a + (noise(k * 7 + b * 13 + s, 13) - .5) * 1.6) * 17; y += Math.sin(a + (noise(k * 7 + b * 13 + s, 14) - .5) * 1.6) * 12; c.lineTo(x, y); } }
     c.stroke();
   }
   if (element === 'light' && impact < 1.4) {
