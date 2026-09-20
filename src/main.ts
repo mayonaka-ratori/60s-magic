@@ -34,7 +34,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
 
 const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
 const show=(id:string,visible:boolean)=>{el(id).hidden=!visible;};
-const magic=new MagicCanvas(el<HTMLCanvasElement>('magic'));
+// 見た目の設定は ?preset=calm|vivid|max で選べる。指定がなければ派手な設定。
+const presetName=new URLSearchParams(location.search).get('preset');
+const magic=new MagicCanvas(el<HTMLCanvasElement>('magic'),presetName);
 const sound=new CastAudio();
 const soundToggle=document.createElement('button');soundToggle.id='sound-toggle';soundToggle.className='sound-toggle';soundToggle.textContent='音を消す';el('hud').append(soundToggle);
 function setSound(enabled:boolean){sound.setEnabled(enabled);el<HTMLInputElement>('use-sound').checked=enabled;el<HTMLButtonElement>('test-sound').disabled=!enabled;soundToggle.textContent=enabled?'音を消す':'音を出す';soundToggle.setAttribute('aria-pressed',String(!enabled));if(enabled)void sound.prepare();}
@@ -207,7 +209,7 @@ function animate(now:number) {
     if(now-lastUi>80){updateUi();lastUi=now;}
   }
   const ms=session?Math.min(24000,session.elapsed):now;
-  if(session&&!resultShown)sound.update(ms,session.recipe);
+  if(session&&!resultShown)sound.update(ms,session.recipe,magic.preset);
   stage.render(session?.motion.display??[],ms,session?.recipe??null,voice?.level??0,cursors,!session);
 }
 requestAnimationFrame(animate);

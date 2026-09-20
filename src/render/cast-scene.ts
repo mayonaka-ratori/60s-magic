@@ -13,7 +13,10 @@ export class CastScene {
   private revision=0;
   private knight:Knight;
   readonly ready:Promise<void>;
+  private layers:HTMLElement[];
+  private lastShake='';
   constructor(private canvas:HTMLCanvasElement,private backdrop:HTMLImageElement,private effects:MagicCanvas,knightCanvas:HTMLCanvasElement) {
+    this.layers=[backdrop,knightCanvas,canvas];
     this.spell=new CompletedSpell(canvas,false);
     this.knight=new Knight(knightCanvas);
     this.ready=Promise.all([backdrop.decode(),this.spell.ready(),this.knight.ready]).then(()=>{});
@@ -38,6 +41,9 @@ export class CastScene {
     this.spell.render();
     const displayed=shape.map(p=>({...p,x:((p.x-.5)*width*pose.scale+pose.dx+width/2)/width,y:((p.y-.5)*height*pose.scale+pose.dy+height/2)/height}));
     this.effects.renderEffects(displayed,ms,recipe,voice,cursors,ready,this.impactTarget,pose.center);
+    // 画面の揺れは、背景と騎士と術式の層をまとめて動かす。変わった時だけ書き換える。
+    const shake=this.effects.screen,transform=shake.shakeX||shake.shakeY?`translate(${shake.shakeX}px,${shake.shakeY}px)`:'';
+    if(transform!==this.lastShake){for(const layer of this.layers)layer.style.transform=transform;this.lastShake=transform;}
     this.canvas.dataset.phase=ready?'ready':ms<14000?'input':ms<17000?'complete':ms<23000?'release':'finished';
     this.canvas.dataset.scale=pose.scale.toFixed(4);
     this.canvas.dataset.visible=String(!ready&&pose.opacity>0);
