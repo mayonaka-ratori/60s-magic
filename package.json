@@ -17,7 +17,8 @@
     "test:speech": "tsx scripts/test-local-speech.ts",
     "make:speech-fixtures": "node scripts/make-speech-fixtures.mjs",
     "benchmark:speech": "node scripts/benchmark-speech.mjs",
-    "test:chants": "tsx scripts/test-chant-dictionary.ts"
+    "test:chants": "tsx scripts/test-chant-dictionary.ts",
+    "audio:check": "node scripts/check-audio.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "9.27.1",

@@ -30,7 +30,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
     <div class="input-panel" id="input-panel"><label for="chant">声の代わりに、文字で試す</label><input id="chant" type="text" maxlength="160" autocomplete="off" placeholder="例：雷よ、七つに分かれろ"><p>描きながら14秒まで変更できます。<br>何も入れず、線だけでも遊べます。</p></div>
     <div class="bottom-hud" id="bottom-hud"><p class="phase-caption" id="phase-caption">手の動きを、光に</p><h2 class="instruction" id="instruction">手を動かしてみよう</h2><div class="hint" id="hint"></div><div class="steps"><span id="step-input" class="active"><b>1</b>描く・唱える</span><i></i><span id="step-complete"><b>2</b>術式完成</span><i></i><span id="step-release"><b>3</b>発動</span></div></div>
   </section>
-  <section class="result" id="result" hidden><div class="chapter">一回目の魔法が完成しました</div><h2 id="spell-name"></h2><p class="spell-description" id="spell-description"></p><p class="transcript" id="transcript"></p><div class="result-actions"><button class="primary" id="again">もう一度つくる</button><button class="secondary" id="back">最初へ戻る</button></div><div class="feedback" id="feedback"><span>自分の魔法を放ったと感じましたか？</span><button data-feedback="yes">そう感じた</button><button data-feedback="unclear">まだ分かりにくい</button></div><div class="report-actions"><button class="text-button" id="record">確認用の記録を見る</button><button class="text-button" id="download">記録を保存する</button></div></section>
+  <section class="result" id="result" hidden><div class="chapter">一回目の魔法が完成しました</div><h2 id="spell-name"></h2><p class="spell-description" id="spell-description"></p><p class="transcript" id="transcript"></p><div class="result-actions"><button class="primary" id="again">もう一度つくる</button><button class="secondary" id="back">最初へ戻る</button></div><div class="feedback" id="feedback"><span>自分の魔法を放ったと感じましたか？</span><button data-feedback="yes">そう感じた</button><button data-feedback="unclear">まだ分かりにくい</button></div><div class="report-actions"><button class="text-button" id="record">確認用の記録を見る</button><button class="text-button" id="download">記録を保存する</button></div><p class="credits" id="credits" hidden></p></section>
   <div class="status-sheet" id="sheet" hidden><section class="status-content" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><h2 id="sheet-title"></h2><div id="sheet-body"></div><button class="secondary" id="sheet-close">閉じる</button></section></div>
   <div class="loading" id="loading">魔法の準備をしています…</div>`;
 
@@ -187,6 +187,7 @@ function finish() {
   el('spell-name').textContent=r.name;el('spell-description').textContent=`${ELEMENT_LABELS[r.element]} / ${PURPOSE_LABELS[r.purpose]} / ${FORM_LABELS[r.form]}${r.count>1?' / '+r.count+'つ':''}`;
   el('transcript').textContent=session.state?.speech.rawTranscript?`「${session.state.speech.rawTranscript}」${session.state.speech.status==='typed'?'（文字で入力）':session.speech.usedFallback?'（確定が間に合わず、途中の聞き取りを使用）':''}`:'詠唱なし。描いた線から魔法をつくりました。';
   diag?.log('結果を表示',{transcript:session.state?.speech.rawTranscript??'',usedFallback:session.speech.usedFallback});
+  const credits=sound.snapshot.credits;el('credits').textContent=credits.join('　');show('credits',credits.length>0);
   el('app').dataset.screen='result';show('hud',false);show('timer',false);drawResult();
 }
 
