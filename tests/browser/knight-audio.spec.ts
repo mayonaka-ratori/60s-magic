@@ -34,10 +34,13 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
   await expect(page.locator('#knight')).toHaveAttribute('data-state','recover');
   await page.screenshot({path:'test-results/knight-recover.png'});
   await expect(page.locator('#result')).toBeVisible({timeout:25000});
-  await expect(page.locator('#knight')).toHaveAttribute('data-state','idle');
+  // 40秒の時点は前屈して弱点を晒した姿勢で止まる。
+  await expect(page.locator('#knight')).toHaveAttribute('data-state','exposed');
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.activeSources).toBe(0);
-  expect(report.audio.events.map((e:{name:string})=>e.name)).toEqual(['trace','chant','build','complete','release','impact','settle']);
+  expect(report.audio.events.map((e:{name:string})=>e.name)).toEqual([
+    'trace','chant','build','complete','release','impact','settle',
+    'chant','build','complete','release','block','settle']);
   const measured=await page.evaluate(()=>({peak:(window as any).__soundProbe.peak,rms:(window as any).__soundProbe.rms}));
   expect(measured.peak).toBeGreaterThan(.01);expect(measured.peak).toBeLessThan(.98);
   await writeFile('.local-speech/knight-audio-report.json',JSON.stringify({audio:report.audio,measurement:report.measurement,output:measured},null,2));

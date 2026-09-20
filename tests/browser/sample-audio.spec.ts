@@ -48,6 +48,7 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばす',asy
   expect(report.audio.bgmStartedAtMs).toBeLessThan(1000);expect(report.audio.bgm).toBe('none');expect(report.audio.activeSources).toBe(0);
   expect(report.audio.events.map((e:{name:string;sample:boolean})=>[e.name,e.sample])).toEqual([
     ['trace',false],['chant',false],['build',false],['complete',true],['release',false],['impact',true],['settle',false],
+    ['chant',false],['build',false],['complete',true],['release',false],['block',false],['settle',false],
   ]);
   await page.locator('#sheet-close').click();
   // 曲は終了後に止まる。

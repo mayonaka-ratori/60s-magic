@@ -81,10 +81,13 @@ export function bloomDecision(on: boolean, fps: number) {
   return on;
 }
 
-/** 騎士の板を貼り直すかどうか。姿勢が変わった時と、動きのある時間帯は毎コマ。それ以外は4コマに1回。 */
-export function shouldUploadKnight(state: string, previous: string, t: number, frame: number) {
+/**
+ * 騎士の板を貼り直すかどうか。姿勢が変わった時と、動きのある時間帯は毎コマ。それ以外は4コマに1回。
+ * 動きのある時間帯は回ごとに決まる（締め切りの0.5秒前から）。一回目は13.5秒で今までと同じ。
+ */
+export function shouldUploadKnight(state: string, previous: string, t: number, frame: number, from = 13.5) {
   if (state !== previous) return true;
-  if (t >= 13.5) return true;
+  if (t >= from) return true;
   return frame % 4 === 0;
 }
 
@@ -315,7 +318,7 @@ export class Composite {
     if (slow.giveUp) { this.gaveUp = true; this.setActive(false); this.canvas.dataset.gaveUp = 'true'; return; }
     if (!this.worldDrawn) this.drawWorld();
     const state = this.sources.knight.dataset.state ?? '';
-    if (shouldUploadKnight(state, this.knightState, frame.t, this.frames)) this.upload(this.boards.knight, this.sources.knight);
+    if (shouldUploadKnight(state, this.knightState, frame.t, this.frames, (frame.beat?.inputEnd ?? 14) - .5)) this.upload(this.boards.knight, this.sources.knight);
     this.knightState = state;
     this.upload(this.boards.spell, this.sources.spell);
     this.upload(this.boards.magic, this.sources.magic);

@@ -27,13 +27,14 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     await expect(page.locator('#result')).toBeVisible({timeout:34000});await expect(page.locator('#spell-list')).toContainText('7つの雷の連弾');
     await expect(page.locator('#transcript')).not.toContainText('文字で入力');await page.locator('#record').click();
     const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
-    expect(report.state.speech.status).toBe('recognized');expect(report.state.speech.provider).toBe('local');
-    expect(report.speechEntries[0].final).toBe(true);expect(report.speechEntries[0].endMs).toBeGreaterThan(12000);
-    expect(report.rounds[0].rawPoints.at(-1).t).toBeGreaterThan(11000);expect(report.rounds[0].recipe.count).toBe(7);
+    const first=report.rounds[0];
+    expect(first.state.speech.status).toBe('recognized');expect(first.state.speech.provider).toBe('local');
+    expect(first.speechEntries[0].final).toBe(true);expect(first.speechEntries[0].endMs).toBeGreaterThan(12000);
+    expect(first.rawPoints.at(-1).t).toBeGreaterThan(11000);expect(first.recipe.count).toBe(7);
     expect(report.audio.recordingQuiet).toBe(true);
     expect(report.audio.events.every((e:{atMs:number})=>e.atMs>=14750)).toBe(true);
     expect(report.audio.events.some((e:{name:string})=>e.name==='impact')).toBe(true);
-    expect(report.events.find((e:{name:string})=>e.name==='release').observedMs).toBeLessThan(17250);
+    expect(first.events.find((e:{name:string})=>e.name==='release').observedMs).toBeLessThan(17250);
     expect(errors).toEqual([]);expect(outsideAudio).toEqual([]);
     await writeFile('.local-speech/browser-test-report.json',JSON.stringify(report,null,2));
     await page.locator('#sheet-close').click();await page.screenshot({path:'test-results/local-voice-result.png'});

@@ -3,9 +3,9 @@ import { test,expect } from '@playwright/test';
 /** 狙いの印のまわりを、マウスで大きく一周する。囲えば盾になる。 */
 async function encircleAim(page:import('@playwright/test').Page,radiusX=150,radiusY=170) {
   const box=await page.locator('#magic').boundingBox();
-  const cx=box!.x+box!.width*.5,cy=box!.y+box!.height*.56;
+  const cx=box!.x+box!.width*.5,cy=box!.y+box!.height*.62;
   await page.mouse.move(cx+radiusX,cy);await page.mouse.down();
-  for(let i=1;i<=36;i++){const a=i/36*Math.PI*2;await page.mouse.move(cx+Math.cos(a)*radiusX,cy+Math.sin(a)*radiusY);await page.waitForTimeout(18);}
+  for(let i=1;i<=28;i++){const a=i/28*Math.PI*2;await page.mouse.move(cx+Math.cos(a)*radiusX,cy+Math.sin(a)*radiusY);}
   await page.mouse.up();
 }
 
@@ -47,8 +47,9 @@ test('40秒を最後まで遊び、七つの雷と、印を囲んだ盾を記録
   const first=record.rounds[0],defend=record.rounds[1];
   expect(first.rawPoints.length).toBeGreaterThan(50);expect(first.rawPoints.at(-1).t).toBeGreaterThan(11000);expect(first.recipe.count).toBe(7);
   expect(first.events.find((e:{name:string})=>e.name==='recipe-locked').observedMs).toBeLessThan(16250);
-  expect(defend.rawPoints.at(-1).t).toBeGreaterThan(24000);
+  expect(defend.rawPoints.filter((p:{t:number})=>p.t>=24000&&p.t<31000).length).toBeGreaterThan(20);
   expect(defend.guard.enclosed).toBe(true);expect(defend.guard.style).toBe('reflect');
+  expect(defend.guard.rings).toBeGreaterThanOrEqual(1);expect(defend.guard.moved).toBe(false);
   expect(defend.events.find((e:{name:string})=>e.name==='recipe-locked').observedMs).toBeLessThan(33250);
   expect(record.feedback).toBe('yes');expect(errors).toEqual([]);
 });

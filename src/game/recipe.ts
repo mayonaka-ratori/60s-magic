@@ -47,7 +47,9 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   else if(/球|玉/.test(text))wordForm='orb';else if(/群|分かれ|連弾/.test(text))wordForm='swarm';
   const count=explicitCount(text);
   if(count!==null&&count>1)wordForm='swarm';
-  const recipe:Recipe={version:'recipe-1',accent:null,blend:null,element:wordElement??'neutral',purpose:wordPurpose??'attack',
+  // 防御の回で何も言わなかったときは、攻撃ではなく守りを既定値にする。結果の文が場面と食い違わないようにする。
+  const fallbackPurpose:Purpose=state.phase==='defend'?'defend':'attack';
+  const recipe:Recipe={version:'recipe-1',accent:null,blend:null,element:wordElement??'neutral',purpose:wordPurpose??fallbackPurpose,
     form:wordForm??(motion.closedness>0.82?'orb':motion.coverageWidth>0.42&&motion.coverageHeight<0.2?'wave':'beam'),
     trajectory:'straight',count:count??1,explicitCount:count,defense:wordPurpose==='defend'?0.8:motion.closedness>0.8?0.6:motion.hasMovement?0.2:0.5,
     area:clamp(Math.max(motion.coverageWidth,motion.coverageHeight)*1.3,0.2,1),duration:0.5,concentration:motion.convergence,
@@ -77,7 +79,8 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   }
   for(const key of ['enclosure','split','developsPrevious','motionSpeechAligned'] as const) {
     const value=noul(answers[key]);
-    if(value!==null&&recipe.decisions[key].source!=='word') {recipe[key]=key==='developsPrevious'?false:value;recipe.decisions[key]={source:'jev',reason:'はい・いいえの確率が基準外の曖昧な範囲にない'};used++;}
+    // 前の魔法が無い回では、発展させたかは必ず「いいえ」にする。
+    if(value!==null&&recipe.decisions[key].source!=='word') {recipe[key]=key==='developsPrevious'&&!state.previous?false:value;recipe.decisions[key]={source:'jev',reason:'はい・いいえの確率が基準外の曖昧な範囲にない'};used++;}
   }
   // 飾り色。主属性と違う属性語のうち、一番先のものを使う。同じなら飾り色はなし。
   recipe.accent=[wordElement,wordAccent].find(e=>e&&e!==recipe.element)??null;

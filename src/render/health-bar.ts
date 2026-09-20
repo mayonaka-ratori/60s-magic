@@ -2,13 +2,30 @@ import type { Recipe } from '../game/types';
 import { ROUNDS } from '../game/rounds';
 
 const clamp = (x: number) => Math.min(1, Math.max(0, x));
-/** 防御で弾き返したときに減る量。入力では変わらない。 */
+/** 防御で一撃を受け止めきったときに減る量。止め方や入力では変わらない。 */
 export const GUARD_DAMAGE=10;
+/** 騎士がよろめいて体力が減る時刻（ms）。一撃が盾に当たってから2.1秒後。 */
+export const GUARD_STEP_MS=ROUNDS[1].impact+2100;
 /** 命中で減る量。派手さ（個数、範囲、収束）で20〜45%にする。 */
 function damage(recipe: Recipe | null) {
   if (!recipe) return 24;
   const many = clamp((recipe.count - 1) / 5), wide = clamp((recipe.area - .2) / .8), focus = clamp(recipe.concentration);
   return 20 + (many * .45 + wide * .3 + focus * .25) * 25;
+}
+
+export type HealthStep = { at: number; from: number; left: number };
+/**
+ * 体力が減る段。一回目の命中で減らし、防御で一撃を受け止めきったときにもう一度減らす。
+ * 多段なら80msごとに分ける。とどめの回を作るときは、ここに0までの段を足す。
+ * 画面を使わない計算にしてあるので、試験で確かめられる。
+ */
+export function healthSteps(recipe: Recipe | null): HealthStep[] {
+  const total = damage(recipe), count = Math.max(1, Math.min(5, recipe && recipe.count > 1 ? recipe.count : 1));
+  const steps: HealthStep[] = [];
+  for (let i = 0; i < count; i++) steps.push({ at: ROUNDS[0].impact + i * 80, from: 100 - total * i / count, left: 100 - total * (i + 1) / count });
+  const after = 100 - total;
+  steps.push({ at: GUARD_STEP_MS, from: after, left: Math.max(0, after - GUARD_DAMAGE) });
+  return steps;
 }
 
 /**
@@ -17,7 +34,7 @@ function damage(recipe: Recipe | null) {
  */
 export class HealthBar {
   private trail: HTMLElement;
-  private steps: Array<{ at: number; from: number; left: number }> = [];
+  private steps: HealthStep[] = [];
   private key = '';
   private shown = -1;
   private shownTrail = -1;
@@ -31,7 +48,7 @@ export class HealthBar {
   /** 毎コマ呼ぶ。ms は本編の時刻。 */
   update(ms: number, recipe: Recipe | null) {
     const key = recipe ? `${recipe.count}:${recipe.area.toFixed(2)}:${recipe.concentration.toFixed(2)}` : '';
-    if (key !== this.key) { this.key = key; this.steps = this.plan(recipe); }
+    if (key !== this.key) { this.key = key; this.steps = healthSteps(recipe); }
     let left = 100, trail = 100;
     for (const step of this.steps) {
       if (ms >= step.at) left = step.left;
@@ -41,18 +58,7 @@ export class HealthBar {
     }
     this.show(left, trail);
   }
-  /**
-   * 一回目の命中で減らし、防御で弾き返したときにもう一度減らす。多段なら80msごとに分ける。
-   * 体力は演出上の数値で、勝敗の計算には使わない。とどめの回を作るときに0までの段を足す。
-   */
-  private plan(recipe: Recipe | null) {
-    const total = damage(recipe), count = Math.max(1, Math.min(5, recipe && recipe.count > 1 ? recipe.count : 1));
-    const steps: Array<{ at: number; from: number; left: number }> = [];
-    for (let i = 0; i < count; i++) steps.push({ at: ROUNDS[0].impact + i * 80, from: 100 - total * i / count, left: 100 - total * (i + 1) / count });
-    const after = 100 - total;
-    steps.push({ at: 37500, from: after, left: Math.max(0, after - GUARD_DAMAGE) });
-    return steps;
-  }
+
   private show(left: number, trail: number) {
     if (Math.abs(left - this.shown) > .05) { this.shown = left; this.bar.style.width = `${Math.max(0, left).toFixed(2)}%`; }
     if (Math.abs(trail - this.shownTrail) > .05) { this.shownTrail = trail; this.trail.style.width = `${Math.max(0, trail).toFixed(2)}%`; }

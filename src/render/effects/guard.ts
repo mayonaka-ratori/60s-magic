@@ -36,7 +36,7 @@ function drawAim(f: Frame) {
   const gone = 1 - clamp((t - beat.impact) / .5);
   // 脈は毎秒1回まで。光に弱い人への配慮で、これより速くしない。
   const pulse = .5 + .5 * Math.sin((t - beat.start) * Math.PI * 2);
-  const near = clamp((t - beat.lock) / (beat.release - beat.lock));
+  const near = clamp((t - beat.lock) / Math.max(.1, beat.release - beat.lock));
   const alpha = appear * gone * (.45 + pulse * .3 + near * .25);
   if (alpha <= .01) return;
   const main = held ? f.palette.main : ENEMY.main, core = held ? f.palette.core : ENEMY.core;
@@ -68,7 +68,7 @@ function drawRings(f: Frame) {
   if (!rings) return;
   const g = aimAt(f);
   f.once(`ring-${rings}`, () => {
-    const n = Math.round(increase(26, f.intensity, .5));
+    const n = Math.round(increase(26, f.intensity, .5) * (f.calm ? 1 / 3 : 1));
     for (let i = 0; i < n; i++) {
       const a = f.pool.random() * Math.PI * 2, speed = 70 + f.pool.random() * 180;
       f.pool.spawn({ x: g.x, y: g.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed * .6, life: .5 + f.pool.random() * .5,
@@ -114,50 +114,58 @@ function drawShield(f: Frame) {
   const back = s.moved ? 1 - smooth(clamp((t - beat.inputEnd) / MOVE_SECONDS)) : 0;
   const form = smooth(clamp((t - beat.inputEnd) / Math.max(.1, beat.release - beat.inputEnd)));
   const after = t - beat.impact;
-  // 当たった瞬間だけ面が波打ち、そのあとゆっくり薄れる。
-  const flex = after >= 0 ? Math.exp(-after * 7) * Math.sin(after * 40) * .05 : 0;
+  // 当たった瞬間だけ面が波打ち、そのあとゆっくり薄れる。控えめモードでは波打たせない。
+  const flex = after >= 0 && !f.calm ? Math.exp(-after * 7) * Math.sin(after * 40) * .05 : 0;
   const live = 1 - clamp((after - 1.6) / 1.8);
   if (live <= 0) return;
   const alpha = (.35 + form * .65) * live;
   const layers = Math.max(1, s.layers);
+  const g = { x: (s.center.x - s.offset.x * back) * f.w, y: (s.center.y - s.offset.y * back) * f.h };
+  const reach = s.radius * f.h * 1.2;
   for (let k = layers - 1; k >= 0; k--) {
     // 手前の層から順に砕ける。受け止めるほど層が減っていく。
     const broken = plan.style === 'block' && after > 0 ? clamp((after - k * .12) / .5) : 0;
     const scale = (1 - k * .13) * (1 + flex) * (1 + broken * .12);
     const a = alpha * (1 - k * .18) * (1 - broken);
     if (a <= .01) continue;
-    c.globalAlpha = a * .14; c.fillStyle = f.palette.main;
-    c.beginPath(); shieldPath(f, scale, back); c.fill();
-    edged(f, 2.6 + (layers - k) * .3, a, () => shieldPath(f, scale, back));
+    // 道を一度だけ組み立て、塗りと三重の線で使い回す。毎コマの組み立てを半分にする。
+    const width = 2.6 + (layers - k) * .3;
+    c.beginPath(); shieldPath(f, scale, back);
+    c.globalAlpha = a * .14; c.fillStyle = f.palette.main; c.fill();
+    c.globalAlpha = a * .35; c.lineWidth = width * 2.2; c.strokeStyle = f.palette.main; c.stroke();
+    c.globalAlpha = a; c.lineWidth = width; c.stroke();
+    c.globalAlpha = a * .95; c.lineWidth = Math.max(.9, width * .38); c.strokeStyle = f.palette.core; c.stroke();
+    // 面の中を流れる光の格子。一番外の層の内側だけに出し、盾の外へはみ出させない。
+    if (k === 0) {
+      c.save(); c.clip();
+      c.globalAlpha = alpha * .3; c.lineWidth = 1; c.strokeStyle = f.palette.main;
+      c.beginPath();
+      for (let i = -3; i <= 3; i++) {
+        const u = ((t * .25 + i / 7) % 1) * 2 - 1;
+        c.moveTo(g.x - reach, g.y + u * reach * .8); c.lineTo(g.x + reach, g.y + u * reach * .8);
+      }
+      c.stroke(); c.restore();
+    }
   }
-  // 面の中を流れる光の格子。自分の線が膜になっていることを見せる。
-  const g = { x: s.center.x * f.w - s.offset.x * back * f.w, y: s.center.y * f.h - s.offset.y * back * f.h };
-  const reach = s.radius * f.h * 1.2;
-  c.globalAlpha = alpha * .3; c.lineWidth = 1; c.strokeStyle = f.palette.main;
-  c.beginPath();
-  for (let i = -3; i <= 3; i++) {
-    const u = ((t * .25 + i / 7) % 1) * 2 - 1;
-    c.moveTo(g.x - reach, g.y + u * reach * .8); c.lineTo(g.x + reach, g.y + u * reach * .8);
-  }
-  c.stroke();
   glow(f, g.x, g.y, 6 + form * 7, alpha * .35);
-  // 運んでいる間は、元の位置から尾を引いて動いていると分かるようにする。
+  // 運んでいる間は、元の位置から尾を引く。尾は「どこから来たか」を見せるので、元の位置へ向ける。
   if (back > 0) {
-    const from = { x: g.x, y: g.y }, to = { x: s.center.x * f.w, y: s.center.y * f.h };
-    line(f, from, to, 1.6, (1 - back) * .35);
+    const origin = { x: (s.center.x - s.offset.x) * f.w, y: (s.center.y - s.offset.y) * f.h };
+    line(f, { x: g.x, y: g.y }, origin, 1.6, back * .35);
   }
 }
 
 /** 敵の一撃。予告の線、飛んでくる斬撃、受け止め方ごとの消え方。 */
 function drawSlash(f: Frame) {
   const { c, t, beat } = f;
-  const g = aimAt(f), from = { x: f.target.x * f.w, y: f.target.y * f.h };
+  // f.target は magic.ts の時点で画面の座標になっている。ここで画面の大きさを掛け直さない。
+  const g = aimAt(f), from = f.target;
   const launch = beat.release + LAUNCH_AFTER_RELEASE, arrive = beat.impact;
   const dir = Math.atan2(g.y - from.y, g.x - from.x);
   const size = 26 + f.intensity * 6;
   // 予告の線。剣先から狙いの場所へ走り、締め切りが近づくほどはっきりする。
   if (t >= beat.start && t < arrive) {
-    const near = clamp((t - beat.start) / (beat.lock - beat.start)), swing = clamp((t - beat.lock) / .8);
+    const near = clamp((t - beat.start) / Math.max(.1, beat.lock - beat.start)), swing = clamp((t - beat.lock) / .8);
     c.globalAlpha = (.12 + near * .25 + swing * .4) * (1 - clamp((t - launch) / .3));
     c.lineWidth = 1.4 + swing * 1.6; c.strokeStyle = ENEMY.main;
     c.beginPath(); c.moveTo(from.x, from.y); c.lineTo(g.x, g.y); c.stroke();
@@ -170,7 +178,7 @@ function drawSlash(f: Frame) {
   const style = f.guard?.style ?? 'block';
   if (t < arrive) {
     // 飛んでくる。近づくほど大きく速く見せる。
-    const u = ease(clamp((t - launch) / (arrive - launch)));
+    const u = ease(clamp((t - launch) / Math.max(.1, arrive - launch)));
     const at = lerp(from, g, u);
     crescent(f, at, dir, size * (.55 + u * .75), .55 + u * .45);
     glow(f, at.x, at.y, 5 + u * 6, .4 + u * .4, ENEMY.main, ENEMY.core);
@@ -179,7 +187,7 @@ function drawSlash(f: Frame) {
   const after = t - arrive;
   // 当たった。火花と、止め方ごとの消え方。
   f.once('guard-contact', () => {
-    const n = Math.round(increase(f.preset.impactParticles, f.intensity, .5) * .8);
+    const n = Math.round(increase(f.preset.impactParticles, f.intensity, .5) * .8 * (f.calm ? 1 / 3 : 1));
     for (let i = 0; i < n; i++) {
       const a = f.pool.random() * Math.PI * 2, speed = 80 + f.pool.random() * 420;
       const mine = i % 3 !== 0;
@@ -232,9 +240,7 @@ function drawSlash(f: Frame) {
   if (u < 1) for (const side of [-1, 1]) {
     const slide = ease(u) * (50 + f.intensity * 20);
     const at = { x: g.x + Math.cos(dir + Math.PI / 2 * side) * slide, y: g.y + Math.sin(dir + Math.PI / 2 * side) * slide * .7 + u * u * 40 };
-    c.save(); c.globalAlpha = 1;
     crescent(f, at, dir + side * .5 * u, size * (1 - u * .5), (1 - u) * .8);
-    c.restore();
   }
 }
 

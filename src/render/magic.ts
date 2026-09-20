@@ -77,7 +77,9 @@ export class MagicCanvas {
     const c = this.ctx, w = this.width, h = this.height, t = ms / 1000;
     const beat = input.beat ?? beatAt(t);
     c.clearRect(0, 0, w, h);
-    if (ready || t >= beat.end - .5) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
+    // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前で変わらない。
+    const stopAt = Math.max(beat.end - .5, beat.impact + 4.5);
+    if (ready || t >= stopAt) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
     // 時刻が戻ったら（確認画面のつまみなど）粒と一度きりの発生をやり直す。
     if (t < this.lastRaw - .05) this.reset();
     this.lastRaw = t;
@@ -127,7 +129,7 @@ export class MagicCanvas {
       if (dt > 0 && this.pool.random() < .6) this.pool.spawn({ x: p.x * w, y: p.y * h, vx: (this.pool.random() - .5) * 20, vy: -10 - this.pool.random() * 20, life: .5 + this.pool.random() * .5, size: 1 + this.pool.random() * 1.2, drag: .5, color: palette.main, core: palette.core, kind: 0 });
     }
     const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, target: hit, accent, live, points, cursors,
-      beat, guard, aim: AIM, inherited,
+      beat, guard, aim: AIM, inherited, calm: this.calm,
       once: (key, run) => { if (!this.fired.has(key)) { this.fired.add(key); run(); } } };
     c.globalAlpha = fade;
     // 描いている間の即時反応。動きと言葉に、その場で光が応える。

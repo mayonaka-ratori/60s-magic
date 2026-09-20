@@ -14,6 +14,7 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
+import { BATTLE_END, ROUNDS } from '../game/rounds';
 import { colors } from './magic';
 import { getPreset } from './effects/presets';
 import type { Recipe } from '../game/types';
@@ -47,13 +48,13 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
   // 白飛びは白、属性色、白の三段で合計0.15秒。
   const step=struck&&t<.15?Math.floor(t/.05):-1;
   return {weights:pad([1-hit-recover,hit,recover]),lean:reduced?0:hit*force,
-    breath:reduced?0:Math.sin(ms*.0016)*.003,flash:active?Math.max(0,1-t/.24)*(t>=0?1:0):0,
+    breath:reduced?0:Math.sin(ms*.0016)*.003,flash:active?Math.max(0,1-t/.24)*(t>=0?1:0)*(reduced?1/3:1):0,
     state:hit>.1?'hit':recover>.1?'recover':'idle',
     strength,push:reduced?0:push,collapse:reduced?0:collapse,
     // 打撃の向きに合わせ、右へのけぞる。単位は度。
     spin:reduced?0:push*(1.4+strength*2.6)+collapse*3.4,
-    flashAlpha:step<0?0:(.85-step*.2)*(.5+strength*.5),flashTint:step===1?1:0,
-    ghost:struck&&t<.3?1-t/.3:0,rim:struck&&t<.6?1-smooth(t/.6):0};
+    flashAlpha:step<0?0:(.85-step*.2)*(.5+strength*.5)*(reduced?1/3:1),flashTint:step===1?1:0,
+    ghost:reduced?0:struck&&t<.3?1-t/.3:0,rim:struck&&t<.6?1-smooth(t/.6):0};
 }
 
 // 姿勢の表。角度だけを並べ、weightsで混ぜる。body と head は、正の値で後ろへ反る。
@@ -77,18 +78,26 @@ const POSES:Pose[]=[
 /** 姿勢の重みを、表の長さにそろえる。足りない分は0。 */
 const pad=(weights:number[])=>{const full=new Array(POSES.length).fill(0);for(let i=0;i<weights.length;i++)full[i]=weights[i];return full;};
 
+// 防御の回の時刻は、回の表（rounds.ts）から作る。表を直したら騎士も一緒に動く。
+const FIRST=ROUNDS[0],DEFEND=ROUNDS[1];
+/** 防御の姿勢へ移り始める時刻（秒）。一回目の受け渡しの始まり。 */
+export const GUARD_FROM=FIRST.handoff/1000;
 /** 防御の回の姿勢の順。at の時刻から ramp 秒かけて、その姿勢へ移る。 */
 const GUARD_STEPS:Array<{at:number;pose:number;ramp:number}>=[
-  {at:0,pose:0,ramp:.5},      // 待機
-  {at:23,pose:3,ramp:1},      // 構え
-  {at:24.2,pose:4,ramp:6},    // 溜め
-  {at:33,pose:5,ramp:.55},    // 振り下ろし
-  {at:35.4,pose:6,ramp:.22},  // 弾かれる
-  {at:37.6,pose:2,ramp:1.1},  // よろめきから構えを戻す
-  {at:39,pose:7,ramp:1},      // 前屈して弱点を晒す
+  {at:0,pose:0,ramp:.5},                        // 待機
+  {at:GUARD_FROM,pose:3,ramp:1},                // 構え
+  {at:DEFEND.start/1000+.2,pose:4,ramp:6},      // 溜め
+  {at:DEFEND.lock/1000,pose:5,ramp:.55},        // 振り下ろし
+  {at:DEFEND.impact/1000,pose:6,ramp:.22},      // 弾かれる
+  {at:DEFEND.impact/1000+2.2,pose:2,ramp:1.1},  // よろめきから構えを戻す
+  {at:DEFEND.handoff/1000,pose:7,ramp:1},       // 前屈して弱点を晒す
 ];
-/** 弾き返したとき、騎士が自分の一撃を受ける時刻（秒）。 */
-export const REFLECT_BACK_AT=36.2;
+/** 弾き返したとき、騎士が自分の一撃を受ける時刻（秒）。一撃が盾に当たってから0.8秒後。 */
+export const REFLECT_BACK_AT=DEFEND.impact/1000+.8;
+/** 盾に弾かれて兜の角が折れる時刻（ms）。 */
+export const HORN_BREAK_MS=DEFEND.impact+2100;
+/** 胸当てが外れて弱点が見え始める時刻（ms）。 */
+export const WEAKPOINT_MS=DEFEND.handoff;
 
 /**
  * 防御の回（23秒以降）の姿勢。順に姿勢を移すだけで、入力では変えない。
@@ -103,21 +112,26 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
   const weights=new Array(POSES.length).fill(0);
   weights[previous.pose]+=1-u;weights[step.pose]+=u;
   // 溜めの間は剣が低く脈打つ。毎秒1回まで。
-  const charging=index===2?smooth((t-24.2)/2):0;
+  const charging=index===2?smooth((t-GUARD_STEPS[2].at)/2):0;
   // 弾かれた瞬間だけ押し戻される。
-  const repel=t>=35.4?Math.max(0,1-(t-35.4)/1.2):0;
+  const hitAt=DEFEND.impact/1000;
+  const repel=t>=hitAt?Math.max(0,1-(t-hitAt)/1.2):0;
   // 弾き返しでは、戻ってきた一撃を受けて白く光る。
   const back=style==='reflect'?t-REFLECT_BACK_AT:-1;
   const struck=back>=0&&back<.7;
   const stepIndex=struck&&back<.15?Math.floor(back/.05):-1;
+  // 控えめモードでは、白飛びを3分の1にして残像を出さない。動きはもともと止めてある。
+  const soft=reduced?1/3:1,weak=WEAKPOINT_MS/1000;
   return {weights,lean:reduced?0:repel*.35,
     breath:reduced?0:Math.sin(ms*.0016)*.003+charging*Math.sin(t*Math.PI*2)*.004,
-    flash:struck?Math.max(0,1-back/.24):0,
-    state:index>=6?'exposed':index===5?'repel':index===4?'repel':index===3?'swing':index===2?'charge':index===1?'guard':'idle',
+    flash:struck?Math.max(0,1-back/.24)*soft:0,
+    state:index>=6?'exposed':index===5?'recover':index===4?'repel':index===3?'swing':index===2?'charge':index===1?'guard':'idle',
     strength:.5,push:reduced?0:repel*.5+(struck?Math.max(0,1-back/.3)*.3:0),collapse:0,
     spin:reduced?0:repel*2.2,
-    flashAlpha:stepIndex<0?0:(.85-stepIndex*.2)*.75,flashTint:stepIndex===1?1:0,
-    ghost:struck&&back<.3?1-back/.3:0,rim:t>=39?smooth((t-39)/1)*.5:struck?1-smooth(back/.6):0};
+    flashAlpha:stepIndex<0?0:(.85-stepIndex*.2)*.75*soft,flashTint:stepIndex===1?1:0,
+    ghost:reduced||!struck?0:back<.3?1-back/.3:0,
+    // 弱点の輪郭の光は、回の終わりまでに0へ戻す。結果を出したまま待つ間、毎コマ形を塗り直さないため。
+    rim:t>=weak?smooth((t-weak)/.5)*(1-smooth((t-weak-.5)/.5))*.5:struck?1-smooth(back/.6):0};
 }
 const POSE_KEYS=Object.keys(POSES[0]) as Array<keyof Pose>;
 const blendPose=(weights:number[]):Pose=>{
@@ -373,17 +387,18 @@ export class Knight {
     this.trail.push(spot);if(this.trail.length>4)this.trail.shift();
     return spot;
   }
-  render(ms:number,active:boolean,recipe:Recipe|null,power?:number,guardStyle:'block'|'reflect'|'erase'|null=null) {
+  render(ms:number,active:boolean,recipe:Recipe|null,power?:number,guardStyle:'block'|'reflect'|'erase'|null=null,calm=false) {
     // 表示の大きさが変わっていたら、描く前に合わせ直す。
     const size=`${Math.max(1,this.canvas.clientWidth)}x${Math.max(1,this.canvas.clientHeight)}`;
     if(size!==this.cssSize)this.resize();
-    // 23秒からは防御の回の姿勢へ移る。構え、溜め、振り下ろし、弾かれる、前屈の順。
-    const guarding=active&&ms>=23000;
-    const pose=guarding?guardPose(ms,this.motion.matches,guardStyle??'block'):knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe));
-    // 弾き返しで折れた兜の角。37.5秒から欠けたままにする。
-    if(this.horns[0])this.horns[0].setEnabled(!(active&&ms>=37500));
-    // 弱点。39秒から胸当てが前へ外れ、胸の線が左右へ開き、核が大きくなる。
-    const open=active&&ms>=39000?clamp((ms-39000)/700):0;
+    // 一回目の受け渡しからは防御の回の姿勢へ移る。構え、溜め、振り下ろし、弾かれる、前屈の順。
+    const reduced=this.motion.matches||calm;
+    const guarding=active&&ms>=GUARD_FROM*1000;
+    const pose=guarding?guardPose(ms,reduced,guardStyle??'block'):knightPose(ms,active,reduced,recipe?.purpose,power??reactionPower(recipe));
+    // 盾に弾かれた勢いで折れる兜の角。止め方によらず、受け止めきった時点で欠ける。
+    if(this.horns[0])this.horns[0].setEnabled(!(active&&ms>=HORN_BREAK_MS));
+    // 弱点。胸当てが前へ外れ、胸の線が左右へ開き、核が大きくなる。
+    const open=active&&ms>=WEAKPOINT_MS?clamp((ms-WEAKPOINT_MS)/700):0;
     if(this.chestPlate){this.chestPlate.position.z=-.2-open*.45;this.chestPlate.position.y=.34-open*.6;this.chestPlate.rotation.x=open*1.3;}
     for(let i=0;i<this.chestLines.length;i++)this.chestLines[i].position.x=(i?1:-1)*.11*(1+open*2.4);
     this.core.scaling.setAll(1+open*1.2);
@@ -394,8 +409,8 @@ export class Knight {
     this.head.rotation.x=p.head;
     this.swordArm.rotation.set(p.swordSwing,0,-p.swordOut);
     this.shieldArm.rotation.set(p.shieldSwing,0,p.shieldOut);
-    // 14秒からの蓄積で核が明るくなり、命中では前から強く照らす。弱点が出たら脈打つ。
-    const charge=active?clamp((ms-14000)/4500):0;
+    // 一回目の締め切りからの蓄積で核が明るくなり、命中では前から強く照らす。弱点が出たら脈打つ。
+    const charge=active?clamp((ms-FIRST.inputEnd)/4500):0;
     const glow=.22+charge*.5+pose.flash*1.5+open*(.5+.5*Math.sin(ms*.012))*.7;
     this.coreMaterial.emissiveColor.set(.42+glow,.32+glow*.86,.17+glow*.7);
     // 色は魔法の属性のままだと鎧まで染まるため、白へ寄せて使う。
@@ -414,7 +429,7 @@ export class Knight {
     }
     this.target={x:targetX/w,y:targetY/h};
     this.canvas.dataset.state=pose.state;
-    this.canvas.classList.toggle('spell-finished',active&&ms>=39500);
+    this.canvas.classList.toggle('spell-finished',active&&ms>=BATTLE_END-500);
   }
   dispose(){this.scene.dispose();this.engine.dispose();}
 }

@@ -45,7 +45,7 @@ URLに付けられる切り替えです。
 
 | コマンド | すること | かかる時間 |
 | --- | --- | --- |
-| `npm test` | 単体の試験（221件） | 数秒 |
+| `npm test` | 単体の試験（235件） | 数秒 |
 | `npm run build` | 型の検査と配布用の生成 | 数秒 |
 | `npm run test:speech` | 合成音声でこのPCの音声認識を確認。4種類×3回。結果は `.local-speech/test-report.json` | 1分 |
 | `node scripts/prepare-browser-audio.mjs` | 上の音から、ブラウザー試験用の音を作る | 数秒 |
@@ -84,15 +84,15 @@ PC内の音声認識だけなら `.env` は不要です。JevやGoogleを使う�
 
 ## 主な数値の置き場所
 
-24秒の進行を変えるときは、ここを見れば足ります。
+40秒の進行を変えるときは、ここを見れば足ります。
 
 | 数値 | 場所 |
 | --- | --- |
-| 回ごとの全部の時刻（一回目0〜24秒、防御24〜40秒） | `src/game/rounds.ts` の `ROUNDS` |
+| 回ごとの場面の時刻（一回目0〜24秒、防御24〜40秒）。騎士と体力の時刻もこの表から作る | `src/game/rounds.ts` の `ROUNDS` |
 | 最後の声を待つ時間（1.4秒）、待ちの打ち切り、Jevの打ち切り、確定 | `src/game/rounds.ts` の先頭 |
 | 狙いの印の位置と大きさ、囲みの判定、盾の作り方、止め方の言葉 | `src/game/guard.ts` |
 | 敵の一撃と盾の見た目 | `src/render/effects/guard.ts` |
-| 騎士の9つの姿勢と、角が折れる・胸当てが外れる時刻 | `src/render/knight.ts` |
+| 騎士の8つの姿勢と、角が折れる・胸当てが外れる時刻 | `src/render/knight.ts` |
 | 終了直前に途中の認識を始めない境目（12.6秒） | `server/local-speech-session.ts` |
 | サーバー側のJevの打ち切り（900ms） | `server/jev.ts` |
 | 効果音の時刻と、録音中に鳴らさない境目 | `src/audio/cues.ts` |

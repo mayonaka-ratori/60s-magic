@@ -51,7 +51,7 @@ export class CastScene {
     const beat:Beat=beatAt(ms/1000);
     // 世界の時計は一つ。命中の停止は騎士と術式にも効く。
     const worldMs=ready?ms:this.effects.effectMsOf(ms,recipe,live.amount,beat);
-    this.knight.render(worldMs,!ready,recipe,undefined,guard?.style??null);
+    this.knight.render(worldMs,!ready,recipe,undefined,guard?.style??null,this.calm);
     const complete=ms>=beat.inputEnd*1000&&!ready;
     const shape=ready?[]:points.length?points:complete?[{x:.5,y:.66,t:0,hand:0,stroke:0}]:[];
     const key=`${this.revision}:${ready}:${complete}:${shape.length}:${shape.at(-1)?.t}:${shape.at(-1)?.x}:${shape.at(-1)?.y}`;

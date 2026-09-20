@@ -20,7 +20,9 @@ export class Battle {
     this.id=id;this.startMs=clock();
     this.casts=ROUNDS.map(round=>new CastSession(clock,id,round,this.startMs));
   }
-  get round() {return roundAt(this.elapsed);}
+  // 回の判定はそのときの時計で見る。1コマ前の値で見ると、24秒ちょうどの一瞬だけ
+  // 前の回のまま（受付は閉じている）になり、描き始めの点を落とす。
+  get round() {return roundAt(this.cancelled?this.elapsed:Math.max(0,this.clock()-this.startMs));}
   get active() {return this.casts[this.round.index-1];}
   get first() {return this.casts[0];}
   get defend() {return this.casts[1];}

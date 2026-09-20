@@ -89,12 +89,12 @@ let resultShown=false,lastUi=0,feedback:string|null=null,lastCameraLatency=0;
 // 回ごとに一度だけ行うことの覚え書き。
 const begun=new Set<string>(),ended=new Set<string>(),requested=new Set<string>(),lockLog=new Set<string>();
 // 声をいま受け付けている回。回が変わるたびに接続し直す。
-let voiceRound:Round['id']|null=null,voiceSwitching=false,lastRings=0,actShown='';
+let voiceRound:Round['id']|null=null,voiceSwitching=false,voiceReady=false,voiceLost=false,lastRings=0,actShown='';
 let requestAbort:AbortController|null=null;
 let status:{jev:boolean;speech:boolean;handModel:boolean;model:string;speechProvider:'local'|'google'|'off';localSpeech:{state:string;message:string;model:string;device:string}|null}={jev:false,speech:false,handModel:false,model:'',speechProvider:'local',localSpeech:null};
 let serviceNotice='',prepareVersion=0;
 const frameIntervals:number[]=[];let lastFrame=performance.now();
-let diag:Diagnostics|null=null,lastReport:ReturnType<typeof report>|null=null,lockLogged=false;
+let diag:Diagnostics|null=null,lastReport:ReturnType<typeof report>|null=null;
 /** 24秒の前に置く準備の秒数。手や声の位置を決める時間で、24秒にも60秒にも含めない。 */
 const COUNTDOWN_SECONDS=3;let countingDown=false;
 
@@ -106,11 +106,11 @@ async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json
 void readStatus();
 const statusTimer=setInterval(()=>{if(!session&&!preparing)void readStatus();},3000);
 
-function cleanup(){sound.stop();camera?.dispose();camera=null;voice?.dispose();voice=null;requestAbort?.abort();requestAbort=null;cursors=[];
-  begun.clear();ended.clear();requested.clear();lockLog.clear();voiceRound=null;voiceSwitching=false;lastRings=0;actShown='';show('act-title',false);}
+function cleanup(){sound.stop();camera?.dispose();camera=null;voice?.dispose();voice=null;requestAbort?.abort();requestAbort=null;cursors=[];pointerDown=false;
+  begun.clear();ended.clear();requested.clear();lockLog.clear();voiceRound=null;voiceSwitching=false;voiceReady=false;voiceLost=false;lastRings=0;actShown='';show('act-title',false);}
 function toReady(message='') {
   el('app').dataset.screen='ready';
-  if(session&&!resultShown){diag?.log('中止');lastReport=report();}
+  if(session){if(!resultShown)diag?.log('中止');lastReport=report();}
   prepareVersion++;session?.cancel();cleanup();session=null;preparing=false;countingDown=false;show('countdown',false);
   show('last-record',!!lastReport);
   show('welcome',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);
@@ -120,7 +120,7 @@ async function begin(isDemo=false) {
   if(preparing)return;preparing=true;const version=++prepareVersion;
   void sound.prepare();
   cleanup();session=null;demo=isDemo;mode=(document.querySelector<HTMLInputElement>('input[name="mode"]:checked')?.value??'pointer');
-  diag=new Diagnostics(performance.now());lockLogged=false;diag.log('準備を開始',{mode,voice:el<HTMLInputElement>('use-voice').checked,speechProvider:status.speechProvider,localSpeech:status.localSpeech});
+  diag=new Diagnostics(performance.now());diag.log('準備を開始',{mode,voice:el<HTMLInputElement>('use-voice').checked,speechProvider:status.speechProvider,localSpeech:status.localSpeech});
   el<HTMLButtonElement>('start').disabled=true;el<HTMLButtonElement>('demo').disabled=true;el('notice').textContent='準備しています…';
   const id=crypto.randomUUID();
   try {
@@ -141,7 +141,7 @@ async function begin(isDemo=false) {
     if(el<HTMLInputElement>('use-voice').checked&&!demo) {
       const record=diag;
       const input=new VoiceInput(entry=>{if(version!==prepareVersion)return;record?.transcript(entry);session?.active.speech.add(entry);},message=>{serviceNotice=message;record?.log('音声の知らせ',{message});},{audio:(bytes,startMs)=>record?.audio(bytes,startMs),event:(kind,detail)=>record?.log(kind,detail)});voice=input;
-      await input.prepare();await input.connect(id);
+      await input.prepare();await input.connect(id,ROUNDS[0].inputEnd-ROUNDS[0].start);
       if(version!==prepareVersion){input.dispose();return;}
     }
   }catch(error){
@@ -236,7 +236,7 @@ function updateUi() {
   if(t>=round.start/1000+2&&drawing&&!summarizeMotion(cast.motion.raw).hasMovement)el('hint').textContent=mode==='pointer'?'画面を押したまま、少し動かそう':'片手を少し動かそう';
   if(mode==='camera'&&drawing&&!cursors.length&&performance.now()-lastHandAt>800)el('hint').textContent='手を画面の前に戻そう。描いた線は消えません';
   // 幕の表示。回の切り替わりで0.8秒だけ大きく出す。
-  const act=round.id==='defend'&&t>=24&&t<24.8?'第二幕　防御':'';
+  const act=round.index>1&&t>=round.start/1000&&t<round.start/1000+.8?`第${'一二三'[round.index-1]}幕　防御`:'';
   if(act!==actShown){actShown=act;el('act-title').textContent=act;show('act-title',!!act);}
   const steps=ROUND_STEPS[round.id];
   for(let i=0;i<3;i++)el(`step-${i+1}-label`).textContent=steps[i];
@@ -247,7 +247,10 @@ function updateUi() {
   el('step-input').classList.toggle('active',drawing);
   el('step-complete').classList.toggle('active',!drawing&&t<round.release/1000);
   el('step-release').classList.toggle('active',t>=round.release/1000);
-  el<HTMLInputElement>('chant').disabled=!drawing;show('input-panel',!voice&&!demo&&drawing);
+  // 声を使えない回（マイクなし、またはつなぎ直せなかったとき）は、文字で入れられるようにする。
+  const typing=(!voice||voiceLost)&&!demo;
+  el<HTMLInputElement>('chant').disabled=!drawing;show('input-panel',typing&&drawing);
+  show('meter',!!voice&&!voiceLost);
   if(cast.locked&&recipe&&t>=round.lock/1000&&t<round.impact/1000){show('recognized',true);el('recognized').textContent=[ELEMENT_LABELS[recipe.element],recipe.count>1?`${recipe.count}つ`:PURPOSE_LABELS[recipe.purpose]].join('　・　');}
   else show('recognized',false);
   const level=voice?.level??0;
@@ -260,8 +263,9 @@ function driveRound(battle:Battle,cast:CastSession) {
   if(ms<round.start)return;
   if(!begun.has(round.id)) {
     begun.add(round.id);
-    // 回が変わったら、前の回に書いた言葉は残さない。
+    // 回が変わったら、前の回に書いた言葉も、前の回の聞き取りの文も残さない。
     if(round.index>1)el<HTMLInputElement>('chant').value='';
+    el('voice-label').textContent='声を受け付けています';
   }
   if(ms>=round.inputEnd&&!ended.has(round.id)) {
     ended.add(round.id);
@@ -287,18 +291,25 @@ function driveRound(battle:Battle,cast:CastSession) {
   }
 }
 
-/** 防御の回のために、声の受付を作り直す。一回目の接続は確定のときに閉じている。 */
+/**
+ * 防御の回のために、声の受付を作り直す。一回目の接続は確定のときに閉じている。
+ * つなぐのは回の始まりより前（21.5秒）だが、録音を始めるのは回が始まってから（24秒）にする。
+ * 声の時刻は回ごとに0から数えるので、早く始めるとその分だけ時刻がずれ、受付の長さをはみ出して捨てられる。
+ */
 function prepareDefendVoice(battle:Battle) {
-  if(!voice||demo||voiceSwitching||voiceRound!==null)return;
-  voiceSwitching=true;
-  const input=voice;
-  void input.connect(`${battle.id}-defend`)
-    .then(()=>{
-      if(session!==battle||voice!==input)return;
-      input.start(Math.max(0,battle.elapsed-ROUNDS[1].start));voiceRound='defend';
-      diag?.log('防御の回の声を受付',{atMs:Math.round(battle.elapsed)});
-    })
-    .catch(()=>{if(session===battle){serviceNotice='声の受付を再開できませんでした。描いた線で続けます。';diag?.log('防御の回の声を受付できず');}});
+  const round=ROUNDS[1];
+  if(voice&&!demo&&!voiceSwitching&&voiceRound===null) {
+    voiceSwitching=true;
+    const input=voice;
+    void input.connect(`${battle.id}-defend`,round.inputEnd-round.start)
+      .then(()=>{if(session===battle&&voice===input)voiceReady=true;})
+      .catch(()=>{if(session===battle){voiceLost=true;serviceNotice='声の受付を再開できませんでした。文字で入れるか、描いた線で続けられます。';diag?.log('防御の回の声を受付できず');}});
+  }
+  // つながっていて回が始まっていれば、そこから録音する。遅れてつながったときは、その遅れを offset で渡す。
+  if(voice&&voiceReady&&voiceRound===null&&battle.elapsed>=round.start&&battle.elapsed<round.inputEnd) {
+    voice.start(battle.elapsed-round.start);voiceRound='defend';
+    diag?.log('防御の回の声を受付',{atMs:Math.round(battle.elapsed)});
+  }
 }
 
 /** 見本の動き。一回目は自由な線、防御は印を囲む輪。本人の記録には数えない。 */
@@ -318,10 +329,9 @@ function demoInput(battle:Battle) {
 }
 
 function finish() {
-  sound.stop();
   const battle=session;if(!battle)return;
   const main=battle.defend.recipe??battle.first.recipe;if(!main)return;
-  resultShown=true;voice?.dispose();voice=null;camera?.dispose();camera=null;cursors=[];
+  resultShown=true;sound.stop();voice?.dispose();voice=null;camera?.dispose();camera=null;cursors=[];
   show('bottom-hud',false);show('input-panel',false);show('meter',false);show('voice-label',false);show('act-title',false);show('result',true);show('feedback',!demo);
   const guard=battle.defend.guard;
   el('spell-name').textContent=main.name;
@@ -399,7 +409,8 @@ function animate(now:number) {
   if(cast)sound.update(ms,cast.recipe??session!.first.recipe,magic.preset);
   // 描いている間の言葉と動きを、確定前から演出へ渡す。防御の回だけ、印を囲めているかも数える。
   const defending=!!cast&&cast.round.id==='defend';
-  const live=cast?liveInput(cast.motion.raw,cast.speech.live(),voice?.level??0,defending?session!.aim:null):emptyLive;
+  // 声の時刻は回ごとに0から数えるので、回の始まりを足して戦いの時刻へそろえる。
+  const live=cast?liveInput(cast.motion.raw,cast.speech.live(),voice?.level??0,defending&&cast.accepting?session!.aim:null,cast.speechOffset):emptyLive;
   // 囲えた瞬間に音で返す。数が増えるたびに一度だけ鳴らす。
   if(live.rings!==lastRings){if(live.rings>lastRings)sound.ring(live.rings);lastRings=live.rings;}
   stage.render(cast?.motion.display??[],ms,cast?.recipe??null,voice?.level??0,cursors,!session&&!countingDown,live,session?.defend.guard??null,session?.inherited??[]);

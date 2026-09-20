@@ -2,7 +2,12 @@ import { describe,it,expect } from 'vitest';
 import { ROUNDS,BATTLE_END,beatAt,phaseAt,roundAt,speechLimitOf,replyLimitOf } from '../src/game/rounds';
 import { Battle } from '../src/game/battle';
 import { CastSession } from '../src/game/session';
-import { AIM,enclosingStrokes,guardStyleOf,shieldOf,strokeEncloses,strokesOf } from '../src/game/guard';
+import { AIM,ENCLOSE_TURN,dropNegated,enclosingStrokes,guardStyleOf,shieldOf,strokeEncloses,strokesOf,windingAround } from '../src/game/guard';
+import { GUARD_DAMAGE,GUARD_STEP_MS,healthSteps } from '../src/render/health-bar';
+import { liveWords } from '../src/game/live-words';
+import { beatOf } from '../src/game/rounds';
+import { spellPose,completedSpellFrame } from '../src/render/spell-layout';
+import { postHeavyActive,bloomWeightAt } from '../src/render/composite';
 import { guardPose,knightPose } from '../src/render/knight';
 import { screenState,hitStopOf,HIT_STOPS } from '../src/render/effects/screen';
 import { presets } from '../src/render/effects/presets';
@@ -68,15 +73,41 @@ describe('60秒の進行役',()=>{
   });
 });
 
+/** 線分を点の並びにする。 */
+const seg=(a:{x:number;y:number},b:{x:number;y:number},stroke=1,n=12):Point[]=>
+  Array.from({length:n},(_,k)=>({x:a.x+(b.x-a.x)*k/n,y:a.y+(b.y-a.y)*k/n,t:24000+k*20,hand:0,stroke}));
+
 describe('印を囲む',()=>{
   it('印を囲んだ線だけを数える',()=>{
     expect(strokeEncloses(ring(.12))).toBe(true);
     expect(strokeEncloses(ring(.05))).toBe(true);
-    // 横線は、始点と終点を結んでも面積がないので囲みにならない。
-    expect(strokeEncloses(bar(.56))).toBe(false);
+    expect(strokeEncloses(ring(.02))).toBe(true);
+    // 横線は、どれだけ長くても囲みにならない。
+    expect(strokeEncloses(bar(.62))).toBe(false);
     // 別の場所を囲んでも、印は囲めていない。
     expect(strokeEncloses(ring(.1,1,{x:.2,y:.2}))).toBe(false);
     expect(strokeEncloses([{x:0,y:0}])).toBe(false);
+  });
+  it('印から離れたかぎ形を、囲めたことにしない',()=>{
+    // 始点と終点を結ぶと印が中に入るが、線は印の近くを通っていない。
+    const L=[...seg({x:.2,y:.9},{x:.85,y:.9}),...seg({x:.85,y:.9},{x:.85,y:.08})];
+    expect(strokeEncloses(L)).toBe(false);
+    expect(windingAround(L)).toBeLessThan(ENCLOSE_TURN);
+  });
+  it('なぞり返した輪と、逆回りに重ねた輪も囲めたことにする',()=>{
+    // 一周してから同じ道を戻る。向きが打ち消し合う書き方だと取りこぼす。
+    expect(strokeEncloses([...ring(.12),...[...ring(.12)].reverse()])).toBe(true);
+    // 外を右回り、内を左回り。
+    expect(strokeEncloses([...ring(.18),...ring(.12,2,AIM).map(p=>({...p,y:AIM.y-(p.y-AIM.y)}))])).toBe(true);
+  });
+  it('四分の三まで回れば囲めたことにし、半分では囲めていないことにする',()=>{
+    const arc=(turns:number)=>Array.from({length:Math.round(32*turns)},(_,i)=>({x:AIM.x+Math.cos(i/32*Math.PI*2)*.12,y:AIM.y+Math.sin(i/32*Math.PI*2)*.17,t:24000+i*20,hand:0,stroke:1}));
+    expect(strokeEncloses(arc(.75))).toBe(true);
+    expect(strokeEncloses(arc(.5))).toBe(false);
+  });
+  it('手が止まったままの線を、囲めたことにしない',()=>{
+    const still=Array.from({length:400},(_,i)=>({x:.2,y:.3,t:24000+i*16,hand:0,stroke:1}));
+    expect(strokeEncloses(still)).toBe(false);
   });
   it('何重に囲んだかを数える',()=>{
     const points=[...ring(.1,1),...ring(.2,2),...bar(.9,3)];
@@ -107,6 +138,27 @@ describe('盾を作る',()=>{
     const shield=shieldOf([],null);
     expect(shield.kind).toBe('orb');expect(shield.outline.length).toBeGreaterThan(8);expect(shield.layers).toBe(1);
   });
+  it('一点だけ、手が止まったまま、二点だけでも必ず盾になる',()=>{
+    // 画面を一度触っただけ。
+    const tap=shieldOf([{x:.4,y:.5,t:24000,hand:0,stroke:1}],null);
+    expect(tap.kind).toBe('orb');expect(tap.outline.length).toBeGreaterThan(8);
+    // カメラの前で手を止めたまま。同じ座標が並ぶので、運んでも輪郭が点になる。
+    const still=shieldOf(Array.from({length:400},(_,i)=>({x:.2,y:.3,t:24000+i*16,hand:0,stroke:1})),null);
+    expect(still.kind).toBe('orb');expect(still.center).toEqual(AIM);
+    // 二点だけの短い線。
+    const two=shieldOf([{x:.3,y:.4,t:24000,hand:0,stroke:1},{x:.42,y:.46,t:24100,hand:0,stroke:1}],null);
+    expect(two.outline.length).toBeGreaterThan(1);expect(two.moved).toBe(true);
+    for(const shield of [tap,still,two]) {
+      expect(Number.isFinite(shield.radius)).toBe(true);
+      expect(shield.outline.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))).toBe(true);
+    }
+  });
+  it('印に近い線を選ぶ。線の真ん中ではなく、線の上の一番近い点で見る',()=>{
+    // 画面を斜めに横切る大きな線（真ん中は印に近い）と、印のすぐ上の短い線。
+    const across=seg({x:.02,y:.05},{x:.98,y:.95},1,24);
+    const near=seg({x:.45,y:.66},{x:.55,y:.66},2,8);
+    expect(shieldOf([...across,...near],null).outline.length).toBe(near.length);
+  });
   it('言った数が、囲った数より優先される。層は5枚まで',()=>{
     expect(shieldOf(ring(.1),7).layers).toBe(5);
     expect(shieldOf(ring(.1),3).layers).toBe(3);
@@ -124,6 +176,22 @@ describe('止め方は詠唱で決まる',()=>{
   it.each([['氷よ、壁となれ','block'],['弾き返せ','reflect'],['雷よ、返せ','reflect'],['炎よ、かき消せ','erase'],['燃やせ','erase'],['','block']] as const)('%s',(text,style)=>{
     expect(guardStyleOf(text)).toBe(style);
   });
+  it('「〜しないで」と言われたら、その止め方にしない',()=>{
+    expect(guardStyleOf('弾き返さないで')).toBe('block');
+    expect(guardStyleOf('かき消さないで')).toBe('block');
+    expect(guardStyleOf('跳ね返さないで')).toBe('block');
+    expect(guardStyleOf('弾き返すのではなく受け止めて')).toBe('block');
+    expect(dropNegated('氷よ、弾き返せ')).toBe('氷よ、弾き返せ');
+    // 文の途中の「ない」は落とさない。
+    expect(dropNegated('消えない盾')).toBe('消えない盾');
+  });
+  it('かなのままの聞き取りと、辞書の言葉でも止め方が変わる',()=>{
+    expect(guardStyleOf('はじきかえせ')).toBe('reflect');
+    expect(guardStyleOf('うちけせ')).toBe('erase');
+    // 辞書へ寄せると消える言葉は、聞き取ったままの文からも見る。
+    expect(guardStyleOf('',' 反発 ')).toBe('reflect');
+    expect(guardStyleOf('光','浄化せよ')).toBe('erase');
+  });
 });
 
 describe('防御の回の画面と姿勢',()=>{
@@ -136,9 +204,9 @@ describe('防御の回の画面と姿勢',()=>{
     const gentle=screenState(18.55,2,presets.vivid,'defend',0,.5);
     expect(Math.hypot(gentle.shakeX,gentle.shakeY)).toBeLessThan(Math.hypot(hit.shakeX,hit.shakeY));
   });
-  it('防御の停止は常に「強」。控えめモードでは止めない',()=>{
+  it('防御の停止は常に0.09秒。控えめモードでは止めない',()=>{
     const beat=beatAt(30);
-    expect(hitStopOf(presets.vivid,0,0,false,beat)).toBe(HIT_STOPS.strong);
+    expect(hitStopOf(presets.vivid,0,0,false,beat)).toBe(.09);
     expect(hitStopOf(presets.vivid,3,1,false,beat)).toBe(HIT_STOPS.strong);
     expect(hitStopOf(presets.vivid,3,1,true,beat)).toBe(0);
   });
@@ -156,13 +224,23 @@ describe('防御の回の画面と姿勢',()=>{
       expect(pose.weights.reduce((a,b)=>a+b,0)).toBeCloseTo(1);
       expect(Math.min(...pose.weights)).toBeGreaterThanOrEqual(-.00001);
     }
-    // 一回目の姿勢の数も表に合わせる。
-    expect(knightPose(18700,true).weights).toHaveLength(guardPose(23500).weights.length);
+    // 一回目と防御で、姿勢の表の長さがそろっている。
+    expect(knightPose(18700,true).weights).toHaveLength(8);
+    expect(guardPose(23500).weights).toHaveLength(8);
   });
   it('弾き返したときだけ、騎士が戻ってきた一撃を受ける',()=>{
     expect(guardPose(36300,false,'reflect').flash).toBeGreaterThan(0);
     expect(guardPose(36300,false,'block').flash).toBe(0);
-    expect(guardPose(36300,true,'reflect').push).toBeGreaterThanOrEqual(0);
+    // 控えめモードでは白飛びを3分の1にし、残像を出さない。
+    expect(guardPose(36300,true,'reflect').flash).toBeCloseTo(guardPose(36300,false,'reflect').flash/3,6);
+    expect(guardPose(36300,true,'reflect').ghost).toBe(0);
+    expect(guardPose(36300,false,'reflect').ghost).toBeGreaterThan(0);
+  });
+  it('弱点の輪郭の光は、40秒までに消える',()=>{
+    // 結果を出したまま待つ間、毎コマ騎士の形を塗り直さないため。
+    expect(guardPose(39500).rim).toBeGreaterThan(.4);
+    expect(guardPose(40000).rim).toBe(0);
+    expect(guardPose(41000).rim).toBe(0);
   });
 });
 
@@ -208,5 +286,57 @@ describe('防御の回の入力',()=>{
     expect(cast.receive(reply)).toBe(true);
     now=32900;expect(cast.receive(reply)).toBe(false);
     expect(state.previous).toBeNull();
+  });
+});
+
+describe('体力の減り方',()=>{
+  it('一回目の命中と、防御の受け止めの二回で減る',()=>{
+    const steps=healthSteps(null);
+    expect(steps.at(-1)?.at).toBe(GUARD_STEP_MS);
+    expect(steps.at(-1)!.from-steps.at(-1)!.left).toBe(GUARD_DAMAGE);
+    expect(steps[0].at).toBe(first.impact);
+    // 一回目で20〜45%、防御で10%。0より下へは行かない。
+    expect(steps.at(-1)!.left).toBeGreaterThanOrEqual(0);
+    expect(steps.at(-1)!.left).toBeLessThan(steps[0].from);
+  });
+  it('連弾は80msごとに分けて減らし、合計は同じ',()=>{
+    const recipe={version:'recipe-1',element:'lightning',purpose:'attack',form:'swarm',trajectory:'straight',count:7,explicitCount:7,
+      defense:.1,area:.5,duration:.5,concentration:.5,enclosure:false,split:true,developsPrevious:null,motionSpeechAligned:null,
+      noAttack:false,name:'',source:'local' as const,decisions:{},assistance:[],model:null} as unknown as Parameters<typeof healthSteps>[0];
+    const steps=healthSteps(recipe);
+    // 5発までに分ける。最後の段が防御の受け止め。
+    expect(steps).toHaveLength(6);
+    expect(steps[1].at-steps[0].at).toBe(80);
+    expect(steps[4].left).toBeCloseTo(steps[5].from,6);
+  });
+});
+
+describe('防御の回の言葉と配置',()=>{
+  it('声の時刻を戦いの時刻へそろえる',()=>{
+    const entry={id:1,revision:1,startMs:4000,endMs:6500,text:'氷よ',final:true,stability:1,source:'typed' as const};
+    // 足さないと、防御の回の言葉が「24秒前の言葉」になり、反応の窓から外れる。
+    expect(liveWords([entry])[0].atMs).toBe(6500);
+    expect(liveWords([entry],defend.start)[0].atMs).toBe(30500);
+  });
+  it('防御の回は、術式を狙いの印の高さへ寄せる',()=>{
+    const wide=1600,high=900;
+    expect(completedSpellFrame(wide,high,beatOf(first)).y).toBeCloseTo(high*.66);
+    expect(completedSpellFrame(wide,high,beatOf(defend)).y).toBeCloseTo(high*AIM.y);
+    // 締め切りまでは入力した位置のまま。発動で印の前に収まる。
+    const points=[{x:.3,y:.3,t:24000,hand:0,stroke:1},{x:.4,y:.4,t:24500,hand:0,stroke:1}];
+    expect(spellPose(points,wide,high,30000,beatOf(defend)).progress).toBe(0);
+    expect(spellPose(points,wide,high,34000,beatOf(defend)).progress).toBe(1);
+    // 余韻は回の終わりより前に消えきる。
+    expect(spellPose(points,wide,high,40000,beatOf(defend)).opacity).toBe(0);
+  });
+  it('重い後処理は、回ごとに発動の前後だけ出す',()=>{
+    const beat=beatOf(defend);
+    expect(postHeavyActive(33.8,beat)).toBe(false);
+    expect(postHeavyActive(34.5,beat)).toBe(true);
+    expect(postHeavyActive(38.5,beat)).toBe(false);
+    // 一回目の時間帯は今までどおり。
+    expect(postHeavyActive(17)).toBe(true);
+    expect(postHeavyActive(22)).toBe(false);
+    expect(bloomWeightAt(35.4,beat)).toBeGreaterThan(bloomWeightAt(37,beat));
   });
 });

@@ -40,12 +40,17 @@ function wordId(entryId: number, order: number, key: string) {
 }
 
 /** 音声の記録から、演出が反応すべき言葉を取り出す。 */
-export function liveWords(entries: readonly SpeechEntry[]): LiveWord[] {
+/**
+ * offsetMs は、その回が始まった時刻。声の時刻は回ごとに0から数え直すので、
+ * 演出が見る戦いの時刻へそろえるために足す。足さないと、防御の回は言葉への反応が
+ * すべて「24秒前の言葉」になり、反応の窓から外れて一つも出なくなる。
+ */
+export function liveWords(entries: readonly SpeechEntry[], offsetMs = 0): LiveWord[] {
   const found: LiveWord[] = [];
   for (const entry of [...entries].sort((a, b) => a.startMs - b.startMs)) {
     // 詠唱辞書で意味に直してから、否定と言い直しの前半を落とす。「炎ではなく氷」は氷だけが残る。
     const text = affirmativeText(readChant(entry.text ?? '').meaning);
-    const atMs = Number.isFinite(entry.endMs) && entry.endMs >= entry.startMs ? entry.endMs : entry.startMs;
+    const atMs = (Number.isFinite(entry.endMs) && entry.endMs >= entry.startMs ? entry.endMs : entry.startMs) + offsetMs;
     let order = 0;
     for (let at = 0; at < text.length;) {
       const digits = countHead.exec(text.slice(at));

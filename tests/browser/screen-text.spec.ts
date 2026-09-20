@@ -59,7 +59,7 @@ test('遊ぶ人の画面には確認用の表示を出さない',async({page})=>
   await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
   for(const target of ['.trial','#settings','.dev-only'])await expect(page.locator(target).first()).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#timer')).toContainText('のこり');
-  await expect(page.locator('#result')).toBeVisible({timeout:32000});
+  await expect(page.locator('#result')).toBeVisible({timeout:50000});
   await expect(page.locator('.report-actions')).toBeHidden();await expect(page.locator('#feedback')).toBeHidden();
   await page.goto('/?dev=1');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
 });

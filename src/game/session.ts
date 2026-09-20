@@ -1,7 +1,7 @@
 import { MotionRecorder, summarizeMotion } from './motion';
 import { SpeechBook } from './speech-book';
 import { affirmativeText, explicitCount, makeRecipe } from './recipe';
-import { guardPlan, type GuardPlan } from './guard';
+import { AIM, guardStyleOf, shieldOf, type GuardPlan } from './guard';
 import type { JevReply, Phase, Recipe, SpellState } from './types';
 import { readChant, type ChantCorrection } from './chant-dictionary';
 import { ROUNDS, SPEECH_WAIT_MS, phaseAt, replyLimitOf, speechLimitOf, type Round } from './rounds';
@@ -54,16 +54,16 @@ export class CastSession {
     const next=phaseAt(this.elapsed,this.round);
     const marks:Partial<Record<Phase,number>>={complete:this.round.inputEnd,release:this.round.release,handoff:this.round.handoff,finished:this.round.end};
     if(next!==this.phase) {this.phase=next;this.events.push({name:next,atMs:marks[next]??this.elapsed,observedMs:this.elapsed});}
+    // 防御の回は、締め切りちょうどに盾の形を決める。囲えなかった線を印の前へ運ぶ動きが
+    // 締め切りから1秒で終わるので、声の確定を待つ freeze() では間に合わない。
+    // 形は締め切り後に動かないが、層の数と止め方は言葉が要るので freeze() で入れ直す。
+    if(this.round.id==='defend'&&!this.guard&&this.elapsed>=this.round.inputEnd)
+      this.guard={shield:shieldOf(this.motion.raw,null,AIM),style:'block'};
     if(this.elapsed>=this.round.lock&&!this.locked)this.lock();
   }
   get accepting() {
     const elapsed=this.clock()-this.startMs;
     return !this.cancelled&&elapsed>=this.round.start&&elapsed<this.round.inputEnd;
-  }
-  /** いま入力を受け付けている回に入っているか。始まる前も、終わった後も false。 */
-  get running() {
-    const elapsed=this.clock()-this.startMs;
-    return !this.cancelled&&elapsed>=this.round.start&&elapsed<this.round.end;
   }
   freeze() {
     if(this.state)return this.state;
@@ -82,9 +82,10 @@ export class CastSession {
       timedEvents:[...this.motionEvents(),...entries.map(e=>({startMs:e.startMs+round.start,endMs:e.endMs+round.start,speech:e.text,speechTiming:e.source==='typed'?'typed' as const:'utterance' as const}))].sort((a,b)=>a.startMs-b.startMs),
       speech:{status:entries.length?(entries.some(e=>e.source!=='typed')?'recognized':'typed'):'unavailable',provider:entries[0]?.source??null,locale:'ja-JP',rawTranscript:text,normalizedTranscript:chant.normalized,explicitCount:explicitCount(affirmativeText(chant.meaning)),explicitNegation:/ない|なく|するな/.test(text)},previous:this.previous,
       enemy:{attackKind:defend?'slash':'none',encounterMode:'exhibition_success'}};
-    // 防御の回は、締め切りの時点で盾の形と止め方を決める。囲えていない線を運ぶ動きに間に合わせるため、
-    // 魔法の確定（33秒）より前のここで作る。
-    if(defend)this.guard=guardPlan(this.motion.raw,this.state.speech.explicitCount,affirmativeText(chant.meaning));
+    // 盾の形は締め切りの時点で決めてある（tick）。ここでは、言葉が要る層の数と止め方だけを入れ直す。
+    // 点はもう増えないので、同じ形が出る。
+    if(defend)this.guard={shield:shieldOf(this.motion.raw,this.state.speech.explicitCount,AIM),
+      style:guardStyleOf(chant.meaning,text)};
     this.frozen=true;return this.state;
   }
   private motionEvents() {

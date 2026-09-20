@@ -32,6 +32,8 @@ export type Frame = {
   aim: AimPoint;
   /** 前の回から引き継いだ光点（正規化）。防御の回の間ずっと薄く残す */
   inherited: AimPoint[];
+  /** 控えめモード。揺れと点滅と粒を減らす */
+  calm: boolean;
   /** 一度だけ実行する。粒の発生などに使う */
   once: (key: string, run: () => void) => void;
 };
