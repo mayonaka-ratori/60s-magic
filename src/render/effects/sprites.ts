@@ -14,7 +14,9 @@ export class GlowSprites {
     sprite = document.createElement('canvas'); sprite.width = SIZE; sprite.height = SIZE;
     const c = sprite.getContext('2d')!, half = SIZE / 2;
     const gradient = c.createRadialGradient(half, half, 0, half, half, half);
-    gradient.addColorStop(0, core); gradient.addColorStop(.18, main); gradient.addColorStop(.55, main + '55'); gradient.addColorStop(1, main + '00');
+    // 芯（ほぼ白）を細くはっきり、縁（属性色）をその外に、にじみは大きく薄く。
+    gradient.addColorStop(0, core); gradient.addColorStop(.2, core); gradient.addColorStop(.3, main);
+    gradient.addColorStop(.44, main); gradient.addColorStop(.62, main + '77'); gradient.addColorStop(.82, main + '26'); gradient.addColorStop(1, main + '00');
     c.fillStyle = gradient; c.fillRect(0, 0, SIZE, SIZE);
     this.cache.set(key, sprite);
     return sprite;

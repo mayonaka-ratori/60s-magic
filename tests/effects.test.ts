@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { presets, getPreset, intensityOf, increase } from '../src/render/effects/presets';
+import { presets, getPreset, intensityOf, increase, mixHue, lighten } from '../src/render/effects/presets';
+import { hitDelay } from '../src/render/effects/release';
 import { screenState, effectTime, hitStopOf, shockAt, wobble } from '../src/render/effects/screen';
 import { ParticlePool } from '../src/render/effects/particles';
 import { ELEMENTS, type Recipe } from '../src/game/types';
@@ -128,5 +129,40 @@ describe('揺れ、寄り、暗転', () => {
     expect(hitStopOf(presets.vivid, 2.8, 1)).toBeCloseTo(.2);
     expect(hitStopOf(presets.calm, 3, 1)).toBe(0);
     expect(hitStopOf(presets.max, 3, 1, true)).toBe(0);
+  });
+});
+
+describe('二属性の色', () => {
+  it('中間色は平均せず色相の中間を取るので、濁らず鮮やかなまま', () => {
+    // 赤と青を平均すると暗い紫（#7f007f）になるが、色相の中間は鮮やかな赤紫になる。
+    expect(mixHue('#ff0000', '#0000ff')).toBe('#ff00ff');
+    expect(mixHue('#0000ff', '#ff0000')).toBe('#ff00ff');
+    expect(mixHue(presets.vivid.palettes.fire.main, presets.vivid.palettes.lightning.main)).toMatch(/^#[0-9a-f]{6}$/);
+  });
+  it('明るさを上げても色は同じ向きのまま、255を超えない', () => {
+    expect(lighten('#804020', 1.5)).toBe('#c06030');
+    expect(lighten('#ff6a1e', 1.5)).toBe('#ff9f2d');
+  });
+});
+
+describe('連弾のリズム', () => {
+  it('単発は遅れず、連弾は80ms間隔で、最後の1発だけ200ms空く', () => {
+    expect(hitDelay(0, 1)).toBe(0);
+    expect(hitDelay(0, 7)).toBe(0);
+    expect(hitDelay(1, 7)).toBeCloseTo(.08);
+    expect(hitDelay(5, 7)).toBeCloseTo(.4);
+    // 最後は18.5 + 0.08×(7-1) + 0.2 = 19.18秒に届く。
+    expect(18.5 + hitDelay(6, 7)).toBeCloseTo(19.18);
+    for (let i = 1; i < 7; i++) expect(hitDelay(i, 7)).toBeGreaterThan(hitDelay(i - 1, 7));
+  });
+});
+
+describe('属性ごとの消え方', () => {
+  it('かけらは床で止まり、吸い込まれる粒は中心へ戻る', () => {
+    const pool = new ParticlePool(2);
+    pool.spawn({ x: 0, y: 0, vy: 100, gravity: 500, floor: 50, life: 5, kind: 2 });
+    for (let i = 0; i < 60; i++) pool.update(.03);
+    const shard = pool.items[0];
+    expect(shard.y).toBeCloseTo(50, 5); expect(shard.vy).toBe(0); expect(Math.abs(shard.vx)).toBeLessThan(.01);
   });
 });

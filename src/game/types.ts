@@ -26,11 +26,15 @@ export type SpellState = {
   previous: null;
   enemy: { attackKind: 'none'; encounterMode: 'exhibition_success' };
 };
+export const BLENDS = ['amplify', 'burst', 'sustain'] as const;
+export type Blend = typeof BLENDS[number];
 export type Answer = { type?: string; choice?: string; probabilities?: Record<string, number>; confidence?: number; score?: number; noul?: number };
 export type JevReply = { sessionId: string; castId: string; inputRevision: number; model?: string; answers?: Record<string, Answer>; status: string };
 export type Recipe = {
   /** 二つ目の属性語。飾り色として尾や火花、連弾の交互の色に使う。主属性は一つのまま。 */
   accent?: Element | null;
+  /** 二属性の合わせ方。増幅（明るさを上げて白い閃光）、爆発（中間色の破裂）、持続（二色を交互に）。 */
+  blend?: Blend | null;
   version: 'recipe-1'; element: Element; purpose: Purpose; form: Form; trajectory: Trajectory;
   count: number; explicitCount: number | null; defense: number; area: number; duration: number; concentration: number;
   enclosure: boolean; split: boolean; developsPrevious: boolean | null; motionSpeechAligned: boolean | null;

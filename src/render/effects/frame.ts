@@ -4,6 +4,8 @@ import type { GlowSprites } from './sprites';
 import type { ParticlePool } from './particles';
 import type { LiveInput } from '../../game/live-input';
 import type { Point } from '../../game/types';
+import { blendOf } from '../../game/recipe';
+import { mixHue, lighten } from './presets';
 
 export type XY = { x: number; y: number };
 /** 各部品が受け取る、そのコマの道具と値。部品は属性名ではなく色と派手さだけを見る。 */
@@ -29,6 +31,26 @@ export function noise(i: number, seed = 0) {
   const x = Math.sin(i * 127.1 + seed * 311.7) * 43758.5453;
   return x - Math.floor(x);
 }
+/**
+ * 二属性の合わせ方と、それに応じた色。
+ * 増幅は主属性の色のまま明るくし、爆発は二色の色相の中間色を使い、持続は二色を交互に出す。
+ */
+export function mixOf(f: Frame) {
+  const r = f.recipe;
+  const blend = !f.accent || !r.accent ? null : (r.blend ?? blendOf(r.element, r.accent));
+  return {
+    blend,
+    /** 交互に使う二色目。持続型のときだけ入る */
+    alt: blend === 'sustain' ? f.accent : null,
+    /** 明るさの倍率。増幅型だけ1.5倍 */
+    boost: blend === 'amplify' ? 1.5 : 1,
+    /** 本体に使う色。増幅型は主属性の色のまま明るさを1.5倍にし、火花を白くする */
+    pal: blend === 'amplify' ? { ...f.palette, main: lighten(f.palette.main, 1.5), spark: '#ffffff' } : f.palette,
+    /** 爆発型の中間色。ほかの型では null */
+    mid: blend === 'burst' && f.accent ? mixHue(f.palette.main, f.accent.main) : null,
+  };
+}
+
 export const ease = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
 export const smooth = (x: number) => { const p = Math.min(1, Math.max(0, x)); return p * p * (3 - 2 * p); };
 
@@ -36,15 +58,38 @@ export function glow(f: Frame, x: number, y: number, r: number, alpha: number, m
   f.sprites.draw(f.c, x, y, r * f.preset.glowScale, core, main, alpha);
 }
 export function line(f: Frame, a: XY, b: XY, width: number, alpha: number, color = f.palette.main, coreWidth = width * .3) {
-  const c = f.c; c.globalAlpha = alpha; c.lineWidth = width; c.strokeStyle = color;
-  c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
-  if (coreWidth > 0) { c.lineWidth = coreWidth; c.strokeStyle = f.palette.core; c.stroke(); }
+  const c = f.c; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y);
+  // 芯を持つ線は、外側のにじみ、属性色の縁、白い芯の順に重ねる。芯なしの指定（coreWidth=0）は今までどおり一本だけ。
+  if (coreWidth > 0) { c.globalAlpha = alpha * .3; c.lineWidth = width * 2.1; c.strokeStyle = color; c.stroke(); }
+  c.globalAlpha = alpha; c.lineWidth = width; c.strokeStyle = color; c.stroke();
+  if (coreWidth > 0) { c.lineWidth = Math.max(1, coreWidth); c.strokeStyle = f.palette.core; c.stroke(); }
 }
-/** 粒を描く。光の粒、線の火花、かけらの3種類。 */
+/** 同じ道筋を、属性色の縁と白い芯の二重で描く。path は道を組み立てるだけの関数。 */
+export function edged(f: Frame, width: number, alpha: number, path: () => void, color = f.palette.main, core = f.palette.core) {
+  const c = f.c; c.beginPath(); path();
+  c.globalAlpha = alpha * .35; c.lineWidth = width * 2.2; c.strokeStyle = color; c.stroke();
+  c.globalAlpha = alpha; c.lineWidth = width; c.strokeStyle = color; c.stroke();
+  c.globalAlpha = alpha * .95; c.lineWidth = Math.max(.9, width * .38); c.strokeStyle = core; c.stroke();
+}
+/** 粒を描く。光の粒、線の火花、かけら、煙の4種類。 */
 export function drawParticles(f: Frame, alphaScale = 1) {
   const c = f.c;
+  // 煙だけは光を足す描き方では見えないので、先に普通の重ね方で描く。
+  let smoke = false;
+  for (const p of f.pool.items) if (p.alive && p.kind === 3) { smoke = true; break; }
+  if (smoke) {
+    const before = c.globalCompositeOperation;
+    c.globalCompositeOperation = 'source-over';
+    for (const p of f.pool.items) {
+      if (!p.alive || p.kind !== 3) continue;
+      const u = p.life / p.span, size = p.size * (1.6 - u);
+      c.globalAlpha = Math.min(1, u * 1.4) * .26 * alphaScale; c.fillStyle = p.color;
+      c.beginPath(); c.ellipse(p.x, p.y, size, size * .85, 0, 0, Math.PI * 2); c.fill();
+    }
+    c.globalCompositeOperation = before;
+  }
   for (const p of f.pool.items) {
-    if (!p.alive) continue;
+    if (!p.alive || p.kind === 3) continue;
     const u = p.life / p.span, alpha = Math.min(1, u * 1.6) * alphaScale;
     if (p.kind === 1) {
       const len = Math.hypot(p.vx, p.vy) * .03 + 2;

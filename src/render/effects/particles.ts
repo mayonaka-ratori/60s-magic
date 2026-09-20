@@ -5,12 +5,14 @@ export type Particle = {
   life: number; span: number; size: number;
   /** 重力（px/秒²）、空気の抵抗（1秒で残る割合）、吸い込み先 */
   gravity: number; drag: number; pull: number; px: number; py: number;
+  /** 床の高さ。0より大きいとき、そこまで落ちたら止まって転がらなくなる */
+  floor: number;
   color: string; core: string;
-  /** 0=光の粒、1=線の火花、2=かけら */
+  /** 0=光の粒、1=線の火花、2=かけら、3=煙 */
   kind: number; seed: number;
 };
 
-const blank = (): Particle => ({ alive: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, span: 1, size: 2, gravity: 0, drag: 1, pull: 0, px: 0, py: 0, color: '#fff', core: '#fff', kind: 0, seed: 0 });
+const blank = (): Particle => ({ alive: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, span: 1, size: 2, gravity: 0, drag: 1, pull: 0, px: 0, py: 0, floor: 0, color: '#fff', core: '#fff', kind: 0, seed: 0 });
 
 export class ParticlePool {
   readonly items: Particle[] = [];
@@ -48,6 +50,8 @@ export class ParticlePool {
       const drag = p.drag === 1 ? keep : Math.pow(p.drag, dt);
       p.vx *= drag; p.vy *= drag;
       p.x += p.vx * dt; p.y += p.vy * dt;
+      // 床に届いたかけらは、そこで止まって残る。
+      if (p.floor > 0 && p.y >= p.floor) { p.y = p.floor; p.vy = 0; p.gravity = 0; p.vx *= Math.pow(.02, dt); }
     }
   }
 }

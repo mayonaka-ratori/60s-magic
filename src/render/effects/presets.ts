@@ -86,3 +86,37 @@ export function hexToRgb(hex: string) {
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 export const rgba = (hex: string, alpha: number) => { const { r, g, b } = hexToRgb(hex); return `rgba(${r},${g},${b},${clamp(alpha)})`; };
+
+/** 明るさを上げる。増幅型（相反する二属性）で主色をそのまま明るくするのに使う。 */
+export function lighten(hex: string, rate: number) {
+  const { r, g, b } = hexToRgb(hex);
+  const up = (v: number) => Math.round(Math.min(255, v * rate));
+  return `#${[up(r), up(g), up(b)].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+/** 色相だけを取り出す。0〜360。灰色に近いときは0を返す。 */
+function hueOf(r: number, g: number, b: number) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if (!d) return 0;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+/**
+ * 二色の中間色。赤と青を平均すると濁った紫になるので、色相の近い方の回り道で中間を取り、
+ * 鮮やかさと明るさだけを平均する。爆発型（二属性の破裂）の色に使う。
+ */
+export function mixHue(a: string, b: string) {
+  const ca = hexToRgb(a), cb = hexToRgb(b);
+  const ha = hueOf(ca.r, ca.g, ca.b), hb = hueOf(cb.r, cb.g, cb.b);
+  let diff = hb - ha;
+  if (diff > 180) diff -= 360; else if (diff < -180) diff += 360;
+  const h = ((ha + diff / 2) % 360 + 360) % 360;
+  const sl = (c: { r: number; g: number; b: number }) => {
+    const max = Math.max(c.r, c.g, c.b) / 255, min = Math.min(c.r, c.g, c.b) / 255, l = (max + min) / 2, d = max - min;
+    return { s: d ? d / (1 - Math.abs(2 * l - 1)) : 0, l };
+  };
+  const sa = sl(ca), sb = sl(cb), s = (sa.s + sb.s) / 2, l = (sa.l + sb.l) / 2;
+  const cc = (1 - Math.abs(2 * l - 1)) * s, x = cc * (1 - Math.abs((h / 60) % 2 - 1)), m = l - cc / 2;
+  const seg = Math.floor(h / 60) % 6;
+  const [r, g, bb] = [[cc, x, 0], [x, cc, 0], [0, cc, x], [0, x, cc], [x, 0, cc], [cc, 0, x]][seg];
+  return `#${[r, g, bb].map(v => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('')}`;
+}
