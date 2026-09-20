@@ -1,5 +1,8 @@
 import { describe,it,expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { soundIntensity } from '../src/audio/cast-audio';
+import { presets } from '../src/render/effects/presets';
+import type { Recipe } from '../src/game/types';
 import { runInNewContext } from 'node:vm';
 
 type Packet={type:string;pcm?:Int16Array;startMs?:number;value?:number};
@@ -27,5 +30,20 @@ describe('実際の音の取り込み',()=>{
     const silent=processor(48000);silent.feed(14,0);expect(silent.packets.filter(p=>p.type==='audio')).toHaveLength(0);
     const voiced=processor(48000);voiced.feed(16,.1);const audio=voiced.packets.filter(p=>p.type==='audio');
     expect(audio.reduce((n,p)=>n+p.pcm!.length,0)).toBe(224000);expect(audio.at(-1)!.startMs!+audio.at(-1)!.pcm!.length/16).toBe(14000);
+  });
+});
+
+const recipe=():Recipe=>({version:'recipe-1',accent:null,element:'fire',purpose:'attack',form:'orb',trajectory:'straight',count:1,explicitCount:null,
+  defense:.2,area:.2,duration:.5,concentration:0,enclosure:false,split:false,developsPrevious:null,motionSpeechAligned:null,noAttack:false,
+  name:'',source:'local',decisions:{},assistance:[],model:null});
+describe('音の厚み',()=>{
+  it('入力の量が多いほど合成音の派手さが上がる',()=>{
+    const quiet=soundIntensity(recipe(),presets.vivid),busy=soundIntensity(recipe(),presets.vivid,1);
+    expect(busy).toBeGreaterThan(quiet);
+    expect(busy-quiet).toBeCloseTo(.6,5);
+    expect(soundIntensity(recipe(),presets.vivid,0)).toBe(quiet);
+    // 魔法が決まる前でも量だけで厚みが増える。上限の3は超えない。
+    expect(soundIntensity(null,presets.vivid,1)).toBeGreaterThan(soundIntensity(null,presets.vivid));
+    expect(soundIntensity(recipe(),presets.max,1)).toBeLessThanOrEqual(3);
   });
 });

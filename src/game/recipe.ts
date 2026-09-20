@@ -1,8 +1,10 @@
 import { ELEMENTS, FORMS, PURPOSES, TRAJECTORIES, ELEMENT_LABELS, FORM_LABELS, type Answer, type Element, type Form, type Purpose, type Recipe, type Blend, type SpellState, type JevReply } from './types';
 import { clamp } from './motion';
 import { readChant } from './chant-dictionary';
+import { ELEMENT_PATTERNS, PURPOSE_PATTERNS, FORM_PATTERNS, DIGIT_COUNT, KANJI_COUNT, KANJI_NUMBERS } from './spell-words';
 
-const elementWords: Array<[Element,RegExp]> = [['fire',/炎|火|紅蓮|燃/],['ice',/氷|凍|氷晶/],['lightning',/雷|稲妻|電撃|かみなり|カミナリ|カメナリ|亀なり|神鳴/],['wind',/風|嵐|気流/],['light',/光|輝|照ら/],['dark',/闇|影|冥府/]];
+// 語彙は spell-words.ts の表にまとめてある。即時の反応（live-words.ts）も同じ表を読む。
+const elementWords: Array<[Element,RegExp]> = ELEMENT_PATTERNS;
 
 export function affirmativeText(text:string) {
   // 明示的な言い直しは後半を使う。否定した属性・用途を辞書で拾わない。
@@ -11,10 +13,10 @@ export function affirmativeText(text:string) {
     .replace(/守らないで|守るな|守らなくていい/g,'');
 }
 export function explicitCount(text:string):number|null {
-  const digits=text.match(/(\d{1,3})\s*(?:つ|本|個|発|体|枚)/);
+  const digits=text.match(DIGIT_COUNT);
   if(digits)return clamp(Number(digits[1]),1,8);
-  const match=text.match(/([一二三四五六七八九十百])(?:つ|本|個|発|体|枚)/);
-  if(match)return Math.min(8,({'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10,'百':100} as Record<string,number>)[match[1]]);
+  const match=text.match(KANJI_COUNT);
+  if(match)return Math.min(8,KANJI_NUMBERS[match[1]]);
   return null;
 }
 function choice(a:Answer|undefined, allowed:readonly string[]) {
@@ -37,14 +39,9 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   const wordElement=matchedElements[0]?.[0]??null;
   const wordAccent=matchedElements[1]?.[0]??null;
   const noAttack=/攻撃(?:は|を)?しないで|攻撃するな|傷つけないで/.test(state.speech.rawTranscript);
-  let wordPurpose:Purpose|null=null, wordForm:Form|null=null;
-  if(/守|壁|障壁|結界|防げ/.test(text)||noAttack)wordPurpose='defend';
-  else if(/縛|捕ら|閉じ込|動くな|拘束/.test(text))wordPurpose='bind';
-  else if(/我に力|強化|力を貸|強くな/.test(text))wordPurpose='enhance';
-  else if(/撃|穿|貫|倒|燃や|切|裂/.test(text))wordPurpose='attack';
-  if(/壁|障壁/.test(text))wordForm='wall';else if(/結界|包め|覆え/.test(text))wordForm='dome';
-  else if(/波|押し流/.test(text))wordForm='wave';else if(/線|光線|貫|穿/.test(text))wordForm='beam';
-  else if(/球|玉/.test(text))wordForm='orb';else if(/群|分かれ|連弾/.test(text))wordForm='swarm';
+  // 用途と形も表から。並びの上から先に当たったものを使う。
+  const wordPurpose:Purpose|null=noAttack?'defend':PURPOSE_PATTERNS.find(([,re])=>re.test(text))?.[0]??null;
+  let wordForm:Form|null=FORM_PATTERNS.find(([,re])=>re.test(text))?.[0]??null;
   const count=explicitCount(text);
   if(count!==null&&count>1)wordForm='swarm';
   const recipe:Recipe={version:'recipe-1',accent:null,blend:null,element:wordElement??'neutral',purpose:wordPurpose??'attack',

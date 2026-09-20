@@ -1,6 +1,6 @@
 import { clamp } from '../../game/motion';
 import { increase } from './presets';
-import { glow, line, noise, type Frame } from './frame';
+import { few, glow, line, noise, slow, type Frame } from './frame';
 
 const CHARGE_AT = 14, CHARGE_END = 17;
 
@@ -16,7 +16,7 @@ export function drawCharge(f: Frame) {
 
   // 周りから中心へ吸い込まれる粒。横向きの速さを持たせ、渦を巻いて中心へ落ちる。時間とともに数と速さが増える。
   if (t < CHARGE_END - .15) {
-    const rate = increase(preset.chargeParticles, intensity, .6) * (0.3 + charge * 1.2) * (1 + amount * .9);
+    const rate = few(f, increase(preset.chargeParticles, intensity, .6) * (0.3 + charge * 1.2) * (1 + amount * .9));
     const expected = rate * f.dt, n = Math.min(20, Math.floor(expected) + (f.pool.random() < expected % 1 ? 1 : 0));
     for (let i = 0; i < n; i++) {
       const a = f.pool.random() * Math.PI * 2, d = reach * (0.35 + f.pool.random() * .6), swirl = 90 + charge * 120;
@@ -50,7 +50,7 @@ export function drawCharge(f: Frame) {
     }
   }
   // 中心の脈動。周期が短くなり、完成の直前で最大になる。
-  const beat = 0.5 + 0.5 * Math.sin(t * (8 + charge * charge * 26));
+  const beat = 0.5 + 0.5 * Math.sin(t * slow(f, 8 + charge * charge * 26));
   glow(f, o.x, o.y, (5 + charge * 12) * (1 + amount * .5) * (1 + beat * (.3 + amount * .35) * charge), (.35 + charge * .5) * fade + out * .4);
   for (let i = 0; i < 3; i++) { const p = (t * .9 + i / 3) % 1; c.globalAlpha = (1 - p) * charge * fade * .5; c.lineWidth = 1.2; c.strokeStyle = f.palette.core; c.beginPath(); c.ellipse(o.x, o.y, 8 + p * 30, (8 + p * 30) * .5, 0, 0, Math.PI * 2); c.stroke(); }
 }

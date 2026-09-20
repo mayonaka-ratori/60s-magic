@@ -15,6 +15,16 @@ describe('反応の強さ', () => {
     expect(strong).toBeGreaterThan(.9);
     expect(reactionPower(null)).toBeGreaterThan(0);
   });
+  it('同じ魔法でも入力の量が多いほど反応が強い', () => {
+    const quiet = reactionPower(recipe({}));
+    const busy = reactionPower(recipe({}), 1);
+    expect(busy).toBeGreaterThan(quiet);
+    expect(busy - quiet).toBeCloseTo(.3, 2);
+    expect(reactionPower(recipe({}), 0)).toBe(quiet);
+    expect(reactionPower(null, 1)).toBeGreaterThan(reactionPower(null));
+    // 0〜1の範囲は超えない。
+    expect(reactionPower(recipe({ count: 7, area: 1, concentration: 1 }), 1)).toBeLessThanOrEqual(1);
+  });
   it('弱いと怯むだけ、強いと大きく崩れて戻りも遅い', () => {
     const weak = knightPose(18600, true, false, 'attack', .1);
     const strong = knightPose(18600, true, false, 'attack', 1);

@@ -15,7 +15,7 @@ import { GlowLayer } from '@babylonjs/core/Layers/glowLayer';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
 import { colors } from './magic';
-import { getPreset } from './effects/presets';
+import { getPreset, intensityOf, type EffectPreset } from './effects/presets';
 import type { Recipe } from '../game/types';
 
 const smooth=(x:number)=>{const p=clamp(x);return p*p*(3-2*p);};
@@ -25,11 +25,16 @@ const mix=(a:string,b:string,r:number)=>{
   return `rgb(${Math.round(ar+(br-ar)*r)},${Math.round(ag+(bg-ag)*r)},${Math.round(ab+(bb-ab)*r)})`;
 };
 
-/** 入力の量から反応の強さ（0〜1）を出す。個数、範囲、収束が大きいほど大きく崩れる。 */
-export function reactionPower(recipe:Recipe|null|undefined) {
-  if(!recipe)return .45;
+/**
+ * 魔法から反応の強さ（0〜1）を出す。個数、範囲、収束が大きいほど大きく崩れる。
+ * 入力の量（たくさん描き、たくさん唱えたか）は派手さの計算を通して足す。最大で0.3ほど強くなる。
+ */
+export function reactionPower(recipe:Recipe|null|undefined,amount=0,preset:EffectPreset=getPreset(null)) {
+  const target=recipe??null;
+  const fromInput=clamp(intensityOf(target,preset,amount)-intensityOf(target,preset))*.5;
+  if(!recipe)return clamp(.45+fromInput);
   const many=clamp((recipe.count-1)/5),wide=clamp((recipe.area-.2)/.8),focus=clamp(recipe.concentration);
-  return clamp(.16+many*.42+wide*.22+focus*.26);
+  return clamp(.16+many*.42+wide*.22+focus*.26+fromInput);
 }
 
 export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45,calm=false) {
@@ -315,11 +320,12 @@ export class Knight {
   }
   /** 控えめモード。白飛びを消し、残像と輪郭の発光を弱める。 */
   setCalm(calm:boolean){this.calm=calm;}
-  render(ms:number,active:boolean,recipe:Recipe|null,power?:number) {
+  /** amount は入力の量（0〜1）。同じ魔法でも、たくさん描いて唱えたほど反応が強くなる。 */
+  render(ms:number,active:boolean,recipe:Recipe|null,amount=0,power?:number) {
     // 表示の大きさが変わっていたら、描く前に合わせ直す。
     const size=`${Math.max(1,this.canvas.clientWidth)}x${Math.max(1,this.canvas.clientHeight)}`;
     if(size!==this.cssSize)this.resize();
-    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe),this.calm);
+    const pose=knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe,amount),this.calm);
     const p=blendPose(pose.weights);
     this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7);
     this.root.position.y=p.crouch+pose.breath*4;

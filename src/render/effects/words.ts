@@ -1,7 +1,7 @@
 import { clamp, getNodes } from '../../game/motion';
 import { spokenElements, type LiveWord } from '../../game/live-words';
 import { increase, type Palette } from './presets';
-import { glow, noise, smooth, type Frame, type XY } from './frame';
+import { few, glow, noise, smooth, type Frame, type XY } from './frame';
 
 /** 言葉の反応が残る秒数。これを過ぎた言葉は描かない。 */
 const LIFE = 2.6;
@@ -21,7 +21,7 @@ function spots(f: Frame, max: number): XY[] {
 
 /** 言葉の色で、手元と線から粒を噴き出す。 */
 function burst(f: Frame, pal: Palette, strength = 1) {
-  const total = Math.min(MAX_BURST, Math.round(increase(22, f.intensity, .7) * strength));
+  const total = Math.min(MAX_BURST, Math.round(few(f, increase(22, f.intensity, .7) * strength)));
   const places = spots(f, 9);
   for (let i = 0; i < total; i++) {
     const at = places[i % places.length], a = f.pool.random() * Math.PI * 2, speed = (40 + f.pool.random() * 130) * (1 + f.intensity * .2);
@@ -43,7 +43,7 @@ export function drawWordReactions(f: Frame) {
     if (u >= 0) f.once(`word-${w.id}`, () => {
       if (w.kind === 'element') burst(f, pal, 1);
       else if (w.kind === 'count') burst(f, pal, .5);
-      else if (w.purpose === 'enhance') for (let i = 0; i < Math.min(MAX_BURST, Math.round(increase(14, f.intensity))); i++)
+      else if (w.purpose === 'enhance') for (let i = 0; i < Math.min(MAX_BURST, Math.round(few(f, increase(14, f.intensity)))); i++)
         f.pool.spawn({ x: o.x + (f.pool.random() - .5) * 70, y: o.y + 24, vx: (f.pool.random() - .5) * 20, vy: -60 - f.pool.random() * 70, life: .8 + f.pool.random() * .6, size: 1.2 + f.pool.random() * 1.4, drag: .6, color: pal.spark, core: pal.core, kind: 0 });
       else burst(f, pal, .35);
     });

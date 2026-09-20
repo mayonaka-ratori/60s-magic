@@ -1,5 +1,5 @@
 import { clamp, getNodes } from '../../game/motion';
-import { glow, ease, type Frame } from './frame';
+import { few, glow, ease, slow, type Frame } from './frame';
 import { along, lastStrokes, ringClosure, spawnCount, speedRatio, tipSpeed, type Vec } from './strokes-math';
 
 const CHARGE_AT = 14;
@@ -33,7 +33,7 @@ export function drawStrokeReactions(f: Frame) {
     f.once('stroke-' + id, () => {
       openedAt.set(id, t);
       const head = at(stroke[0]);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0, n = Math.round(few(f, 5)); i < n; i++) {
         const a = f.pool.random() * Math.PI * 2, speed = 40 + f.pool.random() * 70;
         f.pool.spawn({ x: head.x, y: head.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed - 20, life: .45 + f.pool.random() * .4,
           size: 1 + f.pool.random() * 1.4, drag: .3, color: palette.main, core: palette.core, kind: 0 });
@@ -58,7 +58,7 @@ export function drawStrokeReactions(f: Frame) {
     const ratio = speedRatio(speed);
     if (ratio > 0) {
       const tip = at(current[current.length - 1]);
-      const n = spawnCount(ratio * (14 + intensity * 14), f.dt, () => f.pool.random(), 3);
+      const n = spawnCount(few(f, ratio * (14 + intensity * 14)), f.dt, () => f.pool.random(), 3);
       for (let i = 0; i < n; i++) {
         const spread = (f.pool.random() - .5) * 1.1, fly = (90 + ratio * 320) * (.6 + f.pool.random() * .8);
         const vx = (dir.x * Math.cos(spread) - dir.y * Math.sin(spread)) * fly;
@@ -79,7 +79,7 @@ export function drawStrokeReactions(f: Frame) {
       if (ring) f.once('ring-' + id, () => {
         closedAt.set(id, t);
         const middle = at(ring.center);
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0, n = Math.round(few(f, 6)); i < n; i++) {
           const a = f.pool.random() * Math.PI * 2;
           f.pool.spawn({ x: middle.x, y: middle.y, vx: Math.cos(a) * 30, vy: Math.sin(a) * 30 - 30, life: .7 + f.pool.random() * .5,
             size: 1.2 + f.pool.random() * 1.4, drag: .35, color: palette.main, core: palette.core, kind: 0 });
@@ -106,7 +106,7 @@ export function drawStrokeReactions(f: Frame) {
   if (voice > .03) {
     const nodes = getNodes(f.points, 5);
     for (let i = 0; i < nodes.length; i++) {
-      const beat = .5 + .5 * Math.sin(t * (5 + voice * 22) + i * 1.3);
+      const beat = .5 + .5 * Math.sin(t * slow(f, 5 + voice * 22) + i * 1.3);
       const p = at(nodes[i]);
       glow(f, p.x, p.y, (3 + voice * 7) * (.7 + beat * .6), voice * (.25 + beat * .35) * boost);
     }

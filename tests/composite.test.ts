@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { BLOOM_BASE, BLOOM_CALM_PEAK, FPS_BACK, FPS_DROP, POST_FROM, POST_TO, RIPPLE_SECONDS, giveUpDecision, GIVE_UP_WARMUP, GIVE_UP_FRAMES,
-  bloomDecision, bloomWeightAt, compositeSettings, layerMotion, postHeavyActive, rippleAt, shouldUploadKnight } from '../src/render/composite';
+  SCALE_MAX, SCALE_MIN, bloomDecision, bloomWeightAt, compositeSettings, layerMotion, postHeavyActive, rippleAt, shouldUploadKnight } from '../src/render/composite';
 import { IMPACT_AT, RELEASE_AT } from '../src/render/effects/screen';
 
 describe('衝撃波の輪', () => {
@@ -124,15 +124,44 @@ describe('URLの指定', () => {
     expect(compositeSettings('?scale=abc').scale).toBeNull();
     expect(compositeSettings('?scale=99').scale).toBe(4);
   });
+  it('?scale= の下限は0.5。小さすぎる指定でも解像度が跳ね上がらない', () => {
+    expect(compositeSettings('?scale=0.000001').scale).toBe(SCALE_MIN);
+    expect(compositeSettings('?scale=0.2').scale).toBe(SCALE_MIN);
+    expect(compositeSettings('?scale=0.5').scale).toBe(SCALE_MIN);
+    expect(compositeSettings('?scale=1e-9').scale).toBe(SCALE_MIN);
+    expect(SCALE_MIN).toBe(.5);
+    expect(SCALE_MAX).toBe(4);
+    // 範囲の中の指定はそのまま通る。
+    expect(compositeSettings('?scale=2').scale).toBe(2);
+  });
 });
 
 describe('遅すぎるときは合成を諦める', () => {
+  /** 山場の外、ブルームは既に切れている状態。 */
+  const calmTime = 5, bloomOff = false;
   it('慣らしの間は数えず、低いfpsが続いたときだけ止める', () => {
-    expect(giveUpDecision(10, 0, GIVE_UP_WARMUP)).toEqual({ lowFrames: 0, giveUp: false });
+    expect(giveUpDecision(10, 0, GIVE_UP_WARMUP, calmTime, bloomOff)).toEqual({ lowFrames: 0, giveUp: false });
     let low = 0, giveUp = false;
-    for (let i = 0; i < GIVE_UP_FRAMES; i++) ({ lowFrames: low, giveUp } = giveUpDecision(10, low, GIVE_UP_WARMUP + 1 + i));
+    for (let i = 0; i < GIVE_UP_FRAMES; i++) ({ lowFrames: low, giveUp } = giveUpDecision(10, low, GIVE_UP_WARMUP + 1 + i, calmTime, bloomOff));
     expect(giveUp).toBe(true);
-    expect(giveUpDecision(40, 30, 500)).toEqual({ lowFrames: 0, giveUp: false });
-    expect(giveUpDecision(NaN, 30, 500)).toEqual({ lowFrames: 0, giveUp: false });
+    expect(giveUpDecision(40, 30, 500, calmTime, bloomOff)).toEqual({ lowFrames: 0, giveUp: false });
+    expect(giveUpDecision(NaN, 30, 500, calmTime, bloomOff)).toEqual({ lowFrames: 0, giveUp: false });
+  });
+  it('山場の間は判定を止め、数も減らさない', () => {
+    for (const t of [POST_FROM, 17.5, IMPACT_AT, POST_TO - .01]) {
+      expect(giveUpDecision(10, GIVE_UP_FRAMES - 1, 500, t, bloomOff)).toEqual({ lowFrames: GIVE_UP_FRAMES - 1, giveUp: false });
+    }
+    // 山場の外では今まで通り働く。
+    expect(giveUpDecision(10, GIVE_UP_FRAMES - 1, 500, POST_TO, bloomOff).giveUp).toBe(true);
+    expect(giveUpDecision(10, GIVE_UP_FRAMES - 1, 500, POST_FROM - .01, bloomOff).giveUp).toBe(true);
+  });
+  it('ブルームが付いている間はやめない（先にブルームを切る）', () => {
+    let low = 0, giveUp = false;
+    for (let i = 0; i < GIVE_UP_FRAMES * 2; i++) ({ lowFrames: low, giveUp } = giveUpDecision(10, low, GIVE_UP_WARMUP + 1 + i, calmTime, true));
+    expect(giveUp).toBe(false);
+    expect(low).toBe(0);
+    // ブルームが切れた後に、あらためて数え始める。
+    for (let i = 0; i < GIVE_UP_FRAMES; i++) ({ lowFrames: low, giveUp } = giveUpDecision(10, low, 500, calmTime, false));
+    expect(giveUp).toBe(true);
   });
 });

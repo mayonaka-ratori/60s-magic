@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { liveWords, spokenElements, resetLiveWords } from '../src/game/live-words';
-import { affirmativeText } from '../src/game/recipe';
+import { liveWords, spokenElements, spokenForm, spokenPurpose, resetLiveWords } from '../src/game/live-words';
+import { affirmativeText, makeRecipe } from '../src/game/recipe';
 import { SpeechBook } from '../src/game/speech-book';
-import type { SpeechEntry } from '../src/game/types';
+import { CastSession } from '../src/game/session';
+import type { Recipe, SpeechEntry, SpellState } from '../src/game/types';
 
 // 言葉の「初めて現れた時刻」の覚え書きは試験の間で持ち越さない。
 beforeEach(() => resetLiveWords());
@@ -137,5 +138,56 @@ describe('音声の記録の途中結果', () => {
     expect(book.live()).toHaveLength(1);
     expect(book.snapshot()).toHaveLength(0);
     expect(liveWords(book.live()).map(w => w.element)).toEqual(['fire']);
+  });
+});
+
+describe('即時の反応と確定の判定が同じ語彙を見る', () => {
+  // 確定側（makeRecipe）に渡す状態。線は最小限だけ入れる。
+  function state(text: string): SpellState {
+    const s = new CastSession(() => 0);
+    s.motion.add(0.2, 0.5, 0); s.motion.add(0.5, 0.55, 100);
+    s.speech.add({ id: 1, revision: 1, startMs: 11000, endMs: 13999, text, final: true, stability: 1, source: 'typed' });
+    return s.freeze();
+  }
+  // 言葉から決まったときだけ比べる。線から決めた分は即時の反応には無いので外す。
+  const fromWord = <T,>(r: Recipe, key: 'element' | 'purpose' | 'form'): T | null =>
+    (r.decisions[key].source === 'word' ? r[key] : null) as T | null;
+
+  const sentences = [
+    '光線を撃て', 'かみなりよ', '燃やせ', '炎よ、三つの球で撃て', '氷の壁で守れ',
+    '闇よ、結界となれ', '風よ、すべてを押し流せ', '炎ではなく氷よ、壁となれ',
+    '炎よ、雷と共に撃て', '雷よ、七つに分かれろ', '電撃で倒せ', '我に力を', '光よ、貫け',
+  ];
+  it.each(sentences)('%s は属性・飾り色・用途・形が確定側と一致する', text => {
+    resetLiveWords();
+    const words = liveWords([say(text)]);
+    const recipe = makeRecipe(state(text));
+    const { main, accent } = spokenElements(words);
+    expect(main?.element ?? null).toBe(fromWord(recipe, 'element'));
+    // 飾り色は主属性が言葉から決まったときだけ比べる。
+    if (recipe.decisions.element.source === 'word') expect(accent?.element ?? null).toBe(recipe.accent);
+    expect(spokenPurpose(words)).toBe(fromWord(recipe, 'purpose'));
+    expect(spokenForm(words)).toBe(fromWord(recipe, 'form'));
+  });
+  it('前は食い違っていた言い方も、いまは即時の反応で属性が出る', () => {
+    expect(spokenElements(liveWords([say('光線を撃て')])).main?.element).toBe('light');
+    resetLiveWords();
+    expect(spokenElements(liveWords([say('かみなりよ')])).main?.element).toBe('lightning');
+    resetLiveWords();
+    expect(spokenElements(liveWords([say('燃やせ')])).main?.element).toBe('fire');
+  });
+});
+
+describe('言葉への即時反応：前に語が足されても番号が動かない', () => {
+  it('「雷よ」の後に「炎よ雷よ」と伸びても、雷の番号と時刻は変わらない', () => {
+    const first = liveWords([say('雷よ', { final: false, revision: 1, endMs: 2000 })]);
+    const lightning = first.find(w => w.element === 'lightning')!;
+    const second = liveWords([say('炎よ雷よ', { final: false, revision: 2, endMs: 5000 })]);
+    const after = second.find(w => w.element === 'lightning')!;
+    expect(after.id).toBe(lightning.id);
+    expect(after.atMs).toBe(2000);
+    // 前に足された炎は、いま初めて聞こえた言葉として扱う。
+    expect(second.find(w => w.element === 'fire')?.atMs).toBe(5000);
+    expect(new Set(second.map(w => w.id)).size).toBe(second.length);
   });
 });

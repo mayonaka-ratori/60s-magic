@@ -8,6 +8,11 @@ const RECORDING_END_MS=14750;
 /** 詠唱中に曲を下げる量。仕様の6〜10dBの中を取る。 */
 const DUCK_DB=8;
 
+/** 合成音の厚みに使う派手さ。入力の量（たくさん描き、たくさん唱えたか）も見る。時刻は変えない。 */
+export function soundIntensity(recipe:Recipe|null,preset:EffectPreset=getPreset(null),amount=0) {
+  return intensityOf(recipe,preset,amount);
+}
+
 /**
  * 用意した音素材があればそれを鳴らし、無ければ短い音と雑音を合成する。
  * 曲と効果音は別の経路にまとめ、どちらも一つの音量で制御する。録音用の接続とは独立。
@@ -62,14 +67,14 @@ export class CastAudio {
     if(version===this.previewVersion&&!this.running&&this.enabled&&this.context?.state==='running')this.play('complete',null);
   }
   private clearSources(){for(const source of this.sources){try{source.stop();}catch{/* 既に終了した音 */}source.disconnect();}this.sources.clear();}
-  update(ms:number,recipe:Recipe|null,preset:EffectPreset=getPreset(null)) {
+  update(ms:number,recipe:Recipe|null,preset:EffectPreset=getPreset(null),amount=0) {
     if(!this.running)return;
     const cues=dueSounds(this.lastMs,ms,this.microphone);this.lastMs=ms;
     if(this.ducked&&ms>=RECORDING_END_MS)this.setDuck(false,.4);
     if(!this.enabled||!this.volume||this.context?.state!=='running'||!this.master)return;
     // 素材の読み込みや音の許可が開始より遅れても、そのときの進み具合の位置から曲を始める。
     if(!this.bgmStarted&&this.bank.bgm){this.startBgm(ms/1000);this.bgmStartedAtMs=ms;}
-    const intensity=intensityOf(recipe,preset);
+    const intensity=soundIntensity(recipe,preset,amount);
     for(const cue of cues){const sample=this.play(cue.name,recipe,intensity);this.events.push({name:cue.name,atMs:ms,sample});}
   }
   /** 曲を下げる／戻す。下げるときは速く、戻すときはゆっくり。 */

@@ -2,7 +2,7 @@ import { clamp } from '../../game/motion';
 import { increase } from './presets';
 import { IMPACT_AT } from './screen';
 import { hitDelay } from './release';
-import { glow, noise, ease, mixOf, type Frame } from './frame';
+import { few, glow, noise, ease, mixOf, type Frame } from './frame';
 
 /**
  * 地面の跡。命中の真下に属性ごとの跡を出し、2秒かけて薄れさせる。
@@ -71,7 +71,7 @@ export function drawImpact(f: Frame) {
 
   /** 弾1発ぶんの粒。scale で量を変える。 */
   const burst = (scale: number, at: { x: number; y: number }) => {
-    const n = Math.round(increase(preset.impactParticles, intensity, .5) * (violent ? 1 : .45) * scale);
+    const n = Math.round(few(f, increase(preset.impactParticles, intensity, .5) * (violent ? 1 : .45) * scale));
     for (let i = 0; i < n; i++) {
       const a = f.pool.random() * Math.PI * 2, speed = (60 + f.pool.random() * 380) * (1 + intensity * .35) * (violent ? 1 : .5);
       // 持続型は粒の半分を二色目に、増幅型は白い閃光の粒にする。飛び方は属性ごとのまま。
@@ -97,7 +97,7 @@ export function drawImpact(f: Frame) {
 
   // 余韻。命中の少し後に、属性ごとの消え方で粒を足す。出し方より消し方の方が属性が伝わる。
   if (impact >= .3) f.once('afterglow', () => {
-    const n = Math.round(increase(preset.afterglowParticles, intensity, .6));
+    const n = Math.round(few(f, increase(preset.afterglowParticles, intensity, .6)));
     for (let i = 0; i < n; i++) {
       const pal = mix.alt && i % 2 ? mix.alt : pal0, rnd = () => f.pool.random();
       const x = g.x + (rnd() - .5) * radius * 3, y = g.y + (rnd() - .8) * radius * 2;
@@ -167,7 +167,7 @@ export function drawImpact(f: Frame) {
   }
   // 白い火花の線。一瞬で外へ。
   if (impact < .8 && violent) {
-    const n = Math.round(increase(22, intensity, .6)), step = mix.alt ? 2 : 1;
+    const n = Math.round(few(f, increase(22, intensity, .6))), step = mix.alt ? 2 : 1;
     // 持続型のとき、火花の線は一本おきに二色目で描く。
     for (let pass = 0; pass < step; pass++) {
       c.strokeStyle = pass && mix.alt ? mix.alt.main : pal0.core; c.lineWidth = 1.4; c.globalAlpha = (1 - impact / .8) * .85; c.beginPath();

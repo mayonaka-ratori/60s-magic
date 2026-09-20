@@ -50,7 +50,8 @@ export class CastScene {
     const width=this.canvas.clientWidth,height=this.canvas.clientHeight;
     // 世界の時計は一つ。命中の停止は騎士と術式にも効く。
     const worldMs=ready?ms:this.effects.effectMsOf(ms,recipe,live.amount);
-    this.knight.render(worldMs,!ready,recipe);
+    // 入力の量を騎士へも渡す。同じ魔法でも、たくさん描いて唱えたほど大きく崩れる。
+    this.knight.render(worldMs,!ready,recipe,live.amount);
     const complete=ms>=14000&&!ready;
     const shape=ready?[]:points.length?points:complete?[{x:.5,y:.66,t:0,hand:0,stroke:0}]:[];
     const key=`${this.revision}:${ready}:${complete}:${shape.length}:${shape.at(-1)?.t}:${shape.at(-1)?.x}:${shape.at(-1)?.y}`;

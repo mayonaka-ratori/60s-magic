@@ -33,11 +33,13 @@ export function wobble(x: number, seed: number) {
   return (a + (b - a) * f) * 2 - 1;
 }
 
-/** 命中で止める長さ。派手さと入力の量で弱、強、とどめの三段に分かれる。 */
-export function hitStopOf(preset: EffectPreset, intensity: number, amount = 0, calm = false) {
+/**
+ * 命中で止める長さ。派手さだけで弱、強、とどめの三段に分かれる。
+ * 入力の量は派手さ（intensityOf）の中で効くので、ここでは足さない。とどめは派手さが上限の3のときだけ。
+ */
+export function hitStopOf(preset: EffectPreset, intensity: number, calm = false) {
   if (calm || preset.hitStop <= 0) return 0;
-  const power = intensity + clamp(amount);
-  return power >= 3 ? HIT_STOPS.finish : power >= 1.6 ? HIT_STOPS.strong : HIT_STOPS.weak;
+  return intensity >= 3 - 1e-6 ? HIT_STOPS.finish : intensity >= 1.6 ? HIT_STOPS.strong : HIT_STOPS.weak;
 }
 
 /** 衝撃の強さ。0〜1。放出と命中で加わり、時間とともに減る。揺れはこの二乗で出す。 */
@@ -49,16 +51,15 @@ export function shockAt(t: number, release: number, impact: number) {
 }
 
 /** 画面全体にかかる効果。時刻と設定から決まる純粋な計算。攻撃以外は揺らさない。
- *  amount は入力の量（0〜1、省略可）。多いほど暗転が深く、放出の揺れが強くなる。
+ *  入力の量は派手さ（intensityOf）に入っているので、ここでは見ない。6番目の引数は昔の呼び出しのために残してあるだけ。
  *  calm は控えめモード。揺れ、傾き、寄り、停止をなくし、閃光を3分の1にする。 */
-export function screenState(t: number, intensity: number, preset: EffectPreset, purpose: string | null, seed = 0, amount = 0, calm = false): ScreenState {
+export function screenState(t: number, intensity: number, preset: EffectPreset, purpose: string | null, seed = 0, _amount = 0, calm = false): ScreenState {
   const violent = purpose === 'attack' || purpose === null;
-  const input = clamp(amount);
   // 攻撃は全部、守りは弱く、それ以外は揺らさない。
   const weight = calm ? 0 : violent ? 1 : purpose === 'defend' ? .3 : 0;
   const shakeMax = increase(preset.shake, intensity, .6) * weight;
   // 放出は小さく、命中は大きい。強さは時間とともに減り、その二乗で揺らす。
-  const shock = shockAt(t, .55 * (1 + input * .3), 1);
+  const shock = shockAt(t, .55, 1);
   const power = shock * shock;
   // 最初の一瞬だけ打撃の向きへ押す。放出は上へ、命中は騎士のいる右へ。
   const kickY = t >= RELEASE_AT ? -shakeMax * .45 * Math.max(0, 1 - (t - RELEASE_AT) / .06) : 0;
@@ -74,7 +75,7 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   let flash = 0;
   if (t >= RELEASE_AT) flash = Math.max(flash, flashMax * .55 * Math.max(0, 1 - (t - RELEASE_AT) / .16));
   if (t >= IMPACT_AT) flash = Math.max(flash, flashMax * (violent ? 1 : .5) * Math.max(0, 1 - (t - IMPACT_AT) / .16));
-  const darkenMax = preset.darken * clamp(.5 + intensity * .2, 0, 1) * (1 + input * .4);
+  const darkenMax = preset.darken * clamp(.5 + intensity * .2, 0, 1);
   // 14秒から暗くなり、放出で一度抜け、命中の後にゆっくり戻る。
   const charge = clamp((t - 14) / 1.2), back = clamp((t - IMPACT_AT - .8) / 1.6);
   const darken = t < RELEASE_AT ? darkenMax * charge : darkenMax * (1 - clamp((t - RELEASE_AT) / .25)) * .3 + darkenMax * .45 * clamp((t - RELEASE_AT) / .25) * (1 - back);
@@ -91,7 +92,7 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   const saturate = 1 - .4 * pale;
 
   return { shakeX, shakeY, flash: clamp(flash), darken: clamp(darken), chromatic,
-    hitStop: hitStopOf(preset, intensity, input, calm), rotate, zoom, blackout, saturate };
+    hitStop: hitStopOf(preset, intensity, calm), rotate, zoom, blackout, saturate };
 }
 
 /** 命中の一瞬だけ世界の時計を止める。演出も騎士も術式も同じこの時刻を見る。 */
