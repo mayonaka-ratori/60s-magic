@@ -60,6 +60,15 @@ const SPELL_TERMS: readonly SpellTerm[] = [
   { word: 'カメナリ', kind: 'element', element: 'lightning' },
   { word: '亀なり', kind: 'element', element: 'lightning' },
   { word: '神鳴', kind: 'element', element: 'lightning' },
+  // MacのGPUの認識（手掛かりなし）では「カメラリ」「かめなり」のように「み」「な」が崩れる。
+  // 「カメナリを7つに分かれろ」と「カメラリオ」が実際の記録にあったので、その揺れを全部拾う。
+  { word: 'かめなり', kind: 'element', element: 'lightning' },
+  { word: 'カメラリ', kind: 'element', element: 'lightning' },
+  { word: 'かめらり', kind: 'element', element: 'lightning' },
+  { word: 'カミラリ', kind: 'element', element: 'lightning' },
+  { word: 'かみらり', kind: 'element', element: 'lightning' },
+  { word: '神なり', kind: 'element', element: 'lightning' },
+  { word: '神成', kind: 'element', element: 'lightning' },
   { word: '風', kind: 'element', element: 'wind' },
   { word: '嵐', kind: 'element', element: 'wind' },
   { word: '気流', kind: 'element', element: 'wind' },
