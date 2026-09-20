@@ -33,9 +33,18 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <div class="loading" id="loading">魔法の準備をしています…</div>`;
 
 const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
-const ATTRACT_AFTER_MS=30000;
+const params=new URLSearchParams(location.search);
+// 会場で待ち時間を変えられるよう、秒数をURLでも指定できる。5秒から10分の間に収める。
+const seconds=(name:string,fallback:number)=>{
+  const value=Number(params.get(name));
+  return Number.isFinite(value)&&value>0?Math.min(600,Math.max(5,value))*1000:fallback;
+};
+// 誰も触らない時間が続いたら見本を自動で流す。
+const ATTRACT_AFTER_MS=seconds('attract',30000);
+// 結果は次の人の開始操作まで残す。ただし誰も居なくなった場合に備え、長く待ったらタイトルへ戻す。
+const RESULT_IDLE_MS=seconds('resultIdle',180000);
 // 確認用の表示。遊ぶ人には出さず、?dev=1 を付けたときだけ出す。
-const devView=new URLSearchParams(location.search).has('dev');
+const devView=params.has('dev');
 if(devView)document.body.dataset.dev='1';
 const show=(id:string,visible:boolean)=>{el(id).hidden=!visible;};
 el('app').dataset.screen='ready';
@@ -56,7 +65,7 @@ let session:CastSession|null=null,camera:HandCamera|null=null,voice:VoiceInput|n
 let cursors:Array<{x:number;y:number}>=[],lastHandAt=0,mode='pointer',demo=false,preparing=false;
 let endedInput=false,requested=false,resultShown=false,lastUi=0,feedback:string|null=null,revealed=false,damaged=false;
 let requestAbort:AbortController|null=null;
-let idleSince=performance.now(),attract=false;
+let idleSince=performance.now(),attract=false,attractReturn:ReturnType<typeof setTimeout>|undefined;
 let status:{jev:boolean;speech:boolean;handModel:boolean;model:string;speechProvider:'local'|'google'|'off';localSpeech:{state:string;message:string;model:string;device:string}|null}={jev:false,speech:false,handModel:false,model:'',speechProvider:'local',localSpeech:null};
 let serviceNotice='',prepareVersion=0;
 const frameIntervals:number[]=[],inputLags:number[]=[];let lastFrame=performance.now(),pendingInputAt=0;
@@ -76,14 +85,14 @@ window.addEventListener('pointerdown',()=>{if(attract&&session&&demo)toReady();}
 
 function cleanup(){sound.stop();camera?.dispose();camera=null;voice?.dispose();voice=null;requestAbort?.abort();requestAbort=null;cursors=[];}
 function toReady(message='') {
-  el('app').dataset.screen='ready';attract=false;markActive();
+  el('app').dataset.screen='ready';attract=false;clearTimeout(attractReturn);markActive();
   prepareVersion++;session?.cancel();cleanup();session=null;preparing=false;
   show('welcome',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);show('reveal',false);
   revealed=false;el('reveal').classList.remove('in');el('deadline').style.opacity='0';el('app').dataset.deadline='';el('result').classList.remove('name-only');
   el<HTMLButtonElement>('start').disabled=false;el<HTMLButtonElement>('demo').disabled=false;el('notice').textContent=message;
 }
 async function begin(isDemo=false) {
-  if(preparing)return;preparing=true;markActive();const version=++prepareVersion;
+  if(preparing)return;preparing=true;markActive();clearTimeout(attractReturn);const version=++prepareVersion;
   void sound.prepare();
   cleanup();session=null;demo=isDemo;mode=(document.querySelector<HTMLInputElement>('input[name="mode"]:checked')?.value??'pointer');
   el<HTMLButtonElement>('start').disabled=true;el<HTMLButtonElement>('demo').disabled=true;el('notice').textContent='準備しています…';
@@ -162,8 +171,9 @@ function updateUi() {
   };
   const label=labels[phase];if(label){el('instruction').textContent=label[0];el('hint').textContent=label[1];}
   if(t>=2&&t<6&&!summarizeMotion(session.motion.raw).hasMovement)el('hint').textContent=mode==='pointer'?'画面を押したまま、少し動かそう':'片手を少し動かそう';
-  if(mode==='camera'&&t<14&&!cursors.length&&performance.now()-lastHandAt>800)el('hint').textContent='手を画面の前へ。描いた線は残っています';
   if(phase==='chant'&&!session.speech.snapshot().length)el('hint').textContent='たとえば「雷よ、七つに分かれろ」';
+  // 手が見つからないことは、描けていない状態そのものなので一番強く出す。
+  if(mode==='camera'&&t<14&&!cursors.length&&performance.now()-lastHandAt>800)el('hint').textContent='手を画面の前へ。描いた線は残っています';
   el('service-notice').textContent=serviceNotice;
   if(t>=14)show('voice-label',false);
   showReveal(t);
@@ -201,8 +211,10 @@ function finish() {
   el('spell-name').textContent=r.name;el('spell-description').textContent=`${ELEMENT_LABELS[r.element]}の${PURPOSE_LABELS[r.purpose]}。${r.count>1?`${r.count}つの`:''}${FORM_LABELS[r.form]}のかたち。`;
   el('transcript').textContent=session.state?.speech.rawTranscript?`「${session.state.speech.rawTranscript}」${session.state.speech.status==='typed'?'（文字で入力）':''}`:'詠唱なし。描いた線から魔法をつくりました。';
   el('app').dataset.screen='result';show('hud',false);show('timer',false);drawResult();
+  // 結果が出た時点から数え直す。ここから誰も触らなければ、いずれタイトルへ戻る。
+  markActive();
   // 自動で流した見本は、余韻を見せてからタイトルへ戻す。本人が遊んだ結果は消さない。
-  if(attract)setTimeout(()=>{if(attract)toReady();},8000);
+  if(attract){clearTimeout(attractReturn);attractReturn=setTimeout(()=>{if(attract)toReady();},8000);}
 }
 
 function drawResult(){if(session?.recipe)resultMagic.thumbnail(session.motion.display,colors[session.recipe.element],{width:magic.canvas.clientWidth,height:magic.canvas.clientHeight});}
@@ -236,8 +248,10 @@ window.addEventListener('pagehide',()=>{clearInterval(statusTimer);cleanup();});
 
 function animate(now:number) {
   requestAnimationFrame(animate);
-  if(el('app').dataset.screen==='ready'&&!preparing&&el('sheet').hidden&&el('loading').hidden&&now-idleSince>ATTRACT_AFTER_MS) {
-    attract=true;markActive();void begin(true);
+  if(!preparing&&el('sheet').hidden&&el('loading').hidden) {
+    const screen=el('app').dataset.screen,idle=now-idleSince;
+    if(screen==='ready'&&idle>ATTRACT_AFTER_MS){attract=true;markActive();void begin(true);}
+    else if(screen==='result'&&idle>RESULT_IDLE_MS)toReady();
   }
   if(session&&!resultShown){frameIntervals.push(now-lastFrame);if(frameIntervals.length>4000)frameIntervals.shift();}
   lastFrame=now;
