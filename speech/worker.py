@@ -53,6 +53,9 @@ def create_model():
         raise ValueError('LOCAL_SPEECH_DEVICE は auto、cuda、cpu のいずれかを設定してください')
     threads = max(1, min(8, os.cpu_count() or 4))
     candidates = []
+    # MacにはNVIDIAのGPUがないので、autoのときはCPUだけを試す。
+    if requested == 'auto' and sys.platform == 'darwin':
+        requested = 'cpu'
     if requested in ('auto', 'cuda'):
         candidates.append(('cuda', 'int8_float16'))
     if requested in ('auto', 'cpu'):
