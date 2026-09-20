@@ -55,6 +55,6 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
   await page.evaluate(()=>{(window as any).__soundProbe.peak=0;});await page.locator('#sound-toggle').click();
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.peak),{timeout:6500,intervals:[50]}).toBeGreaterThan(.0001);
   await page.locator('#cancel').click();await expect(page.locator('#welcome')).toBeVisible();
-  await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.rms),{timeout:300,intervals:[20]}).toBeLessThan(.00001);
+  await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.rms),{timeout:1500,intervals:[20]}).toBeLessThan(.00001); // 中止時は曲を0.35秒かけて絞る
   expect(errors).toEqual([]);
 });

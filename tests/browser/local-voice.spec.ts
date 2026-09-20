@@ -5,8 +5,9 @@ import { writeFile } from 'node:fs/promises';
 
 test('PC内の実際の認識処理で最後の声を取り込み、描いた線と一緒に発動する',async()=>{
   test.skip(!existsSync('.local-speech/test-audio/browser-seven.wav'),'npm run test:speech と node scripts/prepare-browser-audio.mjs で確認用の音を用意');
+  const gpuArgs=process.platform==='win32'?['--use-angle=d3d11']:[];
   const browser=await chromium.launch({channel:'chromium',headless:true,args:[
-    '--use-angle=d3d11','--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream',
+    ...gpuArgs,'--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream',
     `--use-file-for-fake-audio-capture=${resolve('.local-speech/test-audio/browser-seven.wav')}`,
   ]});
   try {
