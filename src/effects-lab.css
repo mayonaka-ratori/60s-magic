@@ -1,5 +1,6 @@
 @import '@fontsource/noto-sans-jp/400.css';
 @import '@fontsource/noto-sans-jp/700.css';
+@import './knight-canvas.css';
 :root{color-scheme:dark}
 body{margin:0;background:#070b12;color:#dfe8f4;font-family:'Noto Sans JP',sans-serif;font-size:13px}
 .lab-page{display:grid;grid-template-rows:auto 1fr auto;height:100dvh;min-height:600px}

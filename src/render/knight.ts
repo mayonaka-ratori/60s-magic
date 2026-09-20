@@ -69,7 +69,8 @@ export class Knight {
   target={x:.5,y:.32};
   constructor(private canvas:HTMLCanvasElement) {
     this.engine=new Engine(canvas,true,{alpha:true,premultipliedAlpha:false,preserveDrawingBuffer:false});
-    this.engine.setHardwareScalingLevel(1/Math.min(devicePixelRatio,1.5));
+    // 背景の一枚絵より少しだけ粗く描き、拡大で輪郭をなまらせる。描く点が減るので速さにも効く。
+    this.engine.setHardwareScalingLevel(1.3/Math.min(devicePixelRatio,1.5));
     this.scene=new Scene(this.engine);
     // 背景の一枚絵を透かすため、描画面は透明のままにする。
     this.scene.clearColor=new Color4(0,0,0,0);
@@ -77,17 +78,20 @@ export class Knight {
     this.camera.setTarget(new Vector3(0,CAMERA_Y,0));
 
     const sky=new HemisphericLight('空の光',new Vector3(.15,1,-.4),this.scene);
-    sky.intensity=.76;sky.diffuse=new Color3(.56,.65,.77);sky.groundColor=new Color3(.11,.15,.21);sky.specular=new Color3(.22,.26,.32);
+    sky.intensity=.42;sky.diffuse=new Color3(.54,.62,.74);sky.groundColor=new Color3(.09,.11,.15);sky.specular=new Color3(.15,.17,.21);
     // 背景は空が明るく騎士は逆光。上と奥の面を強く起こし、手前は弱い光だけで形を見せる。
     const back=new DirectionalLight('奥からの光',new Vector3(-.3,-.7,-1),this.scene);
-    back.intensity=1.35;back.diffuse=new Color3(.84,.89,.98);
+    back.intensity=1.02;back.diffuse=new Color3(.82,.88,.98);
     const fill=new DirectionalLight('床からの照り返し',new Vector3(.45,-.35,1),this.scene);
-    fill.intensity=.56;fill.diffuse=new Color3(.52,.59,.7);fill.specular=new Color3(.12,.14,.18);
+    fill.intensity=.58;fill.diffuse=new Color3(.44,.49,.57);fill.specular=new Color3(.09,.1,.13);
     fill.position=new Vector3(-2.4,3.4,-3.6);
     // 手前の光だけ影を落とす。剣や盾の影が体に掛かり、厚みが出る。
     const shadows=new ShadowGenerator(1024,fill);
     shadows.usePercentageCloserFiltering=true;shadows.filteringQuality=ShadowGenerator.QUALITY_MEDIUM;
     shadows.darkness=.24;shadows.bias=.0009;
+    // 遠い面ほど空気の色を混ぜる。背中側と裾が背景へ溶け、貼り付けたように見えなくなる。
+    this.scene.fogMode=Scene.FOGMODE_LINEAR;this.scene.fogColor=new Color3(.42,.45,.5);
+    this.scene.fogStart=6.2;this.scene.fogEnd=13;
     // 蓄積と命中のときだけ胸の前から照らす。色は魔法の属性に合わせる。
     this.burst=new PointLight('魔法の光',new Vector3(0,2,-1.5),this.scene);this.burst.intensity=0;this.burst.range=5;
 
@@ -100,14 +104,14 @@ export class Knight {
     };
     const side=paint([[0,'#cdd6df'],[.42,'#93a0ad'],[.52,'#4e5866'],[1,'#191d23']]);
     const backdrop=paint([[0,'#e8eef4'],[.44,'#a9b6c2'],[.52,'#525d6b'],[1,'#1a1e25']]);
-    const sight=CubeTextureCreateFromImages([side,paint([[0,'#dde5ec'],[1,'#c3ccd6']]),backdrop,side,paint([[0,'#15181d'],[1,'#0f1216']]),side],this.scene);
-    sight.level=.42;
+    const sight=CubeTextureCreateFromImages([side,paint([[0,'#a3adb8'],[1,'#8a939e']]),backdrop,side,paint([[0,'#15181d'],[1,'#0f1216']]),side],this.scene);
+    sight.level=.32;
 
     const material=(name:string,color:string,specular=.24,rim=0)=>{
       const m=new StandardMaterial(name,this.scene);
       m.diffuseColor=Color3.FromHexString(color);m.specularColor=new Color3(specular,specular*1.06,specular*1.14);m.specularPower=46;
       // 逆光の縁だけを明るくする。暗い鎧のまま輪郭を見せるための設定。
-      if(rim){m.emissiveColor=new Color3(.16*rim,.21*rim,.28*rim);m.emissiveFresnelParameters=new FresnelParameters({bias:.1,power:2.6,leftColor:Color3.White(),rightColor:Color3.Black()});}
+      if(rim){m.emissiveColor=new Color3(.26*rim,.32*rim,.4*rim);m.emissiveFresnelParameters=new FresnelParameters({bias:.35,power:1.9,leftColor:Color3.White(),rightColor:Color3.Black()});}
       return m;
     };
     // 金属には空と床を映り込ませる。正面より縁のほうが強く映る。
@@ -117,13 +121,13 @@ export class Knight {
         leftColor:new Color3(strength,strength,strength),rightColor:new Color3(.13*strength,.15*strength,.18*strength)});
       return m;
     };
-    this.armor=metal(material('鎧','#2e3238',.34,1));
-    const plate=metal(material('当て板','#25282e',.26,.8),.8);
-    const cloth=material('布','#1e232d',.06,.55);cloth.backFaceCulling=false;
+    this.armor=metal(material('鎧','#34363c',.26,1));
+    const plate=metal(material('当て板','#272930',.2,.8),.8);
+    const cloth=material('布','#25272f',.05,.6);cloth.backFaceCulling=false;
     const hollow=material('隙間','#0b0f16',.02);hollow.emissiveColor=new Color3(.52,.23,.07);
     this.eyes=hollow;
-    const trim=metal(material('金の縁','#9b8449',.58,.7),.9);
-    const steel=metal(material('刃と縁','#9aa3ae',.7,1.2),1.3);
+    const trim=metal(material('金の縁','#6d5e39',.32,.7),.9);
+    const steel=metal(material('刃と縁','#636a74',.42,1.2),1.3);
     this.coreMaterial=material('胸の核','#2a2418',.1);this.coreMaterial.emissiveColor=Color3.FromHexString('#6f542e');
 
     this.root=new TransformNode('遺跡の騎士',this.scene);
@@ -238,7 +242,7 @@ export class Knight {
     context.fillStyle=gradient;context.fillRect(0,0,128,128);texture.update();texture.getAlphaFromRGB=true;
     const shadowMaterial=new StandardMaterial('影',this.scene);
     shadowMaterial.disableLighting=true;shadowMaterial.diffuseColor=new Color3(0,0,0);shadowMaterial.emissiveColor=new Color3(0,0,0);
-    shadowMaterial.opacityTexture=texture;shadowMaterial.alpha=.62;
+    shadowMaterial.opacityTexture=texture;shadowMaterial.alpha=.62;shadowMaterial.fogEnabled=false;
     // 視点が低いため、足元の面は手前へ長く取らないと影が見えない。
     const shadow=MeshBuilder.CreateGround('影',{width:2.3,height:3.2},this.scene);
     shadow.parent=this.root;shadow.position.set(0,.02,-.5);shadow.material=shadowMaterial;
