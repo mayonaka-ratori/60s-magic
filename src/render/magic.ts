@@ -1,6 +1,6 @@
 import { clamp, getNodes } from '../game/motion';
 import type { Point, Recipe, Element } from '../game/types';
-import { fitSpell } from './spell-layout';
+import { fitSpell, smoothStroke } from './spell-layout';
 import { getPreset, intensityOf, rgba, type EffectPreset } from './effects/presets';
 import { GlowSprites } from './effects/sprites';
 import { ParticlePool } from './effects/particles';
@@ -130,8 +130,9 @@ export class MagicCanvas {
     c.clearRect(0, 0, w, h); c.save(); c.globalCompositeOperation = 'lighter'; c.strokeStyle = color; c.lineWidth = 1.1;
     const normalized = points.map(p => ({ ...p, x: p.x * source.width / w, y: p.y * source.height / h }));
     const shape = fitSpell(normalized, w, h, { x: w / 2, y: h / 2, width: w * .7, height: h * .7 });
-    let stroke = -1; c.beginPath();
-    for (const p of shape) { if (p.stroke !== stroke) { c.moveTo(p.x * w, p.y * h); stroke = p.stroke; } else c.lineTo(p.x * w, p.y * h); }
+    const strokes = new Map<number, Point[]>(); for (const p of shape) { const group = strokes.get(p.stroke) ?? []; group.push(p); strokes.set(p.stroke, group); }
+    c.beginPath();
+    for (const stroke of strokes.values()) { smoothStroke(stroke).forEach((p, i) => { if (!i) c.moveTo(p.x * w, p.y * h); else c.lineTo(p.x * w, p.y * h); }); }
     c.globalAlpha = .35; c.lineWidth = 4; c.stroke(); c.globalAlpha = 1; c.lineWidth = 1.1; c.stroke();
     for (const p of getNodes(shape, 5)) this.sprites.draw(c, p.x * w, p.y * h, 2.5, '#fff8e9', color, .9);
     this.sprites.draw(c, w / 2, h / 2, 5, '#fff8e9', color, .9); c.restore();

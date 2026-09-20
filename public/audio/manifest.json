@@ -1,0 +1,21 @@
+{
+  "_説明": "ここに書いたファイルが public/audio/ にあれば鳴らす。無い項目は合成音だけで動く。gainDbは音量の調整（0が元のまま、-6で半分程度）。synthをfalseにすると合成音を重ねない。",
+  "bgm": {
+    "file": "bgm/battle.ogg",
+    "gainDb": -9,
+    "loop": true,
+    "credit": "音楽：魔王魂"
+  },
+  "sfx": {
+    "trace":    { "files": ["sfx/ui-tick.ogg"], "gainDb": -10 },
+    "chant":    { "files": ["sfx/ui-tick.ogg"], "gainDb": -8 },
+    "build":    { "files": ["sfx/build-rise.ogg"], "gainDb": -6 },
+    "complete": { "files": ["sfx/complete-chime.ogg"], "gainDb": -6 },
+    "release":  { "files": ["sfx/release-whoosh.ogg"], "gainDb": -4 },
+    "impact":   { "files": ["sfx/impact-heavy-1.ogg", "sfx/impact-heavy-2.ogg"], "gainDb": 0 },
+    "impact.lightning": { "files": ["sfx/impact-lightning.ogg"], "gainDb": 0 },
+    "impact.ice":       { "files": ["sfx/impact-ice.ogg"], "gainDb": 0 },
+    "impact.fire":      { "files": ["sfx/impact-fire.ogg"], "gainDb": 0 },
+    "settle":   { "files": ["sfx/settle-soft.ogg"], "gainDb": -10 }
+  }
+}

@@ -6,9 +6,11 @@ from pathlib import Path
 import sys
 import time
 
-os.environ['HF_HUB_OFFLINE'] = '1'
 os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
 os.environ['HF_HUB_DISABLE_PROGRESS_BARS'] = '1'
+# 遊んでいる間は通信しない。準備（--check）のときだけ、足りないファイルの取得を許す。
+if '--check' not in sys.argv:
+    os.environ['HF_HUB_OFFLINE'] = '1'
 
 # GPU用のファイルもこのプロジェクトのPython環境内に置く。
 # PC全体のPATHや他のPython環境は変更しない。
@@ -19,52 +21,42 @@ if os.name == 'nt':
         DLL_HANDLES.append(os.add_dll_directory(str(path)))
         os.environ['PATH'] = str(path) + os.pathsep + os.environ.get('PATH', '')
 
-import numpy as np
-from faster_whisper import WhisperModel
-from vocabulary import load_hints
+from engines import create_engine, silence
+from download_model import default_preset, model_dir
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL_DIR = Path(os.environ.get('LOCAL_SPEECH_MODEL') or str(ROOT / '.local-speech/models/kotoba-v2.0'))
+PRESET = default_preset()
+MODEL_DIR = Path(os.environ.get('LOCAL_SPEECH_MODEL') or str(model_dir(PRESET)))
+
+
+def model_name(preset):
+    """画面に出す名前。動かし方の違い（末尾の -mlx）は名前に含めない。"""
+    base = preset[:-4] if preset.endswith('-mlx') else preset
+    return 'kotoba-whisper-v2.0' if base == 'kotoba-v2.0' else f'whisper-{base}'
 
 
 def send(value):
     print(json.dumps(value, ensure_ascii=False), flush=True)
 
 
-def transcribe(model, audio, hotwords):
-    segments, _ = model.transcribe(
-        audio, language='ja', task='transcribe', beam_size=1,
-        temperature=0, condition_on_previous_text=False,
-        without_timestamps=True, chunk_length=15,
-        vad_filter=True,
-        vad_parameters={'min_speech_duration_ms': 150, 'min_silence_duration_ms': 250,
-                        'speech_pad_ms': 120},
-        hotwords=hotwords, no_speech_threshold=0.6, log_prob_threshold=-1.0,
-    )
-    parts = [segment for segment in segments
-             if segment.avg_logprob >= -1.0 and segment.no_speech_prob <= 0.6]
-    return ''.join(segment.text for segment in parts).strip()
-
-
 def main():
     try:
-        model = WhisperModel(str(MODEL_DIR), device='cuda', compute_type='int8_float16',
-                             cpu_threads=4, num_workers=1, local_files_only=True)
-        hotwords, vocabulary = load_hints(model.hf_tokenizer)
-        # 読み込み・GPUの初回処理は24秒が始まる前に終える。
-        warmup = np.zeros(16000, dtype=np.float32)
-        segments, _ = model.transcribe(warmup, language='ja', beam_size=1,
-                                      condition_on_previous_text=False, without_timestamps=True)
-        list(segments)
-        transcribe(model, warmup, hotwords)
-        send({'type': 'ready', 'model': 'kotoba-whisper-v2.0', 'device': 'cuda',
-              'computeType': 'int8_float16', 'vocabulary': vocabulary})
+        started = time.perf_counter()
+        engine = create_engine(MODEL_DIR)
+        # 読み込みと初回処理は24秒が始まる前に終える。二回通すのは、
+        # 一回目だけ極端に遅くなる動かし方があるため。
+        for _ in range(2):
+            engine.transcribe(silence(1.0))
+        send({'type': 'ready', 'model': model_name(PRESET), 'preset': PRESET, 'engine': engine.kind,
+              'device': engine.device, 'computeType': engine.compute_type, 'threads': engine.threads,
+              'loadMs': round((time.perf_counter() - started) * 1000), 'vocabulary': engine.vocabulary})
     except Exception as error:
         print(f'ローカル音声認識の起動に失敗しました: {error}', file=sys.stderr, flush=True)
         send({'type': 'unavailable', 'reason': 'ローカル音声認識を起動できませんでした。接続の確認をご覧ください。'})
         return 1
     if '--check' in sys.argv:
         return 0
+    import numpy as np
     for line in sys.stdin:
         request_id = None
         try:
@@ -75,7 +67,7 @@ def main():
                 raise ValueError('音声の長さが正しくありません')
             audio = np.frombuffer(pcm, dtype='<i2').astype(np.float32) / 32768.0
             started = time.perf_counter()
-            text = transcribe(model, audio, hotwords)
+            text = engine.transcribe(audio)
             send({'type': 'result', 'id': request_id, 'text': text,
                   'processingMs': round((time.perf_counter() - started) * 1000, 1)})
         except Exception as error:

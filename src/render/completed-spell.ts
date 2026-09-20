@@ -11,6 +11,7 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { GlowLayer } from '@babylonjs/core/Layers/glowLayer';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Point } from '../game/types';
+import { smoothStroke } from './spell-layout';
 
 /** 完成形を描く部品。画像に焼き込まず、実際の入力点から発光する線を作る。 */
 export class CompletedSpell {
@@ -103,7 +104,7 @@ export class CompletedSpell {
     const strokes = new Map<number, Point[]>();
     for (const p of points) { const stroke = strokes.get(p.stroke) ?? []; stroke.push(p); strokes.set(p.stroke, stroke); }
     for (const stroke of strokes.values()) {
-      tube('本人が描いた線', stroke.map(vector), .95);
+      tube('本人が描いた線', smoothStroke(stroke).map(vector), .95);
       if (stroke.length === 1) dot(vector(stroke[0]), 2.5);
     }
     if (!points.length) { this.render(); return; }

@@ -8,7 +8,7 @@ import { makeRecipe } from '../src/game/recipe';
 async function run(command:string,args:string[]) {
   await new Promise<void>((ok,fail)=>{const child=spawn(command,args,{windowsHide:true,stdio:'inherit'});child.on('error',fail);child.on('exit',code=>code===0?ok():fail(new Error('音声の比較を完了できませんでした')));});
 }
-await run('powershell',['-NoProfile','-ExecutionPolicy','Bypass','-File','scripts/make-speech-fixtures.ps1','tests/fixtures/chant-audio.json']);
+await run(process.execPath,['scripts/make-speech-fixtures.mjs','tests/fixtures/chant-audio.json']);
 await run(resolve('.venv-speech/Scripts/python.exe'),['-X','utf8','speech/benchmark-vocabulary.py']);
 const report=JSON.parse(await readFile('.local-speech/vocabulary-raw-report.json','utf8'));
 report.results=report.results.map((r:{id:string;mode:string;text:string;processingMs:number})=>{

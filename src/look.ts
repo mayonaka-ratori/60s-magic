@@ -19,12 +19,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="look-health"><span>遺跡の騎士</span><div><i></i></div></div>
         <div class="look-aim" id="aim" aria-hidden="true"></div>
         <div class="look-reflection" id="reflection" aria-hidden="true"></div>
-        <canvas id="spell" aria-label="術式。自分の線で試すボタンを押すと描けます"></canvas>
+        <canvas id="spell" aria-label="術式（「自分の線で試す」を押すと描けます）"></canvas>
         <div class="look-caption"><span class="look-caption-kicker" id="kicker">術式完成</span><h2 id="caption">描いた形に、力が集まる</h2><p id="detail">核 <span>✓</span>　構造 <span>✓</span>　属性 <span>光</span></p></div>
         <div class="look-loading" id="loading" role="status">画面を準備しています…</div>
       </section>
       <aside class="look-reference" id="reference" hidden aria-label="指定された見本の3画面目">
-        <div class="look-reference-image" role="img" aria-label="指定された見本。曇り空、遺跡の騎士、青白い術式"></div>
+        <div class="look-reference-image" role="img" aria-label="指定された見本（曇り空、遺跡の騎士、青白い術式）"></div>
         <a href="/art/visual-reference.png" target="_blank" rel="noopener">元の8画面を開く ↗</a>
       </aside>
     </div>
@@ -50,7 +50,7 @@ let animation = requestAnimationFrame(function frame(now: number) {
 document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(button => button.addEventListener('click', () => {
   pose = button.dataset.pose!;
   document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
-  el('note').textContent = pose === 'idle' ? '待機。ゆっくり上下します。' : pose === 'hit' ? '魔法が届いた瞬間。18.5秒の姿勢で止めています。' : '構えを戻す途中。19.1秒ごろの姿勢です。';
+  el('note').textContent = pose === 'idle' ? '待機の姿勢で、ゆっくり上下しています' : pose === 'hit' ? '魔法が届いた瞬間の姿勢（18.5秒）で止めています' : '構えを戻す途中の姿勢（19.1秒ごろ）です';
 }));
 
 // 見本用の入力点。描き直した場合は、この線を使わず本人の線だけで完成形を作る。
@@ -101,10 +101,10 @@ function setDrawing(value: boolean) {
 el('draw').addEventListener('click', () => {
   if (!drawing) {
     points = []; const rect = canvas.getBoundingClientRect(); sourceWidth = rect.width; sourceHeight = rect.height;
-    el('note').textContent = '描いた形と線の切れ目を保って、完成した術式を画面内に収めます。';
+    el('note').textContent = '描き終えると、形と線の切れ目を保ったまま術式を画面内に収めます';
     setDrawing(true);
   } else if (points.length) setDrawing(false);
-  else el('note').textContent = '画面を押したまま、線をひとつ描いてください。';
+  else el('note').textContent = '画面を押したまま、線をひとつ描いてください';
 });
 el('restore').addEventListener('click', () => {
   points = samplePoints(); sourceWidth = 1320; sourceHeight = 1000; setDrawing(false);

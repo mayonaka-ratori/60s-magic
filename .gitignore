@@ -11,3 +11,9 @@ public/vision/
 .venv-speech/
 .local-speech/
 __pycache__/
+
+# 音素材は配布条件が素材ごとに違うため、ファイル本体はGitに入れない。一覧と置き方は残す。
+public/audio/**/*.ogg
+public/audio/**/*.mp3
+public/audio/**/*.wav
+public/audio/**/*.opus
