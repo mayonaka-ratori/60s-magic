@@ -1,6 +1,7 @@
 import { clamp } from '../../game/motion';
 import type { EffectPreset } from './presets';
 import { increase } from './presets';
+import { smooth } from './frame';
 
 export type ScreenState = {
   shakeX: number; shakeY: number; flash: number; darken: number; chromatic: number; hitStop: number;
@@ -14,6 +15,8 @@ export type ScreenState = {
   saturate: number;
 };
 export const RELEASE_AT = 17, IMPACT_AT = 18.5;
+/** 蓄積が始まる時刻（秒）と、演出が消え終わって元の画面へ戻る時刻（秒）。 */
+export const CHARGE_AT = 14, FADE_OUT_AT = 23.5;
 /** 命中で世界を止める長さ（秒）。弱、強、とどめの三段。 */
 export const HIT_STOPS = { weak: .06, strong: .09, finish: .2 };
 /** 完全な暗転の始まりと終わり（秒）。終わりがそのまま放出の閃光につながる。 */
@@ -23,7 +26,6 @@ const SHOCK_FADE = 1.6;
 /** 揺れの速さ（1秒あたりの波の数）。 */
 const SHAKE_HZ = 19;
 
-const smooth = (x: number) => x * x * (3 - 2 * x);
 /** 種と番号から決まる0〜1の値。時刻が同じなら必ず同じ。 */
 const spot = (i: number, seed: number) => { const s = Math.sin(i * 12.9898 + seed * 78.233 + 1.7) * 43758.5453; return s - Math.floor(s); };
 /** なめらかな乱数。-1〜1。隣り合う値をなめらかにつなぐので、震えが安っぽくならない。 */

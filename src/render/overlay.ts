@@ -21,7 +21,7 @@ export const VIGNETTE_BASE = .25;
 /** ビネットの一番濃いとき。 */
 export const VIGNETTE_PEAK = .6;
 /** ビネットが一番濃くなる darken の値。 */
-const VIGNETTE_FULL_AT = .35;
+export const VIGNETTE_FULL_AT = .35;
 /** グレインの濃さ。 */
 export const GRAIN_OPACITY = .03;
 
@@ -31,7 +31,7 @@ export type FlashMemory = {
   value: number;
   /** 前に光り始めた時刻（秒） */
   startedAt: number;
-  /** 今光っている最中かどうか */
+  /** 今の閃光が濃くなっている最中かどうか。戻り始めたらその閃光は終わりで false にする */
   lit: boolean;
 };
 
@@ -50,21 +50,24 @@ export function flashTarget(flash: number, calm: boolean) {
 
 /**
  * 閃光を一コマ進める。上がるのは速く、戻るのは遅い。
- * 消えている所から新しく光るときだけ、前の閃光からの間隔を見て、近すぎれば光らせない。
+ * 新しく光り始めるときは、前に光り始めてからの間隔を必ず見る。前の閃光がまだ消えきっていなくても、
+ * 0.34秒たっていなければ濃くせず、そのまま戻していく（1秒に3回を超えないため）。
  * dt は前のコマからの秒数、now は今の時刻（秒）。
  */
 export function stepFlash(memory: FlashMemory, flash: number, calm: boolean, dt: number, now: number) {
   const target = flashTarget(flash, calm), step = Math.min(Math.max(dt, 0), .1);
-  if (target > memory.value) {
-    if (!memory.lit) {
-      if (now - memory.startedAt < FLASH_GAP) return memory.value;
-      memory.startedAt = now; memory.lit = true;
-    }
+  const rising = target > memory.value;
+  // 今光っている閃光の続き（lit）ならそのまま上げる。新しい閃光のときだけ間隔を見る。
+  if (rising && !memory.lit && now - memory.startedAt >= FLASH_GAP) { memory.startedAt = now; memory.lit = true; }
+  if (rising && memory.lit) {
     memory.value = Math.min(target, memory.value + step / FLASH_RISE * FLASH_MAX);
-  } else {
-    memory.value = Math.max(target, memory.value - step / FLASH_FALL * FLASH_MAX);
-    if (memory.value <= .001) { memory.value = 0; memory.lit = false; }
+    return memory.value;
   }
+  // 戻るところ。一度下がり始めたらその閃光は終わりで、次に上がるときは新しい閃光として間隔を見る。
+  // 間隔が近すぎて上げられなかったときは、目標ではなく0まで戻す（途中で止めて留めない）。
+  memory.lit = false;
+  memory.value = Math.max(rising ? 0 : target, memory.value - step / FLASH_FALL * FLASH_MAX);
+  if (memory.value <= .001) memory.value = 0;
   return memory.value;
 }
 
@@ -91,6 +94,10 @@ export function shouldWrite(prev: number | null, next: number) {
 /** 透明度の文字。無駄な桁を持たせない。 */
 export function opacityText(v: number) { return (Math.round(v * 1000) / 1000).toString(); }
 
+/** 作ったノイズ画像。層がいくつあっても（見比べ画面は左右で2組）作り直さずに使い回す。 */
+let noiseUrl: string | null = null;
+function noiseImage() { if (noiseUrl === null) noiseUrl = makeNoiseUrl(); return noiseUrl; }
+
 /** 小さなノイズ画像を作ってdata URLにする。起動時に一度だけ呼ぶ。 */
 function makeNoiseUrl(size = 64) {
   const canvas = document.createElement('canvas');
@@ -109,7 +116,11 @@ function makeNoiseUrl(size = 64) {
   return canvas.toDataURL('image/png');
 }
 
-type Layers = { world: HTMLElement };
+/**
+ * 使う層は背景だけ（彩度をここで変えるため）。
+ * 呼ぶ側が騎士や術式の層もまとめて渡してくることがあるので、受け取れるようにはしてあるが使わない。
+ */
+type Layers = { world: HTMLElement; knight?: HTMLElement; spell?: HTMLElement };
 /** 画面に今出している透明度。まだ一度も書いていないものは null。 */
 type Shown = { flash: number | null; vignette: number | null; grain: number | null; black: number | null };
 
@@ -124,13 +135,17 @@ export class ScreenOverlay {
   private filter = '';
   private last = -1;
 
-  constructor(root: HTMLElement, private layers: Layers) {
+  /** 背景の層。彩度を変えるのに使う。 */
+  private world: HTMLElement;
+
+  constructor(root: HTMLElement, layers: Layers) {
+    this.world = layers.world;
     const make = (cls: string) => { const d = document.createElement('div'); d.className = `fx ${cls}`; d.setAttribute('aria-hidden', 'true'); return d; };
     this.black = make('fx-black');
     this.vignette = make('fx-vignette');
     this.grain = make('fx-grain');
     this.flash = make('fx-flash');
-    const url = makeNoiseUrl();
+    const url = noiseImage();
     if (url) this.grain.style.backgroundImage = `url(${url})`;
     // 演出canvasより上、HUDや見出しより下に入れる。
     const before = root.querySelector('header');
@@ -159,7 +174,7 @@ export class ScreenOverlay {
 
   /** 背景の彩度。終了時のぼかしがかかっている間は上書きしない。 */
   private saturate(value: number) {
-    const world = this.layers.world;
+    const world = this.world;
     const next = world.classList.contains('spell-finished') ? '' : saturateFilter(value);
     if (next === this.filter) return;
     this.filter = next; world.style.filter = next;
@@ -167,6 +182,6 @@ export class ScreenOverlay {
 
   dispose() {
     for (const layer of [this.black, this.vignette, this.grain, this.flash]) layer.remove();
-    if (this.filter) { this.layers.world.style.filter = ''; this.filter = ''; }
+    if (this.filter) { this.world.style.filter = ''; this.filter = ''; }
   }
 }

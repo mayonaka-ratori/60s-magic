@@ -44,6 +44,7 @@ describe('音の厚み',()=>{
     expect(soundIntensity(recipe(),presets.vivid,0)).toBe(quiet);
     // 魔法が決まる前でも量だけで厚みが増える。上限の3は超えない。
     expect(soundIntensity(null,presets.vivid,1)).toBeGreaterThan(soundIntensity(null,presets.vivid));
-    expect(soundIntensity(recipe(),presets.max,1)).toBeLessThanOrEqual(3);
+    // 設定は倍率なので、最大の設定に量を足しても、小さいレシピでは上限に届かない。
+    expect(soundIntensity(recipe(),presets.max,1)).toBeLessThan(3);
   });
 });

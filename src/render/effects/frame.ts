@@ -7,6 +7,11 @@ import type { Point } from '../../game/types';
 import { blendOf } from '../../game/recipe';
 import { mixHue, lighten } from './presets';
 
+/** 火花の線（線の粒）の長さ（画素）。止まっていてもこの長さはあり、速さに比例して伸びる。 */
+const SPARK_LENGTH_BASE = 2, SPARK_LENGTH_PER_SPEED = .03;
+/** 火花の線の長さの上限（画素）。速い粒でもこれより長くは伸ばさない。 */
+export const SPARK_MAX_LENGTH = 18;
+
 export type XY = { x: number; y: number };
 /** 各部品が受け取る、そのコマの道具と値。部品は属性名ではなく色と派手さだけを見る。 */
 export type Frame = {
@@ -64,12 +69,13 @@ export const smooth = (x: number) => { const p = Math.min(1, Math.max(0, x)); re
 export function glow(f: Frame, x: number, y: number, r: number, alpha: number, main = f.palette.main, core = f.palette.core) {
   f.sprites.draw(f.c, x, y, r * f.preset.glowScale, core, main, alpha);
 }
-export function line(f: Frame, a: XY, b: XY, width: number, alpha: number, color = f.palette.main, coreWidth = width * .3) {
+/** 直線を引く。coreWidth が0なら一本だけ、0より大きいと縁と芯の二重にする。coreColor で芯の色を替えられる。 */
+export function line(f: Frame, a: XY, b: XY, width: number, alpha: number, color = f.palette.main, coreWidth = width * .3, coreColor = f.palette.core) {
   const c = f.c; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y);
   // 芯を持つ線は、外側のにじみ、属性色の縁、白い芯の順に重ねる。芯なしの指定（coreWidth=0）は今までどおり一本だけ。
   if (coreWidth > 0) { c.globalAlpha = alpha * .3; c.lineWidth = width * 2.1; c.strokeStyle = color; c.stroke(); }
   c.globalAlpha = alpha; c.lineWidth = width; c.strokeStyle = color; c.stroke();
-  if (coreWidth > 0) { c.lineWidth = Math.max(1, coreWidth); c.strokeStyle = f.palette.core; c.stroke(); }
+  if (coreWidth > 0) { c.lineWidth = Math.max(1, coreWidth); c.strokeStyle = coreColor; c.stroke(); }
 }
 /** 同じ道筋を、属性色の縁と白い芯の二重で描く。path は道を組み立てるだけの関数。 */
 export function edged(f: Frame, width: number, alpha: number, path: () => void, color = f.palette.main, core = f.palette.core) {
@@ -99,8 +105,10 @@ export function drawParticles(f: Frame, alphaScale = 1) {
     if (!p.alive || p.kind === 3) continue;
     const u = p.life / p.span, alpha = Math.min(1, u * 1.6) * alphaScale;
     if (p.kind === 1) {
-      const len = Math.hypot(p.vx, p.vy) * .03 + 2;
-      const nx = p.vx / (len * 33 + 1e-6), ny = p.vy / (len * 33 + 1e-6);
+      // 速さに比例して伸ばし、上限で止める。向きは速度の向きのまま。
+      const speed = Math.hypot(p.vx, p.vy);
+      const len = Math.min(SPARK_MAX_LENGTH, speed * SPARK_LENGTH_PER_SPEED + SPARK_LENGTH_BASE);
+      const nx = p.vx / (speed + 1e-6), ny = p.vy / (speed + 1e-6);
       c.globalAlpha = alpha; c.lineWidth = p.size; c.strokeStyle = u > .5 ? p.core : p.color;
       c.beginPath(); c.moveTo(p.x - nx * len, p.y - ny * len); c.lineTo(p.x, p.y); c.stroke();
     } else if (p.kind === 2) {

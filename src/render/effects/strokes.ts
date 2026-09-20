@@ -1,23 +1,27 @@
 import { clamp, getNodes } from '../../game/motion';
 import { few, glow, ease, slow, type Frame } from './frame';
+import { CHARGE_AT } from './screen';
 import { along, lastStrokes, ringClosure, spawnCount, speedRatio, tipSpeed, type Vec } from './strokes-math';
 
-const CHARGE_AT = 14;
 /** 筆を置いた輪が広がりきるまで（秒） */
 const OPEN_SPAN = .5;
 /** 閉じた輪を光が一周するまで（秒） */
 const RING_SPAN = .9;
 
-/** 筆ごとに、置かれた時刻と閉じた時刻を覚えておく。時刻が戻ったら忘れる。 */
-const openedAt = new Map<number, number>();
-const closedAt = new Map<number, number>();
-let lastTime = -1;
+/**
+ * 筆ごとに、置かれた時刻と閉じた時刻を覚えておく入れ物。画面（MagicCanvas）ごとに一つ持つ。
+ * 見比べ画面のように画面が二つあっても混ざらないよう、部品の中には置かない。
+ */
+export type StrokeMemory = { opened: Map<number, number>; closed: Map<number, number>; lastTime: number };
+/** 覚え書きを新しく作る。画面を作り直したときもこれで消す。 */
+export const newStrokeMemory = (): StrokeMemory => ({ opened: new Map(), closed: new Map(), lastTime: -1 });
 
-/** 描く動きへの即時反応。筆を置いた輪、速い線の火花、閉じた線の一周、声での脈動。 */
-export function drawStrokeReactions(f: Frame) {
+/** 描く動きへの即時反応。筆を置いた輪、速い線の火花、閉じた線の一周、声での脈動。覚え書きは呼ぶ側が持つ。 */
+export function drawStrokeReactions(f: Frame, memory: StrokeMemory) {
   const { c, w, h, t, intensity, palette } = f;
-  if (t < lastTime - .05) { openedAt.clear(); closedAt.clear(); }
-  lastTime = t;
+  // 時刻が戻ったら（確認画面のつまみなど）覚え書きを忘れる。
+  if (t < memory.lastTime - .05) { memory.opened.clear(); memory.closed.clear(); }
+  memory.lastTime = t;
   if (!f.points.length) return;
 
   const short = Math.min(w, h);
@@ -31,7 +35,7 @@ export function drawStrokeReactions(f: Frame) {
   for (const stroke of strokes) {
     const id = stroke[0].stroke;
     f.once('stroke-' + id, () => {
-      openedAt.set(id, t);
+      memory.opened.set(id, t);
       const head = at(stroke[0]);
       for (let i = 0, n = Math.round(few(f, 5)); i < n; i++) {
         const a = f.pool.random() * Math.PI * 2, speed = 40 + f.pool.random() * 70;
@@ -39,7 +43,7 @@ export function drawStrokeReactions(f: Frame) {
           size: 1 + f.pool.random() * 1.4, drag: .3, color: palette.main, core: palette.core, kind: 0 });
       }
     });
-    const born = openedAt.get(id);
+    const born = memory.opened.get(id);
     if (born === undefined) continue;
     const u = (t - born) / OPEN_SPAN;
     if (u < 0 || u >= 1) continue;
@@ -74,10 +78,10 @@ export function drawStrokeReactions(f: Frame) {
   // 線が閉じた瞬間。輪郭を光が一周し、中心に光が灯る。筆ごとに一回だけ。
   for (const stroke of strokes) {
     const id = stroke[0].stroke;
-    if (!closedAt.has(id)) {
+    if (!memory.closed.has(id)) {
       const ring = ringClosure(stroke, w, h);
       if (ring) f.once('ring-' + id, () => {
-        closedAt.set(id, t);
+        memory.closed.set(id, t);
         const middle = at(ring.center);
         for (let i = 0, n = Math.round(few(f, 6)); i < n; i++) {
           const a = f.pool.random() * Math.PI * 2;
@@ -86,7 +90,7 @@ export function drawStrokeReactions(f: Frame) {
         }
       });
     }
-    const done = closedAt.get(id);
+    const done = memory.closed.get(id);
     if (done === undefined) continue;
     const u = (t - done) / RING_SPAN;
     if (u < 0 || u >= 1) continue;

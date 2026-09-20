@@ -55,7 +55,7 @@ export class HealthBar {
     this.bar.parentElement?.insertBefore(this.trail, this.bar);
   }
   reset() { this.steps = []; this.key = ''; this.show(100, 100); }
-  /** 毎コマ呼ぶ。ms は本編の時刻。 */
+  /** 毎コマ呼ぶ。ms は演出と同じ世界の時刻（命中の停止を含む）で、本編の時刻ではない。 */
   update(ms: number, recipe: Recipe | null) {
     const key = recipe ? `${recipe.count}:${recipe.area.toFixed(2)}:${recipe.concentration.toFixed(2)}` : '';
     if (key !== this.key) { this.key = key; this.steps = planHealthSteps(recipe); }

@@ -12,7 +12,15 @@ export type Particle = {
   kind: number; seed: number;
 };
 
-const blank = (): Particle => ({ alive: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, span: 1, size: 2, gravity: 0, drag: 1, pull: 0, px: 0, py: 0, floor: 0, color: '#fff', core: '#fff', kind: 0, seed: 0 });
+/** 粒を既定値へ戻す。新しいオブジェクトは作らず、全項目を書き直す。 */
+function resetParticle(p: Partial<Particle>): Particle {
+  p.alive = false; p.x = 0; p.y = 0; p.vx = 0; p.vy = 0; p.life = 0; p.span = 1; p.size = 2;
+  p.gravity = 0; p.drag = 1; p.pull = 0; p.px = 0; p.py = 0; p.floor = 0;
+  p.color = '#fff'; p.core = '#fff'; p.kind = 0; p.seed = 0;
+  return p as Particle;
+}
+/** 置き場を作るときだけ粒を作る。あとはこの入れ物を最後まで使い回す。 */
+const blank = (): Particle => resetParticle({});
 
 export class ParticlePool {
   readonly items: Particle[] = [];
@@ -45,7 +53,8 @@ export class ParticlePool {
   /** 消えた粒の添え字を空きの列へ戻す。 */
   private release(i: number) { this.free.push(i); }
   private fill(p: Particle, init: Partial<Particle>) {
-    Object.assign(p, blank(), init); p.alive = true; p.span = p.life; p.seed = this.random(); return p;
+    // 今ある粒を既定値へ戻してから指定を当てる。山場でごみ集めが走らないよう、ここでは何も作らない。
+    resetParticle(p); Object.assign(p, init); p.alive = true; p.span = p.life; p.seed = this.random(); return p;
   }
   update(dt: number) {
     if (dt <= 0) return;

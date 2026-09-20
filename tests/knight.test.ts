@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { knightPose, reactionPower } from '../src/render/knight';
+import { knightPose, reactionPower, knightTransform, knightMatrix, knightPoint } from '../src/render/knight';
+import { getPreset } from '../src/render/effects/presets';
 import type { Recipe } from '../src/game/types';
 
 const recipe = (over: Partial<Recipe>): Recipe => ({ version: 'recipe-1', accent: null, element: 'fire', purpose: 'attack', form: 'orb',
@@ -70,5 +71,51 @@ describe('反応の強さ', () => {
   it('動きを減らす設定では回転も移動も0にする', () => {
     const quiet = knightPose(18600, true, true, 'attack', 1);
     expect(quiet.spin).toBe(0); expect(quiet.push).toBe(0); expect(quiet.collapse).toBe(0);
+  });
+  it('見た目の設定が派手なほど強く崩れる', () => {
+    const r = recipe({ count: 3 });
+    const calm = reactionPower(r, 0, getPreset('calm'));
+    const vivid = reactionPower(r, 0, getPreset('vivid'));
+    const max = reactionPower(r, 0, getPreset('max'));
+    expect(max).toBeGreaterThan(vivid);
+    expect(vivid).toBeGreaterThan(calm);
+    // 入力の量が多いときも同じ関係。
+    expect(reactionPower(r, 1, getPreset('max'))).toBeGreaterThan(reactionPower(r, 1, getPreset('vivid')));
+    expect(reactionPower(null, 0, getPreset('max'))).toBeGreaterThan(reactionPower(null, 0, getPreset('vivid')));
+    // 設定を渡さないときは今まで通り「派手」。
+    expect(reactionPower(r)).toBe(vivid);
+  });
+});
+
+describe('騎士の置き方', () => {
+  // 幅1000、高さ800の面に、画面1pxあたり2点で描く場合。
+  const place = (pose: ReturnType<typeof knightPose>) => knightTransform(pose, 1000, 800, 2);
+  it('描く絵と命中の位置は同じ計算から出る', () => {
+    const t = place(knightPose(18600, true, false, 'attack', 1));
+    // 絵は knightMatrix の行列で置く。命中の位置は同じ行列を点へ当てた結果になる。
+    const m = knightMatrix(t), p = knightPoint(t, 300, 240);
+    expect(p.x).toBeCloseTo(m.a * 300 + m.c * 240 + m.e, 10);
+    expect(p.y).toBeCloseTo(m.b * 300 + m.d * 240 + m.f, 10);
+  });
+  it('命中の前は動かさず、足元は画面の高さの71.4%', () => {
+    const t = place(knightPose(18000, true, false, 'attack', 1));
+    expect(t.x).toBe(0); expect(t.y).toBe(0); expect(t.scale).toBe(1); expect(t.rot).toBe(0);
+    expect(t.footX).toBe(500); expect(t.footY).toBeCloseTo(571.2, 10);
+    const p = knightPoint(t, 480, 300);
+    expect(p.x).toBeCloseTo(480, 10); expect(p.y).toBeCloseTo(300, 10);
+  });
+  it('命中の0.1秒後は上へ押されて縮み、右へ回る', () => {
+    const t = place(knightPose(18600, true, false, 'attack', 1));
+    expect(t.y).toBeCloseTo(-14.6667, 3);
+    expect(t.scale).toBeCloseTo(.976296, 6);
+    expect(t.rot).toBeCloseTo(.056109, 6);
+    // 胸のあたりの点は上へ動き、回る分だけ右へずれる。
+    const p = knightPoint(t, 500, 300);
+    expect(p.y).toBeLessThan(300);
+    expect(p.x).toBeGreaterThan(500);
+  });
+  it('動きを減らす設定では置き方も動かない', () => {
+    const t = place(knightPose(18600, true, true, 'attack', 1));
+    expect(t.y).toBe(0); expect(t.scale).toBe(1); expect(t.rot).toBe(0);
   });
 });

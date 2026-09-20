@@ -2,6 +2,7 @@ import './effects-lab.css';
 import { MagicCanvas } from './render/magic';
 import { layerTransform } from './render/cast-scene';
 import { Knight } from './render/knight';
+import { ScreenOverlay } from './render/overlay';
 import { presets, defaultPresetName } from './render/effects/presets';
 import { spellPose } from './render/spell-layout';
 import type { LiveInput } from './game/live-input';
@@ -66,16 +67,22 @@ function recipe(): Recipe {
 
 // 控えめモードは ?calm=1 で渡す。揺れ、傾き、寄り、停止がなくなり、閃光が3分の1になる。
 const calmMode = params.get('calm') === '1';
-type Side = { magic: MagicCanvas; knight: Knight; layers: HTMLElement[]; meter: HTMLOutputElement; frames: number[]; lastShake: string[] };
+type Side = { magic: MagicCanvas; knight: Knight; overlay: ScreenOverlay; layers: HTMLElement[]; meter: HTMLOutputElement; frames: number[]; lastShake: string[] };
 const sides: Side[] = ['a', 'b'].map(side => {
   const frame = document.querySelector<HTMLElement>(`[data-side="${side}"]`)!;
   const magic = new MagicCanvas(el<HTMLCanvasElement>(`magic-${side}`), value(`preset-${side}`));
   magic.setCalm(calmMode);
   const knight = new Knight(el<HTMLCanvasElement>(`knight-${side}`));
+  // 騎士の反応の強さも演出canvasと同じ設定で決める。
   knight.setPreset(magic.preset);
+  const backdrop = frame.querySelector<HTMLElement>('.lab-backdrop')!;
+  // 閃光、ビネット、グレイン、暗転、背景の彩度は本編と同じHTMLの層で出す。左右それぞれに一組ずつ持つ。
+  const overlay = new ScreenOverlay(frame, { world: backdrop });
   el(`preset-${side}`).addEventListener('change', () => { magic.setPreset(value(`preset-${side}`)); knight.setPreset(magic.preset); ms = Math.min(ms, 13500); });
-  return { magic, knight, layers: [frame.querySelector('.lab-backdrop')!, el(`knight-${side}`)], meter: el<HTMLOutputElement>(`meter-${side}`), frames: [], lastShake: ['', ''] };
+  return { magic, knight, overlay, layers: [backdrop, el(`knight-${side}`)], meter: el<HTMLOutputElement>(`meter-${side}`), frames: [], lastShake: ['', ''] };
 });
+// ページを離れるときに騎士の立体の描画を片付ける（WebGLの文脈を残さない）。層も一緒に外す。
+addEventListener('pagehide', () => { for (const s of sides) { s.knight.dispose(); s.overlay.dispose(); } }, { once: true });
 
 let ms = 13500, playing = true, loopStart = 13500, last = performance.now();
 const clock = el<HTMLInputElement>('time');
@@ -83,10 +90,15 @@ function setPlaying(next: boolean) { playing = next; el('play').textContent = ne
 el('play').addEventListener('click', () => setPlaying(!playing));
 el('loop-release').addEventListener('click', () => { loopStart = loopStart === 13500 ? 16800 : 13500; el('loop-release').textContent = loopStart === 13500 ? '放出だけ繰り返す' : '蓄積から繰り返す'; ms = loopStart; setPlaying(true); });
 el('single').addEventListener('click', () => { const single = el('layout').classList.toggle('single'); el('single').setAttribute('aria-pressed', String(single)); el('single').textContent = single ? '二画面にする' : '一画面にする'; resize(); });
+/** つまみを動かしたときに描き直すコマ数の上限。これを超える分は一コマを長くして粗く飛ばす。 */
+const CATCH_UP_FRAMES = 120;
 // つまみで先へ飛ばすときは、途中のコマを速く描いて粒の動きを追いつかせる。戻すときは最初から。
 function seek(target: number) {
   if (target < ms) { ms = 13500; for (const s of sides) s.magic.renderEffects([], 24000, null, 0, [], true, { x: .5, y: .3 }, { x: 0, y: 0 }); }
-  while (ms + 1000 / 60 < target) { ms += 1000 / 60; renderSides(); }
+  // 10秒ぶん戻すと600コマ×2画面になって固まるので、描き直すのは120コマまでにする。
+  const frames = Math.min(CATCH_UP_FRAMES, Math.floor((target - ms) / (1000 / 60)));
+  const step = frames > 0 ? (target - ms) / frames : 0;
+  for (let i = 0; i < frames; i++) { ms += step; renderSides(); }
   ms = target;
 }
 clock.addEventListener('input', () => { setPlaying(false); seek(Number(clock.value) * 1000); });
@@ -135,8 +147,9 @@ function renderSides(dt = 0) {
       const transform = layerTransform(screen, moves[i], 1.03);
       if (transform !== s.lastShake[i]) { s.layers[i].style.transform = transform; s.lastShake[i] = transform; }
     }
+    // 閃光、ビネット、グレイン、暗転、背景の彩度。本編と同じ呼び方にして、見え方をそろえる。
+    s.overlay.update(screen, s.magic.preset.palettes[unlocked ? 'neutral' : current.element], calmMode);
     if (dt) { s.frames.push(dt); if (s.frames.length > 90) s.frames.shift(); }
   }
 }
 void Promise.all(sides.map(s => s.knight.ready)).then(() => { resize(); requestAnimationFrame(animate); });
-window.addEventListener('pagehide', event => { if (!event.persisted) for (const s of sides) s.knight.dispose(); });
