@@ -1,6 +1,7 @@
 @import '@fontsource/noto-sans-jp/400.css';
 @import '@fontsource/noto-sans-jp/500.css';
 @import '@fontsource/noto-serif-jp/400.css';
+@import './knight-canvas.css';
 
 :root{font-family:'Noto Sans JP',sans-serif;color:#e6eef3;background:#10151b;font-synthesis:none}*{box-sizing:border-box}body{margin:0}button,a,input{font:inherit}button,a{color:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #bce3ff;outline-offset:4px}[hidden]{display:none!important}
 .look-page{height:100dvh;min-height:520px;display:flex;flex-direction:column}.look-tools{min-height:64px;padding:10px 24px;display:flex;align-items:center;gap:24px;background:#10171f}.look-tools>a{font-size:12px;text-underline-offset:5px;color:#aebecb}.look-tools h1{font-size:15px;font-weight:500;margin:0;white-space:nowrap}.look-actions{display:flex;gap:8px;margin-left:auto}.look-poses{display:flex;gap:8px}.look-poses button{font-size:12px;padding:9px 14px;background:#192632;border:1px solid #8297a552;border-radius:2px}.look-poses button[aria-pressed=true]{background:#2a4255;border-color:#93bfd6}.look-actions button{font-size:12px;padding:9px 14px;background:#192632;border:1px solid #8297a552;border-radius:2px}.look-actions button:hover,.look-actions button[aria-pressed=true]{background:#2a4255;border-color:#93bfd6}.look-actions #draw{color:#e6f6ff;border-color:#82a7bf}
