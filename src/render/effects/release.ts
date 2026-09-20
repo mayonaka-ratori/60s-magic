@@ -1,6 +1,6 @@
 import { clamp } from '../../game/motion';
 import type { Element } from '../../game/types';
-import { increase } from './presets';
+import { increase, type Palette } from './presets';
 import { RELEASE_AT, IMPACT_AT } from './screen';
 import { glow, line, noise, ease, type Frame, type XY } from './frame';
 
@@ -19,17 +19,17 @@ export function bodyPoint(f: Frame, i: number, travel: number, time: number): XY
   return { x, y };
 }
 
-/** 属性ごとの本体の形。色は palette から、形だけここで決める。 */
-export function drawBody(f: Frame, x: number, y: number, size: number, element: Element, alpha: number, time: number, index: number) {
-  const c = f.c, main = f.palette.main;
-  glow(f, x, y, size, alpha * .9);
+/** 属性ごとの本体の形。色は palette から、形だけここで決める。pal で色だけ二色目に替えられる。 */
+export function drawBody(f: Frame, x: number, y: number, size: number, element: Element, alpha: number, time: number, index: number, pal: Palette = f.palette) {
+  const c = f.c, main = pal.main;
+  glow(f, x, y, size, alpha * .9, pal.main, pal.core);
   c.globalAlpha = alpha; c.lineWidth = 2; c.strokeStyle = main; c.beginPath();
   if (element === 'ice') { c.moveTo(x, y - size * 1.8); c.lineTo(x + size * .7, y); c.lineTo(x, y + size); c.lineTo(x - size * .7, y); c.closePath(); c.stroke(); c.beginPath(); c.moveTo(x - size * .5, y - size * .9); c.lineTo(x + size * .5, y + size * .3); c.stroke(); }
-  else if (element === 'lightning') { const k = Math.floor(time * 24) + index; c.lineWidth = 2.5; c.moveTo(x - size, y - size * 1.8); for (let i = 0; i < 6; i++) c.lineTo(x + (noise(k + i) - .5) * size * 1.6, y - size * 1.5 + i * size * .6); c.stroke(); c.lineWidth = 1; c.strokeStyle = f.palette.core; c.stroke(); }
+  else if (element === 'lightning') { const k = Math.floor(time * 24) + index; c.lineWidth = 2.5; c.moveTo(x - size, y - size * 1.8); for (let i = 0; i < 6; i++) c.lineTo(x + (noise(k + i) - .5) * size * 1.6, y - size * 1.5 + i * size * .6); c.stroke(); c.lineWidth = 1; c.strokeStyle = pal.core; c.stroke(); }
   else if (element === 'wind') { for (let i = 0; i < 3; i++) { c.moveTo(x - size * 1.2, y + i * 5 - 5); c.quadraticCurveTo(x + Math.sin(time * 9 + i) * size * .4, y - size - i * 5, x + size * 1.2, y + i * 5 - 5); } c.stroke(); }
-  else if (element === 'fire') { for (let i = 0; i < 6; i++) glow(f, x + Math.sin(time * 7 + i * 1.7 + index) * size * .6, y - i * size * .5 - Math.abs(Math.sin(time * 5 + i)) * size * .4, size * (.35 - i * .04), alpha * (1 - i / 7)); }
-  else if (element === 'dark') { c.globalCompositeOperation = 'source-over'; c.fillStyle = f.palette.edge; c.globalAlpha = alpha; c.arc(x, y, size * .6, 0, Math.PI * 2); c.fill(); c.globalCompositeOperation = 'lighter'; c.lineWidth = 3; c.stroke(); for (let i = 0; i < 4; i++) { const a = time * 3 + i * 1.57; glow(f, x + Math.cos(a) * size * .8, y + Math.sin(a) * size * .5, size * .25, alpha * .6); } }
-  else if (element === 'light') { c.arc(x, y, size * .7, 0, Math.PI * 2); c.stroke(); c.lineWidth = 1.2; c.strokeStyle = f.palette.core; c.beginPath(); for (let i = 0; i < 4; i++) { const a = i * Math.PI / 4 + time * .8; c.moveTo(x - Math.cos(a) * size * 2, y - Math.sin(a) * size * 2); c.lineTo(x + Math.cos(a) * size * 2, y + Math.sin(a) * size * 2); } c.stroke(); }
+  else if (element === 'fire') { for (let i = 0; i < 6; i++) glow(f, x + Math.sin(time * 7 + i * 1.7 + index) * size * .6, y - i * size * .5 - Math.abs(Math.sin(time * 5 + i)) * size * .4, size * (.35 - i * .04), alpha * (1 - i / 7), pal.main, pal.core); }
+  else if (element === 'dark') { c.globalCompositeOperation = 'source-over'; c.fillStyle = pal.edge; c.globalAlpha = alpha; c.arc(x, y, size * .6, 0, Math.PI * 2); c.fill(); c.globalCompositeOperation = 'lighter'; c.lineWidth = 3; c.stroke(); for (let i = 0; i < 4; i++) { const a = time * 3 + i * 1.57; glow(f, x + Math.cos(a) * size * .8, y + Math.sin(a) * size * .5, size * .25, alpha * .6, pal.main, pal.core); } }
+  else if (element === 'light') { c.arc(x, y, size * .7, 0, Math.PI * 2); c.stroke(); c.lineWidth = 1.2; c.strokeStyle = pal.core; c.beginPath(); for (let i = 0; i < 4; i++) { const a = i * Math.PI / 4 + time * .8; c.moveTo(x - Math.cos(a) * size * 2, y - Math.sin(a) * size * 2); c.lineTo(x + Math.cos(a) * size * 2, y + Math.sin(a) * size * 2); } c.stroke(); }
   else { c.arc(x, y, size * .7, 0, Math.PI * 2); c.stroke(); }
 }
 
@@ -44,7 +44,9 @@ export function drawRelease(f: Frame) {
     for (let i = 0; i < n; i++) {
       const spread = (f.pool.random() - .5) * 2.2, speed = 120 + f.pool.random() * 420 * (1 + intensity * .3);
       const ax = dirX / d * Math.cos(spread) - dirY / d * Math.sin(spread), ay = dirX / d * Math.sin(spread) + dirY / d * Math.cos(spread);
-      f.pool.spawn({ x: o.x, y: o.y, vx: ax * speed, vy: ay * speed, life: .4 + f.pool.random() * .7, size: 1 + f.pool.random() * 2.2, drag: .12, color: f.palette.spark, core: f.palette.core, kind: f.pool.random() < .5 ? 1 : 0 });
+      // 飾り色があるときは、飛び出す粒の半分を二色目にする。
+      const pal = f.accent && i % 2 ? f.accent : f.palette;
+      f.pool.spawn({ x: o.x, y: o.y, vx: ax * speed, vy: ay * speed, life: .4 + f.pool.random() * .7, size: 1 + f.pool.random() * 2.2, drag: .12, color: pal.spark, core: pal.core, kind: f.pool.random() < .5 ? 1 : 0 });
     }
   });
   if (time < 1.2) {
@@ -112,20 +114,24 @@ export function drawTravel(f: Frame) {
       // 光線。太さが脈打ち、縁と芯の二重にする。粒が帯に沿って流れる。
       const width = (5 + intensity * 3) * focus * (1 + Math.sin(time * 30) * .12), grow = clamp(time / .25);
       const end = { x: a.x + (g.x - a.x) * grow, y: a.y + (g.y - a.y) * grow };
-      line(f, a, end, width * 2.2, fade * .35, f.palette.main, 0); line(f, a, end, width, fade * .95, f.palette.main, width * .4);
+      // 光線の縁だけ二色目にする。芯は主属性のまま。
+      line(f, a, end, width * 2.2, fade * .35, (f.accent ?? f.palette).main, 0); line(f, a, end, width, fade * .95, f.palette.main, width * .4);
       for (let k = 0; k < Math.round(increase(8, intensity)); k++) { const u = (t * 2.5 + noise(k + i * 9)) % 1; glow(f, a.x + (end.x - a.x) * u + (noise(k, 4) - .5) * width * 2, a.y + (end.y - a.y) * u, 2, fade * .8); }
       glow(f, end.x, end.y, 9 + intensity * 3, fade * .9);
       continue;
     }
     if (travel >= 1 && time > ARRIVAL + .35) continue;
+    // 飾り色があるとき、連弾は一つおきに二色目。単発は尾だけ二色目にする。
+    const pal = f.accent && r.count > 1 && i % 2 ? f.accent : f.palette;
+    const trailPal = f.accent && r.count === 1 ? f.accent : pal;
     // 尾。少し前の位置を並べて、光の帯にする。
     const steps = 9, span = preset.trail * (1 + intensity * .4);
     for (let k = steps; k >= 1; k--) {
       const back = travel - (k / steps) * (span / ARRIVAL); if (back <= 0) continue;
       const q = bodyPoint(f, i, back, time - (k / steps) * span), u = 1 - k / steps;
-      glow(f, q.x, q.y, (r.count > 1 ? 5 : 14) * (0.3 + u * .7), fade * u * .6);
+      glow(f, q.x, q.y, (r.count > 1 ? 5 : 14) * (0.3 + u * .7), fade * u * .6, trailPal.main, trailPal.core);
     }
-    drawBody(f, p.x, p.y, (r.count > 1 ? 6 : 20) * (1 + intensity * .12), r.element, fade, time, i);
+    drawBody(f, p.x, p.y, (r.count > 1 ? 6 : 20) * (1 + intensity * .12), r.element, fade, time, i, pal);
     if (travel < 1 && r.count === 1) line(f, a, p, 2, fade * .25);
   }
 }

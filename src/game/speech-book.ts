@@ -14,6 +14,8 @@ export class SpeechBook {
   }
   /** 画面に出すための、いちばん新しい文字。安定していなくても返す。 */
   latest() {return this.latestEntry;}
+  /** 途中の認識結果も含めた、いま聞こえている全部。確定前の即時反応だけに使う。 */
+  live() { return [...this.entries.values()].filter(e=>e.text.trim()).sort((a,b)=>a.startMs-b.startMs); }
   snapshot() { return [...this.entries.values()].filter(e=>e.text.trim()&&(e.final||e.stability>=0.8)).sort((a,b)=>a.startMs-b.startMs); }
   freeze() {
     if(!this.locked) {

@@ -15,22 +15,24 @@ export function drawImpact(f: Frame) {
     const n = Math.round(increase(preset.impactParticles, intensity, .5) * (violent ? 1 : .45));
     for (let i = 0; i < n; i++) {
       const a = f.pool.random() * Math.PI * 2, speed = (60 + f.pool.random() * 380) * (1 + intensity * .35) * (violent ? 1 : .5);
-      let vx = Math.cos(a) * speed, vy = Math.sin(a) * speed * .75, gravity = 260, life = .5 + f.pool.random() * .9, kind = f.pool.random() < .45 ? 1 : 0, color = f.palette.spark;
-      if (element === 'fire') { gravity = -140; vy -= 60; life += .3; kind = 0; color = f.pool.random() < .5 ? f.palette.main : f.palette.spark; }
+      // 飾り色があるとき、粒の半分を二色目にする。飛び方は属性ごとのまま。
+      const pal = f.accent && i % 2 ? f.accent : f.palette;
+      let vx = Math.cos(a) * speed, vy = Math.sin(a) * speed * .75, gravity = 260, life = .5 + f.pool.random() * .9, kind = f.pool.random() < .45 ? 1 : 0, color = pal.spark;
+      if (element === 'fire') { gravity = -140; vy -= 60; life += .3; kind = 0; color = f.pool.random() < .5 ? pal.main : pal.spark; }
       if (element === 'ice') { gravity = 420; kind = f.pool.random() < .4 ? 2 : 1; }
       if (element === 'wind') { gravity = -20; vx *= 1.5; life += .4; kind = 1; }
       if (element === 'lightning') { life *= .55; kind = 1; }
       if (element === 'light') { gravity = 0; kind = 0; }
-      if (element === 'dark') { gravity = 40; kind = f.pool.random() < .5 ? 2 : 0; color = f.pool.random() < .5 ? f.palette.main : f.palette.edge; }
+      if (element === 'dark') { gravity = 40; kind = f.pool.random() < .5 ? 2 : 0; color = f.pool.random() < .5 ? pal.main : pal.edge; }
       if (r.purpose === 'enhance') { gravity = -160; vx *= .3; vy = -Math.abs(vy) * .6 - 40; kind = 0; life += .6; }
-      f.pool.spawn({ x: g.x + (f.pool.random() - .5) * 10, y: g.y + (f.pool.random() - .5) * 10, vx, vy, life, size: 1 + f.pool.random() * 2.6, gravity, drag: kind === 1 ? .1 : .4, color, core: f.palette.core, kind });
+      f.pool.spawn({ x: g.x + (f.pool.random() - .5) * 10, y: g.y + (f.pool.random() - .5) * 10, vx, vy, life, size: 1 + f.pool.random() * 2.6, gravity, drag: kind === 1 ? .1 : .4, color, core: pal.core, kind });
     }
   });
   // 余韻。命中の少し後に、ゆっくり落ちる粒を足す。
   if (impact >= .3) f.once('afterglow', () => {
     const n = Math.round(increase(preset.afterglowParticles, intensity, .6));
-    for (let i = 0; i < n; i++) f.pool.spawn({ x: g.x + (f.pool.random() - .5) * radius * 3, y: g.y + (f.pool.random() - .8) * radius * 2, vx: (f.pool.random() - .5) * 30, vy: element === 'fire' || r.purpose === 'enhance' ? -20 - f.pool.random() * 30 : 10 + f.pool.random() * 30,
-      life: 1.5 + f.pool.random() * 1.8, size: .8 + f.pool.random() * 1.6, gravity: element === 'fire' ? -15 : 12, drag: .5, color: f.palette.main, core: f.palette.core, kind: 0 });
+    for (let i = 0; i < n; i++) { const pal = f.accent && i % 2 ? f.accent : f.palette; f.pool.spawn({ x: g.x + (f.pool.random() - .5) * radius * 3, y: g.y + (f.pool.random() - .8) * radius * 2, vx: (f.pool.random() - .5) * 30, vy: element === 'fire' || r.purpose === 'enhance' ? -20 - f.pool.random() * 30 : 10 + f.pool.random() * 30,
+      life: 1.5 + f.pool.random() * 1.8, size: .8 + f.pool.random() * 1.6, gravity: element === 'fire' ? -15 : 12, drag: .5, color: pal.main, core: pal.core, kind: 0 }); }
   });
 
   c.strokeStyle = f.palette.main;
@@ -41,15 +43,18 @@ export function drawImpact(f: Frame) {
   for (let i = 0; i < rings; i++) {
     const u = clamp((impact - i * (violent ? .07 : .18)) / 1.1); if (u <= 0 || u >= 1) continue;
     const size = ease(u) * radius * (violent ? 1.7 + i * .25 : 1.2);
-    c.globalAlpha = (1 - u) * .8 * (violent ? 1 : .6); c.lineWidth = 3 - u * 2; c.strokeStyle = i % 2 ? f.palette.core : f.palette.main;
+    c.globalAlpha = (1 - u) * .8 * (violent ? 1 : .6); c.lineWidth = 3 - u * 2; c.strokeStyle = i % 2 ? (f.accent ? f.accent.main : f.palette.core) : f.palette.main;
     c.beginPath(); c.ellipse(g.x, g.y, Math.max(1, size), Math.max(1, size * .58), 0, 0, Math.PI * 2); c.stroke();
   }
   // 白い火花の線。一瞬で外へ。
   if (impact < .8 && violent) {
-    c.strokeStyle = f.palette.core; c.lineWidth = 1.4; c.globalAlpha = (1 - impact / .8) * .85; c.beginPath();
-    const n = Math.round(increase(22, intensity, .6));
-    for (let i = 0; i < n; i++) { const a = i * 2.399, spread = (25 + (i * 19) % 100) * (1 + intensity * .3) * Math.min(1, impact * 4), len = 8 + 20 * (1 - impact / .8); c.moveTo(g.x + Math.cos(a) * spread, g.y + Math.sin(a) * spread * .7); c.lineTo(g.x + Math.cos(a) * (spread + len), g.y + Math.sin(a) * (spread + len) * .7); }
-    c.stroke();
+    const n = Math.round(increase(22, intensity, .6)), step = f.accent ? 2 : 1;
+    // 飾り色があるとき、火花の線は一本おきに二色目で描く。
+    for (let pass = 0; pass < step; pass++) {
+      c.strokeStyle = pass && f.accent ? f.accent.main : f.palette.core; c.lineWidth = 1.4; c.globalAlpha = (1 - impact / .8) * .85; c.beginPath();
+      for (let i = pass; i < n; i += step) { const a = i * 2.399, spread = (25 + (i * 19) % 100) * (1 + intensity * .3) * Math.min(1, impact * 4), len = 8 + 20 * (1 - impact / .8); c.moveTo(g.x + Math.cos(a) * spread, g.y + Math.sin(a) * spread * .7); c.lineTo(g.x + Math.cos(a) * (spread + len), g.y + Math.sin(a) * (spread + len) * .7); }
+      c.stroke();
+    }
   }
   // 亀裂。すぐ現れ、遅れて光り、ゆっくり消える。
   const cracks = violent ? Math.round(increase(preset.cracks, intensity, .4)) : 0;

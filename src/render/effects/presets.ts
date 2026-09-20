@@ -70,11 +70,13 @@ export const presets: Record<string, EffectPreset> = {
 export const defaultPresetName = 'vivid';
 export function getPreset(name: string | null | undefined): EffectPreset { return presets[name ?? ''] ?? presets[defaultPresetName]; }
 
-/** 派手さ。0〜3。レシピの個数、範囲、収束と設定の下駄から決める。 */
-export function intensityOf(recipe: Recipe | null, preset: EffectPreset) {
-  if (!recipe) return clamp(preset.baseIntensity, 0, 3);
+/** 派手さ。0〜3。レシピの個数、範囲、収束と設定の下駄、それに入力の量（省略可）から決める。 */
+export function intensityOf(recipe: Recipe | null, preset: EffectPreset, amount = 0) {
+  // 重ねて描き、重ねて唱えるほど派手になる。最大で+0.6。
+  const fromInput = clamp(amount) * .6;
+  if (!recipe) return clamp(preset.baseIntensity + fromInput, 0, 3);
   const fromRecipe = (recipe.count - 1) / 7 * .7 + recipe.area * .6 + recipe.concentration * .4 + (recipe.purpose === 'attack' ? .2 : 0);
-  return clamp(preset.baseIntensity + fromRecipe, 0, 3);
+  return clamp(preset.baseIntensity + fromRecipe + fromInput, 0, 3);
 }
 /** 派手さに応じて数を増やす。派手さ0で1倍、3で最大約2.5倍。 */
 export const increase = (value: number, intensity: number, rate = .5) => value * (1 + intensity * rate);

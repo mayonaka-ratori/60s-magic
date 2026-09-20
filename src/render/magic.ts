@@ -60,8 +60,8 @@ export class MagicCanvas {
     // 時刻が戻ったら（確認画面のつまみなど）粒と一度きりの発生をやり直す。
     if (t < this.lastRaw - .05) this.reset();
     this.lastRaw = t;
-    const preset = this.preset, palette = preset.palettes[recipe?.element ?? 'neutral'], intensity = intensityOf(recipe, preset), accent = recipe?.accent ? preset.palettes[recipe.accent] : null;
-    this.state = screenState(t, intensity, preset, recipe?.purpose ?? null);
+    const preset = this.preset, palette = preset.palettes[recipe?.element ?? 'neutral'], intensity = intensityOf(recipe, preset, live.amount), accent = recipe?.accent ? preset.palettes[recipe.accent] : null;
+    this.state = screenState(t, intensity, preset, recipe?.purpose ?? null, 0, live.amount);
     const te = effectTime(t, this.state.hitStop), dt = this.lastEffect < 0 ? 0 : clamp(te - this.lastEffect, 0, .05);
     this.lastEffect = te;
     const fade = 1 - clamp((t - 21) / 2), hit = { x: target.x * w, y: target.y * h };

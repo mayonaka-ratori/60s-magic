@@ -4,6 +4,7 @@ import { Knight } from './render/knight';
 import { presets, defaultPresetName } from './render/effects/presets';
 import { spellPose } from './render/spell-layout';
 import type { LiveInput } from './game/live-input';
+import { liveWords } from './game/live-words';
 import { ELEMENTS, FORMS, PURPOSES, TRAJECTORIES, ELEMENT_LABELS, FORM_LABELS, PURPOSE_LABELS, type Recipe, type Point } from './game/types';
 
 /** 演出だけを見比べる画面。本編を遊ばずに、放出から命中までを繰り返し見られる。カメラ、マイク、通信は使わない。 */
@@ -37,6 +38,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <label>個数 <input id="count" type="number" min="1" max="8" value="${params.get('count') ?? 1}"></label>
       <label>範囲 <input id="area" type="range" min="0.2" max="1" step="0.05" value="${params.get('area') ?? 0.5}"></label>
       <label>収束 <input id="concentration" type="range" min="0" max="1" step="0.05" value="${params.get('concentration') ?? 0.5}"></label>
+      <label>言葉 <input id="words" type="text" placeholder="炎よ、七つに分かれろ" value="${params.get('words') ?? ''}"></label>
+      <label><input id="unlocked" type="checkbox"${params.get('unlocked') ? ' checked' : ''}> 確定前にする（候補の色）</label>
       <p id="note" role="status">左右で設定を変えて見比べられます。時刻のつまみを動かすと、その瞬間で止まります。</p>
     </footer>
   </main>`;
@@ -84,6 +87,15 @@ function seek(target: number) {
 clock.addEventListener('input', () => { setPlaying(false); seek(Number(clock.value) * 1000); });
 for (const id of ['element', 'form', 'purpose', 'trajectory', 'count', 'area', 'concentration']) el(id).addEventListener('change', () => { ms = Math.min(ms, Math.max(loopStart, 13500)); });
 
+// 入力した言葉は、入れ直した瞬間に唱えたものとして扱う。
+let spokenAt = 0;
+el('words').addEventListener('input', () => { spokenAt = ms; });
+function liveWordsNow() {
+  const text = value('words');
+  if (!text.trim()) return [];
+  return liveWords([{ id: 1, revision: 1, startMs: Math.max(0, spokenAt - 500), endMs: spokenAt, text, final: true, stability: 1, source: 'typed' }]);
+}
+
 function resize() { for (const s of sides) { s.magic.resize(); s.knight.resize(); } }
 new ResizeObserver(resize).observe(el('layout'));
 
@@ -106,8 +118,9 @@ function renderSides(dt = 0) {
     const displayed = points.map(p => ({ ...p, x: ((p.x - .5) * w * pose.scale + pose.dx + w / 2) / w, y: ((p.y - .5) * h * pose.scale + pose.dy + h / 2) / h }));
     s.knight.render(ms, true, current);
     // 見比べ画面では入力の量を URL の amount= で仮に与える。言葉は空。
-    const live: LiveInput = { words: [], amount: Number(params.get('amount') ?? .5), voice: 0 };
-    s.magic.renderEffects(displayed, ms, current, 0, [], false, s.knight.target, pose.center, live);
+    const live: LiveInput = { words: liveWordsNow(), amount: Number(params.get('amount') ?? .5), voice: 0 };
+    const unlocked = el<HTMLInputElement>('unlocked').checked;
+    s.magic.renderEffects(displayed, ms, unlocked ? null : current, 0, [], false, s.knight.target, pose.center, live);
     const shake = s.magic.screen, transform = shake.shakeX || shake.shakeY ? `translate(${shake.shakeX}px,${shake.shakeY}px)` : '';
     if (transform !== s.lastShake) { for (const layer of s.layers) layer.style.transform = transform; s.lastShake = transform; }
     if (dt) { s.frames.push(dt); if (s.frames.length > 90) s.frames.shift(); }
