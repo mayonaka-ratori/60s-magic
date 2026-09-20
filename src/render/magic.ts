@@ -4,14 +4,17 @@ import { fitSpell, smoothStroke } from './spell-layout';
 import { getPreset, intensityOf, type EffectPreset } from './effects/presets';
 import { GlowSprites } from './effects/sprites';
 import { ParticlePool } from './effects/particles';
-import { screenState, effectTime, hitStopOf, CHARGE_AT, RELEASE_AT, IMPACT_AT, FADE_OUT_AT, type ScreenState } from './effects/screen';
+import { screenState, effectTime, hitStopOf, type ScreenState } from './effects/screen';
 import { drawParticles, type Frame, type XY } from './effects/frame';
 import { drawCharge } from './effects/charge';
 import { drawRelease, drawTravel } from './effects/release';
 import { drawImpact } from './effects/impact';
 import { drawWordReactions } from './effects/words';
 import { drawStrokeReactions, newStrokeMemory, type StrokeMemory } from './effects/strokes';
+import { drawGuard } from './effects/guard';
 import { emptyLive, type LiveInput } from '../game/live-input';
+import { AIM, type GuardPlan } from '../game/guard';
+import { BEATS, beatAt, type Beat } from '../game/rounds';
 
 /** 属性ごとの主色。術式の線と結果の縮小図が使う。 */
 export const colors: Record<Element, string> = Object.fromEntries(Object.entries(getPreset(null).palettes).map(([k, v]) => [k, v.main])) as Record<Element, string>;
@@ -66,10 +69,10 @@ export class MagicCanvas {
   /** 今の演出の時刻（ms）。命中の停止を含む。騎士や術式もこの時刻を見る。 */
   get effectMs() { return this.lastEffectMs; }
   /** 与えた時刻から、停止を含んだ演出の時刻（ms）を出す。時刻だけで決まる純粋な計算。 */
-  effectMsOf(ms: number, recipe: Recipe | null, amount = 0) {
+  effectMsOf(ms: number, recipe: Recipe | null, amount = 0, beat: Beat = BEATS[0]) {
     const t = ms / 1000;
-    if (t < RELEASE_AT) return ms;
-    return effectTime(t, hitStopOf(this.preset, intensityOf(recipe, this.preset, amount), this.calm)) * 1000;
+    if (t < beat.release) return ms;
+    return effectTime(t, hitStopOf(this.preset, intensityOf(recipe, this.preset, amount), this.calm, beat), beat) * 1000;
   }
   setCalm(calm: boolean) { this.calm = calm; }
   /**
@@ -84,21 +87,30 @@ export class MagicCanvas {
   }
   private reset() { this.pool.clear(); this.pool.reseed(POOL_SEED); this.strokeMemory = newStrokeMemory(); this.fired.clear(); this.lastRaw = -1; this.lastEffect = -1; this.lastEffectMs = 0; this.state = still; }
 
-  renderEffects(points: Point[], ms: number, recipe: Recipe | null, voice: number, cursors: XY[], ready: boolean, target: XY, origin: XY, live: LiveInput = emptyLive) {
+  /** 一コマ分の演出。時刻と確定した内容だけで決まるようにしてある。 */
+  renderEffects(input: {
+    points: Point[]; ms: number; recipe: Recipe | null; voice: number; cursors: XY[]; ready: boolean;
+    target: XY; origin: XY; live?: LiveInput; beat?: Beat; guard?: GuardPlan | null; inherited?: XY[];
+  }) {
+    const { points, ms, recipe, voice, cursors, ready, target, origin } = input;
+    const live = input.live ?? emptyLive, guard = input.guard ?? null, inherited = input.inherited ?? [];
     const c = this.ctx, w = this.width, h = this.height, t = ms / 1000;
+    const beat = input.beat ?? beatAt(t);
     c.clearRect(0, 0, w, h);
-    if (ready || t >= FADE_OUT_AT) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
+    // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前（23.5秒）で変わらない。
+    const stopAt = Math.max(beat.end - .5, beat.impact + 4.5);
+    if (ready || t >= stopAt) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
     // 時刻が戻ったら（確認画面のつまみなど）粒と一度きりの発生をやり直す。
     if (t < this.lastRaw - .05) this.reset();
     this.lastRaw = t;
     const preset = this.preset, palette = preset.palettes[recipe?.element ?? 'neutral'], intensity = intensityOf(recipe, preset, live.amount), accent = recipe?.accent ? preset.palettes[recipe.accent] : null;
     // 入力の量は派手さ（intensityOf）の中だけで効かせる。画面の効果には派手さだけを渡す。
-    this.state = screenState(t, intensity, preset, recipe?.purpose ?? null, 0, 0, this.calm);
-    const te = effectTime(t, this.state.hitStop), dt = this.lastEffect < 0 ? 0 : clamp(te - this.lastEffect, 0, .05);
+    this.state = screenState(t, intensity, preset, recipe?.purpose ?? null, 0, 0, this.calm, beat);
+    const te = effectTime(t, this.state.hitStop, beat), dt = this.lastEffect < 0 ? 0 : clamp(te - this.lastEffect, 0, .05);
     this.lastEffect = te; this.lastEffectMs = te * 1000;
     // 放出直前の暗転の間は、粒も光も見せない。
     const lit = 1 - this.state.blackout;
-    const fade = (1 - clamp((t - 21) / 2)) * lit, hit = { x: target.x * w, y: target.y * h };
+    const fade = (1 - clamp((t - (beat.impact + 2.5)) / 2)) * lit, hit = { x: target.x * w, y: target.y * h };
 
     // 揺れ、傾き、寄りをまとめて演出の面にもかける。中心を軸に回して拡大する。
     c.save();
@@ -115,42 +127,45 @@ export class MagicCanvas {
     c.globalCompositeOperation = 'lighter'; c.lineCap = 'round'; c.lineJoin = 'round';
     const nodes = getNodes(points, 5);
     // 描いている間の光。線の節が光り、光が線の上を巡る。声で大きくなる。
-    if (t >= 6 && t < RELEASE_AT) {
+    if (t >= beat.build && t < beat.release) {
       for (const p of nodes) this.sprites.draw(c, p.x * w, p.y * h, 2 + voice * 3, palette.core, palette.main, .5);
-      const runners = t >= CHARGE_AT ? 14 : 8;
+      const runners = t >= beat.inputEnd ? 14 : 8;
       for (let i = 0; i < Math.min(runners, points.length); i++) {
         const index = Math.floor(((t * .16 + i / runners) % 1) * points.length), p = points[index];
         this.sprites.draw(c, p.x * w, p.y * h, 1.8, palette.core, palette.main, .7);
       }
     }
-    if (t >= CHARGE_AT && t < RELEASE_AT) {
+    if (t >= beat.inputEnd && t < beat.release) {
       // 線の節から中心へ光が流れ込む。
-      const charge = clamp((t - CHARGE_AT) / 3);
+      const charge = clamp((t - beat.inputEnd) / (beat.release - beat.inputEnd));
       for (let i = 0; i < nodes.length; i++) {
         const p = (t * (.8 + charge * .6) + i / nodes.length) % 1, a = nodes[i];
         this.sprites.draw(c, a.x * w + (origin.x - a.x * w) * p, a.y * h + (origin.y - a.y * h) * p, 2, palette.core, palette.main, p * .7);
       }
     }
-    if (t < CHARGE_AT) for (const p of cursors) {
+    if (t < beat.inputEnd) for (const p of cursors) {
       this.sprites.draw(c, p.x * w, p.y * h, 4 + voice * 2, palette.core, palette.main, 1);
       // 手の跡に小さな光を残す。
       if (dt > 0 && this.pool.random() < .6) this.pool.spawn({ x: p.x * w, y: p.y * h, vx: (this.pool.random() - .5) * 20, vy: -10 - this.pool.random() * 20, life: .5 + this.pool.random() * .5, size: 1 + this.pool.random() * 1.2, drag: .5, color: palette.main, core: palette.core, kind: 0 });
     }
-    const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, target: hit, accent, live, points, cursors, calm: this.calm,
+    const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, target: hit, accent, live, points, cursors,
+      beat, guard, aim: AIM, inherited, calm: this.calm,
       once: (key, run) => { if (!this.fired.has(key)) { this.fired.add(key); run(); } } };
     // 放出と命中に入る先頭のコマで、粒の乱数の種を戻す。コマ落ちしても同じ火花になる。
-    if (te >= RELEASE_AT) frame.once('seed-release', () => this.pool.reseed(RELEASE_SEED));
-    if (te >= IMPACT_AT) frame.once('seed-impact', () => this.pool.reseed(IMPACT_SEED));
+    if (te >= beat.release) frame.once('seed-release', () => this.pool.reseed(RELEASE_SEED));
+    if (te >= beat.impact) frame.once('seed-impact', () => this.pool.reseed(IMPACT_SEED));
     c.globalAlpha = fade;
     // 描いている間の即時反応。動きと言葉に、その場で光が応える。save と restore で濃さと重ね方は元に戻る。
-    if (t < RELEASE_AT) { c.save(); drawStrokeReactions(frame, this.strokeMemory); drawWordReactions(frame); c.restore(); }
+    if (t < beat.release) { c.save(); drawStrokeReactions(frame, this.strokeMemory); drawWordReactions(frame); c.restore(); }
+    // 防御の回は、狙いの印と盾と敵の一撃。魔法が確定する前から印を出す。
+    if (beat.defend) { c.save(); drawGuard(frame); c.restore(); }
     if (recipe) {
       drawCharge(frame);
-      if (te >= RELEASE_AT) { c.save(); drawRelease(frame); drawTravel(frame); drawImpact(frame); c.restore(); }
+      if (!beat.defend && te >= beat.release) { c.save(); drawRelease(frame); drawTravel(frame); drawImpact(frame); c.restore(); }
       c.globalCompositeOperation = 'lighter';
-    } else if (t >= CHARGE_AT) {
+    } else if (t >= beat.inputEnd) {
       // 魔法が未確定でも蓄積の光は見せる。無属性の色で中心だけ。
-      const charge = clamp((t - CHARGE_AT) / 3);
+      const charge = clamp((t - beat.inputEnd) / (beat.release - beat.inputEnd));
       this.sprites.draw(c, origin.x, origin.y, 5 + charge * 11, palette.core, palette.main, .4 + charge * .3);
     }
     this.pool.update(dt);
@@ -158,7 +173,7 @@ export class MagicCanvas {
     c.restore();
     // 色のずれ。命中の直後だけ、自分の絵を左右にずらして薄く重ねる。
     // 合成が動いている間は後処理側に任せて飛ばす。合成なしでも命中から CHROMATIC_WINDOW 秒だけに絞る。
-    if (!this.compositeActive && this.state.chromatic >= .5 && t >= IMPACT_AT && t - IMPACT_AT <= CHROMATIC_WINDOW) {
+    if (!this.compositeActive && this.state.chromatic >= .5 && t >= beat.impact && t - beat.impact <= CHROMATIC_WINDOW) {
       c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = .28;
       const d = this.state.chromatic, cw = this.canvas.width, ch = this.canvas.height;
       c.drawImage(this.canvas, 0, 0, cw, ch, -d, 0, w, h); c.drawImage(this.canvas, 0, 0, cw, ch, d, 0, w, h); c.restore();

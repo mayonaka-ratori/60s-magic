@@ -16,6 +16,8 @@ export function speechSessionDiagnostics(){return recentSessions.map(s=>({...s,r
 /** 14秒分を上限に最新の音を保持。古い認識要求を積み上げない。 */
 export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
   const owner={};
+  /** その回の受付の長さ（ms）。画面側が知らせる。届かなければ一回目の14秒として扱う。 */
+  let windowMs=14000;
   const record:SessionRecord={sessionId:'',startedAt:new Date().toISOString(),requests:[],audioChunks:0,droppedChunks:0,lastAudioMs:null,endedAtAudioMs:null,waitMs:null,finalDelivered:false,closeReason:null};
   recentSessions.push(record);if(recentSessions.length>5)recentSessions.shift();
   const closeWith=(reason:string)=>{if(record.closeReason===null)record.closeReason=reason;};
@@ -28,15 +30,18 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
   const finish=()=>{if(endedSent||closed)return;endedSent=true;send({type:'ended'});};
   const stop=()=>{if(closed)return;closed=true;closeWith('接続を閉じた');clearInterval(ticker);clearTimeout(lifetime);recognizer.release(owner);pcm.fill(0);};
   const ticker=setInterval(()=>void pump(),100);
-  const lifetime=setTimeout(()=>{closeWith('20秒の上限');finish();ws.close(1000);stop();},20000);
+  // 画面側が閉じ忘れたときの受け皿。一回目は3秒の合図の前につなぐので、閉じるまで最長18.4秒かかる。
+  const lifetime=setTimeout(()=>{closeWith('30秒の上限');finish();ws.close(1000);stop();},30000);
   ws.on('close',stop);ws.on('error',stop);
   async function pump(force=false) {
     if(closed||!started||busy||firstSample===null||version===processedVersion)return;
     const now=performance.now();
     if(now>=deadline){if(ended)finish();return;}
     if(!force&&!ended&&(now-lastRequestAt<650||lastSample-firstSample<6400))return;
-    // 終了の直前に途中の認識を始めず、最後の音を含む要求を優先する。MacのGPUでは一回に約1.3秒かかるため、12.6秒以降は途中の認識を始めない。
-    if(!ended&&lastSample>=201600)return;
+    // 終了の直前に途中の認識を始めず、最後の音を含む要求を優先する。
+    // MacのGPUでは一回に約1.3秒かかるため、受付の終わりの1.4秒前からは途中の認識を始めない。
+    // 一回目（14秒）なら12.6秒、防御（7秒）なら5.6秒。回の長さに合わせる。
+    if(!ended&&lastSample>=Math.max(0,windowMs-1400)*16)return;
     // 締め切りに間に合わない認識は始めない。結果を捨てるだけで、直前の結果を送るのも遅れる。
     if(ended&&lastProcessingMs>0&&now+lastProcessingMs>deadline){finish();return;}
     busy=true;lastRequestAt=now;
@@ -81,6 +86,8 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
     if(message.type==='start'&&!started) {
       if(typeof message.sessionId!=='string'||! /^[\w-]{1,80}$/.test(message.sessionId)){ws.close(1008);return;}
       sessionId=message.sessionId;record.sessionId=sessionId;
+      const asked=Number(message.windowMs);
+      if(Number.isFinite(asked)&&asked>=1000&&asked<=60000)windowMs=asked;
       const status=recognizer.getStatus();
       if(status.state!=='ready'){send({type:'unavailable',reason:status.message});ws.close(1013);return;}
       if(!recognizer.reserve(owner)){send({type:'unavailable',reason:'別の画面で音声認識を使用しています'});ws.close(1013);return;}

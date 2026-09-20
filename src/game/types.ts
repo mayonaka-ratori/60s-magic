@@ -18,13 +18,13 @@ export type Motion = {
 };
 export type SpellState = {
   schemaVersion: 'spell-state-2'; sessionId: string; castId: string; inputRevision: number;
-  phase: 'free'; currentTask: string;
+  phase: 'free' | 'defend'; currentTask: string;
   inputWindow: { startSessionMs: number; endSessionMs: number; chantPromptSessionMs: number; motionAndSpeechConcurrent: true };
   motion: Motion;
   timedEvents: Array<{ startMs: number; endMs: number; motion?: string; speech?: string; speechTiming?: 'utterance' | 'typed' }>;
   speech: { status: 'recognized' | 'typed' | 'unavailable'; provider?:'local'|'google'|'typed'|null; locale: 'ja-JP'; rawTranscript: string; normalizedTranscript: string; explicitCount: number | null; explicitNegation: boolean };
-  previous: null;
-  enemy: { attackKind: 'none'; encounterMode: 'exhibition_success' };
+  previous: null | { spellId: string; element: Element; purpose: Purpose; form: Form; name: string };
+  enemy: { attackKind: 'none' | 'slash'; encounterMode: 'exhibition_success' };
 };
 const BLENDS = ['amplify', 'burst', 'sustain'] as const;
 export type Blend = typeof BLENDS[number];

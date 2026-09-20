@@ -34,13 +34,14 @@ export class VoiceInput {
       };
     } catch(error) {this.dispose();throw error;}
   }
-  async connect(sessionId:string) {
+  /** windowMs はその回の受付の長さ。サーバーが、終わりの直前に無駄な認識を始めないために使う。 */
+  async connect(sessionId:string,windowMs=14000) {
     this.runId=sessionId;this.settled=false;
     const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/speech`);this.ws=ws;
     await new Promise<void>((resolve,reject)=>{
       let ready=false;
       const timer=setTimeout(()=>{ws.close();reject(new Error('音声認識に接続できませんでした'));},5000);
-      ws.onopen=()=>{this.note('音声認識へ接続');ws.send(JSON.stringify({type:'start',sessionId}));};
+      ws.onopen=()=>{this.note('音声認識へ接続');ws.send(JSON.stringify({type:'start',sessionId,windowMs}));};
       ws.onerror=()=>{clearTimeout(timer);this.note('音声認識の接続に失敗');reject(new Error('音声認識に接続できませんでした'));};
       ws.onmessage=({data})=>{
         let message;try{message=JSON.parse(data);}catch{return;}

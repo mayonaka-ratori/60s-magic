@@ -1,13 +1,15 @@
 import type { SpeechEntry } from './types';
 
 export class SpeechBook {
+  /** 受け付ける長さ（ms）。声は回ごとに0から数え直す（一回目は14秒、防御は7秒）。 */
+  constructor(private windowMs=14000) {}
   private entries=new Map<number,SpeechEntry>();
   private locked=false;
   private latestEntry:SpeechEntry|null=null;
   /** 確定が届かず、PC内の認識の途中結果をそのまま採用したか。 */
   usedFallback=false;
   add(entry: SpeechEntry) {
-    if(this.locked || !Number.isFinite(entry.startMs) || !Number.isFinite(entry.endMs) || entry.startMs<0 || entry.startMs>=14000 || entry.endMs<entry.startMs || entry.endMs>14000 || entry.text.length>1500)return;
+    if(this.locked || !Number.isFinite(entry.startMs) || !Number.isFinite(entry.endMs) || entry.startMs<0 || entry.startMs>=this.windowMs || entry.endMs<entry.startMs || entry.endMs>this.windowMs || entry.text.length>1500)return;
     const prior=this.entries.get(entry.id);
     if(prior && (prior.revision>=entry.revision || (prior.final&&!entry.final)))return;
     this.entries.set(entry.id,{...entry});this.latestEntry=this.entries.get(entry.id)??null;

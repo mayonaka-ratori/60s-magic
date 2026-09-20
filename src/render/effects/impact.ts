@@ -1,6 +1,5 @@
 import { clamp } from '../../game/motion';
 import { increase } from './presets';
-import { IMPACT_AT } from './screen';
 import { hitDelay } from './release';
 import { few, glow, noise, ease, mixOf, type Frame } from './frame';
 
@@ -69,7 +68,7 @@ function drawGroundMark(f: Frame, impact: number, radius: number, y: number) {
 /** 命中（18.5秒）。破裂、火花、輪、亀裂、属性ごとの作用。防御と強化は波紋と包む光にする。 */
 export function drawImpact(f: Frame) {
   const { c, t, target: g, preset, intensity, recipe: r } = f;
-  const impact = t - IMPACT_AT;
+  const impact = t - f.beat.impact;
   if (impact < 0) return;
   const violent = r.purpose === 'attack', radius = 24 + r.area * 70 + intensity * 10;
   const fade = 1 - clamp((impact - 1.6 - r.duration) / 2.4);

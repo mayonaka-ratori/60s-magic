@@ -41,13 +41,14 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばす',asy
   // 6秒より前は合図が無いので、ここで音が出ていれば曲が鳴っている。
   await page.waitForTimeout(1500);
   expect(await page.evaluate(()=>(window as any).__soundProbe.rms)).toBeGreaterThan(.001);
-  await expect(page.locator('#result')).toBeVisible({timeout:30000});
+  await expect(page.locator('#result')).toBeVisible({timeout:48000});
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.samples).toEqual({manifest:true,loaded:['bgm/test.wav','sfx/chime.wav','sfx/hit-1.wav','sfx/hit-2.wav'],missing:['sfx/missing.wav']});
   expect(report.audio.credits).toEqual(['テスト用の曲']);
   expect(report.audio.bgmStartedAtMs).toBeLessThan(1000);expect(report.audio.bgm).toBe('none');expect(report.audio.activeSources).toBe(0);
   expect(report.audio.events.map((e:{name:string;sample:boolean})=>[e.name,e.sample])).toEqual([
     ['trace',false],['chant',false],['build',false],['complete',true],['release',false],['impact',true],['settle',false],
+    ['chant',false],['build',false],['complete',true],['release',false],['block',false],['settle',false],
   ]);
   await page.locator('#sheet-close').click();
   // 曲は終了後に止まる。

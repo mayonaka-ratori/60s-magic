@@ -15,6 +15,7 @@ import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPi
 import '@babylonjs/core/Rendering/depthRendererSceneComponent';
 import type { ScreenState } from './effects/screen';
 import { IMPACT_AT, RELEASE_AT } from './effects/screen';
+import { BEATS, type Beat } from '../game/rounds';
 import { LAYER_FRAGMENT, LAYER_VERTEX, SHOCKWAVE_SHADER, registerCompositeShaders } from './composite-shaders';
 
 /**
@@ -52,8 +53,16 @@ export const BLOOM_CALM_PEAK = 1.6;
 /** ブルームを切る目安のfpsと、戻す目安のfps。 */
 export const FPS_DROP = 55, FPS_BACK = 58;
 
-/** 重い後処理（ブルーム、色収差、歪み）を出す時間帯かどうか。 */
-export function postHeavyActive(t: number) { return t >= POST_FROM && t < POST_TO; }
+const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
+
+/** その回で重い後処理を入れる時刻と切る時刻（秒）。一回目は 16.9 と 21 で今までと同じ。 */
+export const postFromOf = (beat: Beat = BEATS[0]) => beat.release - (RELEASE_AT - POST_FROM);
+export const postToOf = (beat: Beat = BEATS[0]) => beat.impact + (POST_TO - IMPACT_AT);
+
+/** 重い後処理（ブルーム、色収差、歪み）を出す時間帯かどうか。回ごとに、発動の直前から余韻までだけ。 */
+export function postHeavyActive(t: number, beat: Beat = BEATS[0]) {
+  return t >= postFromOf(beat) && t < postToOf(beat);
+}
 
 /** 衝撃波の輪。命中からの時間で半径が広がり、幅と強さが細く弱くなる。外にいる間は null。 */
 export type Ripple = { radius: number; width: number; strength: number };
@@ -68,22 +77,21 @@ export function rippleAt(t: number, impactAt = IMPACT_AT, life = RIPPLE_SECONDS)
  * 見せ始めの重なり具合。見せ始めた時刻で0、FADE_SECONDS 秒後に1。
  * 合成のcanvasの濃さとブルームの強さの両方に使う。切り替えの1コマで絵が跳ばないようにするため。
  */
-const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
 export function showFadeAt(t: number, shownAt: number) { return clamp01((t - shownAt) / FADE_SECONDS); }
 
-/** 後処理を切る手前の落とし具合。POST_TO の FADE_SECONDS 秒前から下がり始め、POST_TO で0になる。 */
-export function postFadeAt(t: number) { return clamp01((POST_TO - t) / FADE_SECONDS); }
+/** 後処理を切る手前の落とし具合。切る時刻の FADE_SECONDS 秒前から下がり始め、切る時刻で0になる。 */
+export function postFadeAt(t: number, beat: Beat = BEATS[0]) { return clamp01((postToOf(beat) - t) / FADE_SECONDS); }
 
 /**
  * ブルームの強さ。放出で3倍、命中で5倍まで上がり、0.4秒ほどで元へ戻る。控えめモードでは1.6倍までに抑える。
  * 見せ始めの0.3秒は0から上げ、後処理を切る手前0.3秒では0へ落とす。どちらも明るさが1コマで変わらないように。
  */
-export function bloomWeightAt(t: number, calm = false, shownAt = 0) {
+export function bloomWeightAt(t: number, calm = false, shownAt = 0, beat: Beat = BEATS[0]) {
   const peak = calm ? BLOOM_CALM_PEAK : BLOOM_PEAK, release = calm ? BLOOM_CALM_PEAK : BLOOM_RELEASE;
   let boost = 1;
-  if (t >= RELEASE_AT) boost = Math.max(boost, 1 + (release - 1) * Math.max(0, 1 - (t - RELEASE_AT) / .4));
-  if (t >= IMPACT_AT) boost = Math.max(boost, 1 + (peak - 1) * Math.max(0, 1 - (t - IMPACT_AT) / .4));
-  return BLOOM_BASE * boost * Math.min(showFadeAt(t, shownAt), postFadeAt(t));
+  if (t >= beat.release) boost = Math.max(boost, 1 + (release - 1) * Math.max(0, 1 - (t - beat.release) / .4));
+  if (t >= beat.impact) boost = Math.max(boost, 1 + (peak - 1) * Math.max(0, 1 - (t - beat.impact) / .4));
+  return BLOOM_BASE * boost * Math.min(showFadeAt(t, shownAt), postFadeAt(t, beat));
 }
 
 /** 合成そのものを諦める目安。最初の90コマは慣らし、その後24fps未満が60コマ続いたら止めて元の層へ戻す。 */
@@ -96,11 +104,11 @@ export const GIVE_UP_WARMUP = 90, GIVE_UP_FRAMES = 60;
 export const WARMUP_FRAMES = GIVE_UP_WARMUP + GIVE_UP_FRAMES;
 /**
  * 合成をやめるかどうか。時刻とブルームの状態も見る（画面には触らない計算だけ）。
- * - 山場（16.9〜21秒）の間は判定を止める。命中の途中で合成が消えると絵が一瞬で変わってしまうため。
+ * - 山場（一回目は16.9〜21秒、回ごとに発動の直前から余韻まで）の間は判定を止める。命中の途中で合成が消えると絵が一瞬で変わってしまうため。
  * - 先にブルームを切る段を挟む。ブルームが付いている間はやめず、切れてもなお遅いときだけやめる。
  */
-export function giveUpDecision(fps: number, lowFrames: number, frames: number, t: number, bloomOn: boolean) {
-  if (postHeavyActive(t)) return { lowFrames, giveUp: false };
+export function giveUpDecision(fps: number, lowFrames: number, frames: number, t: number, bloomOn: boolean, beat: Beat = BEATS[0]) {
+  if (postHeavyActive(t, beat)) return { lowFrames, giveUp: false };
   if (frames <= GIVE_UP_WARMUP || !Number.isFinite(fps) || fps <= 0) return { lowFrames: 0, giveUp: false };
   if (bloomOn) return { lowFrames: 0, giveUp: false };
   const next = fps < GIVE_UP_FPS ? lowFrames + 1 : 0;
@@ -181,6 +189,8 @@ export type CompositeFrame = {
   target: { x: number; y: number };
   /** 控えめモード。色収差と歪みを切り、ブルームの倍率も抑える。 */
   calm: boolean;
+  /** この回の時刻の表（秒）。後処理を出す時間帯を決めるのに使う。 */
+  beat?: Beat;
 };
 
 /** 板ひとつ分。元のcanvasと、そこへ貼り付けるテクスチャを持つ。 */
@@ -477,7 +487,7 @@ export class Composite {
     // ブルームの入り切りは毎コマ決める。遅いときはまずブルームが切れ、それでも追いつかないときだけ合成をやめる。
     this.bloomOn = bloomDecision(this.bloomOn, this.fps);
     // 遅すぎるPCでは合成を止めて、段階1〜3の状態（HTMLの層）へ戻す。山場の間は止めない。
-    const slow = giveUpDecision(this.fps, this.lowFrames, this.frames, frame.t, this.bloomOn);
+    const slow = giveUpDecision(this.fps, this.lowFrames, this.frames, frame.t, this.bloomOn, frame.beat);
     this.lowFrames = slow.lowFrames;
     if (slow.giveUp) { this.stop(); return; }
     // 見せ始めと、重ねている途中の濃さ。慣らしの間は隠したまま描く。
@@ -503,18 +513,18 @@ export class Composite {
     this.boards.knight.mesh.scaling.set(this.width / 2 * 1.03, this.height / 2 * 1.03, 1);
 
     // 慣らしの間も後処理を通しておく。隠れているうちにシェーダーを用意し、重さも込みで速さを測るため。
-    const heavy = this.shown ? postHeavyActive(frame.t) : true;
+    const heavy = this.shown ? postHeavyActive(frame.t, frame.beat) : true;
     this.setPost(heavy);
     if (heavy) {
       // ?bloom=1 のときは速さに関わらず出し続ける（見え方の確認用）。
       this.setBloom(this.keepBloom || this.bloomOn);
-      this.pipeline.bloomWeight = bloomWeightAt(frame.t, frame.calm, this.shownAt);
+      this.pipeline.bloomWeight = bloomWeightAt(frame.t, frame.calm, this.shownAt, frame.beat);
       // 色収差は命中後0.5秒だけ。値は画面全体の効果から受け取る。控えめモードでは出さない。
       const chromatic = frame.calm ? 0 : frame.screen.chromatic;
       this.pipeline.chromaticAberration.aberrationAmount = chromatic * 6;
       this.pipeline.chromaticAberration.radialIntensity = 1.4;
       this.center = frame.target;
-      this.ripple = frame.calm ? null : rippleAt(frame.t);
+      this.ripple = frame.calm ? null : rippleAt(frame.t, frame.beat?.impact);
       this.canvas.dataset.ripple = this.ripple ? `${this.ripple.radius.toFixed(3)}:${this.shockwave.isReady() ? '出ている' : '準備中'}` : '';
     } else {
       this.ripple = null;

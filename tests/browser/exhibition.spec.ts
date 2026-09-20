@@ -16,7 +16,7 @@ test('結果のまま誰も触らなければ、タイトルへ戻って自動�
   await page.goto('/?attract=5&resultIdle=6');
   await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();
-  await expect(page.locator('#result')).toBeVisible({timeout:36000});
+  await expect(page.locator('#result')).toBeVisible({timeout:52000});
   await expect(page.locator('#welcome')).toBeVisible({timeout:16000});
   await expect(page.locator('#demo-tag')).toBeVisible({timeout:16000});
 });
@@ -85,7 +85,7 @@ test('入力から描き終わるまでの時間を記録に残す',async({page}
     await page.mouse.move(500+i*40,420+i*20);await page.mouse.down();
     await page.mouse.move(560+i*40,470+i*20,{steps:3});await page.mouse.up();
   }
-  await expect(page.locator('#result')).toBeVisible({timeout:36000});
+  await expect(page.locator('#result')).toBeVisible({timeout:52000});
   await page.locator('#record').click();
   const 記録=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(記録.measurement.inputToDrawMs.samples).toBeGreaterThan(0);

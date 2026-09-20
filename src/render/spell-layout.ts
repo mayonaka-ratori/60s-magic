@@ -1,5 +1,6 @@
 import type { Point } from '../game/types';
 import { clamp } from '../game/motion';
+import { BEATS, type Beat } from '../game/rounds';
 
 export type SpellFrame = { x: number; y: number; width: number; height: number };
 
@@ -44,22 +45,24 @@ export function smoothStroke<T extends { x: number; y: number }>(points: readonl
   return rounded;
 }
 
-export function completedSpellFrame(width: number, height: number): SpellFrame {
-  return { x: width * .5, y: height * .66, width: Math.min(width * .68, height * .49), height: height * .32 };
+export function completedSpellFrame(width: number, height: number, beat: Beat = BEATS[0]): SpellFrame {
+  // 防御の回は、狙いの印の前で形が決まるように、収める場所を少し上げる。
+  const y = beat.defend ? height * .62 : height * .66;
+  return { x: width * .5, y, width: Math.min(width * .68, height * .49), height: height * .32 };
 }
 
-/** 14秒までは完全に入力位置のまま。14〜17秒だけ形を保って移動する。 */
-export function spellPose(points:readonly Point[],width:number,height:number,ms:number) {
+/** 締め切りまでは完全に入力位置のまま。締め切りから発動までだけ、形を保って移動する。 */
+export function spellPose(points:readonly Point[],width:number,height:number,ms:number,beat:Beat=BEATS[0]) {
   const xs=points.map(p=>p.x*width),ys=points.map(p=>p.y*height);
   const cx=points.length?(Math.min(...xs)+Math.max(...xs))/2:width*.5;
   const cy=points.length?(Math.min(...ys)+Math.max(...ys))/2:height*.66;
-  const frame=completedSpellFrame(width,height);
+  const frame=completedSpellFrame(width,height,beat);
   const scaleTo=Math.min(2.2,frame.width/Math.max(1,points.length?Math.max(...xs)-Math.min(...xs):1),frame.height/Math.max(1,points.length?Math.max(...ys)-Math.min(...ys):1));
-  const p=clamp((ms-14000)/3000),progress=p*p*(3-2*p);
+  const p=clamp((ms-beat.inputEnd*1000)/((beat.release-beat.inputEnd)*1000)),progress=p*p*(3-2*p);
   const scale=1+(scaleTo-1)*progress;
   const center={x:cx+(frame.x-cx)*progress,y:cy+(frame.y-cy)*progress};
   const dx=center.x-width/2-(cx-width/2)*scale,dy=center.y-height/2-(cy-height/2)*scale;
-  return {scale,dx,dy,center,progress,opacity:1-clamp((ms-21000)/2000)};
+  return {scale,dx,dy,center,progress,opacity:1-clamp((ms-(beat.impact+2.5)*1000)/2000)};
 }
 
 /** object-fit: cover と同じ計算で、一枚絵の命中位置を画面に合わせる。 */
