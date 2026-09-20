@@ -58,15 +58,25 @@ Copy-Item .env.example .env
 
 ### このPCでの音声認識（初期設定）
 
-Kotoba-Whisper v2.0をfaster-whisperで動かします。Pythonの準備に使う [uv](https://docs.astral.sh/uv/getting-started/installation/) が必要です。WindowsとNVIDIAのGPUの組み合わせ（RTX 4070 SUPER 12GB）で動作を確認しました。NVIDIAのGPUがないPCやMacではCPUで動きます。CPUでKotoba-Whisperを動かすと一回の認識に約5秒かかり（10コアのMacで実測）、14秒の詠唱に間に合いません。そのためMacでは初期値を小さい `small` モデルにしています。日本語の聞き取りは粗くなりますが、短い詠唱の言葉を数秒以内に返すことを優先します。`.env` の `LOCAL_SPEECH_MODEL_ID` で `medium`、`base`、`kotoba-v2.0` に変えられます。変えたら `npm run setup:speech` をもう一度実行します。CPUでは一回の認識に時間がかかり、15.1秒までに最後の結果が届かない場合があります。その場合は、それまでに届いた最後の途中結果を使います（PC内の認識は毎回それまでの音を全部聞き直すので、途中結果でも一続きの文になっています）。結果の画面に「途中の聞き取りを使用」と出ます。プレイ中は画面左下に聞き取った文字を出します。使うCPUの数は `LOCAL_SPEECH_THREADS` で変えられます。Macでの速度は未確認です。
+Kotoba-Whisper v2.0を動かします。Pythonの準備に使う [uv](https://docs.astral.sh/uv/getting-started/installation/) が必要です。動かし方はPCに合わせて自動で選びます。
 
-`npm run setup:speech` で必要なソフトと認識用ファイルを取得し、起動まで確認します。WindowsではPowerShell、MacとLinuxではbashの手順が自動で選ばれます。初回は数GBの空き容量と通信が必要です。Python 3.12と必要なソフトは `.venv-speech`、認識用ファイルは `.local-speech/models/kotoba-v2.0` に置きます。PC全体のPythonや設定は変更しません。これらの大きなファイルはGitには含めません。
+| PC | 動かし方 | 初期のモデル |
+| --- | --- | --- |
+| Apple SiliconのMac | mlx-whisper（MacのGPU） | `kotoba-v2.0-mlx` |
+| WindowsとNVIDIAのGPU | faster-whisper（GPU） | `kotoba-v2.0` |
+| それ以外（CPUだけ） | faster-whisper（CPU） | `small` |
+
+WindowsとNVIDIAのGPUの組み合わせ（RTX 4070 SUPER 12GB）で動作を確認しました。CPUだけでKotoba-Whisperを動かすと一回の認識に約5秒かかり（10コアのMacで実測）、14秒の詠唱に間に合いません。そのためCPUだけのPCでは小さい `small` モデルを初期値にしています。日本語の聞き取りは粗くなりますが、短い詠唱の言葉を数秒以内に返すことを優先します。
+
+Apple SiliconのMacでは、CPUの代わりにMacのGPUを使います。`.env` の `LOCAL_SPEECH_MODEL_ID` で `large-v3-turbo-mlx`、`medium-mlx`、`small-mlx` に変えられます。NVIDIAのGPUかCPUで動かす場合は `medium`、`base`、`kotoba-v2.0` を選べます。変えたら `npm run setup:speech` をもう一度実行します。どれが自分のPCで間に合うかは `npm run benchmark:speech` で比べられます（先に `npm run make:speech-fixtures`）。使っているPCの値は [確認に使うPC](docs/確認に使うPC.md) にまとめています。CPUでは一回の認識に時間がかかり、15.1秒までに最後の結果が届かない場合があります。その場合は、それまでに届いた最後の途中結果を使います（PC内の認識は毎回それまでの音を全部聞き直すので、途中結果でも一続きの文になっています）。結果の画面に「途中の聞き取りを使用」と出ます。プレイ中は画面左下に聞き取った文字を出します。CPUで動かすときに使うCPUの数は `LOCAL_SPEECH_THREADS` で変えられます。MacのGPUでの速度はまだ実機で測っていません。
+
+`npm run setup:speech` で必要なソフトと認識用ファイルを取得し、起動まで確認します。WindowsではPowerShell、MacとLinuxではbashの手順が自動で選ばれます。初回は数GBの空き容量と通信が必要です。Python 3.12と必要なソフトは `.venv-speech`、認識用ファイルは `.local-speech/models/<モデル名>` に置きます。PC全体のPythonや設定は変更しません。これらの大きなファイルはGitには含めません。
 
 一度取得すれば、認識処理は通信なしで動きます。サーバーの起動時に読み込みを終え、画面に「このPCで認識」と出たらマイクを選べます。声はこのPCから外へ送らず、録音ファイルにも残しません。認識結果の文字と動きの特徴は、Jevを設定した場合だけJevへ送ります。
 
 14秒までの声を一時的に保持し、約0.65秒ごとに更新します。14秒で受け付けを終え、最後の結果を待ちます。110〜125ミリ秒という確認値は合成音声一回分の認識処理の時間で、話してから表示されるまでの時間ではありません。長い詠唱、人の声、周囲の音がある場所は別に確認が必要です。
 
-同時に音声認識を使える画面は一つです。認識が止まった場合はアプリを起動し直してください。Googleへ自動で切り替わることはありません。`.env` を使う場合も `SPEECH_PROVIDER=local` のままで利用できます。通常は `LOCAL_SPEECH_PYTHON` と `LOCAL_SPEECH_MODEL` を空欄にします。GPUとCPUは自動で選びます。強制したい場合だけ `LOCAL_SPEECH_DEVICE` に `cuda` か `cpu` を設定します。
+同時に音声認識を使える画面は一つです。認識が止まった場合はアプリを起動し直してください。Googleへ自動で切り替わることはありません。`.env` を使う場合も `SPEECH_PROVIDER=local` のままで利用できます。通常は `LOCAL_SPEECH_PYTHON` と `LOCAL_SPEECH_MODEL` を空欄にします。GPUとCPUは自動で選びます。強制したい場合だけ `LOCAL_SPEECH_DEVICE` に `cuda`、`cpu`、`gpu`（MacのGPU）を設定します。動かし方そのものを選ぶときは `LOCAL_SPEECH_ENGINE` に `faster` か `mlx` を設定します。
 
 ### Jev
 

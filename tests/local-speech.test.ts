@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { afterEach,describe,expect,it,vi } from 'vitest';
 import type { WebSocket } from 'ws';
 import { connectLocalSpeech, type LocalRecognizer } from '../server/local-speech-session';
+import { speechModelName } from '../server/local-speech';
 import { SpeechBook } from '../src/game/speech-book';
 import { CastSession } from '../src/game/session';
 
@@ -118,5 +119,15 @@ describe('確定が間に合わないときの扱い',()=>{
     const book=new SpeechBook();
     book.add({id:0,revision:1,startMs:1000,endMs:6000,text:'氷よ',final:false,stability:0.5,source:'local'});
     expect(book.latest()?.text).toBe('氷よ');
+  });
+});
+
+describe('認識モデルの名前',()=>{
+  it('動かし方の違いは画面に出す名前へ入れない',()=>{
+    expect(speechModelName('kotoba-v2.0')).toBe('kotoba-whisper-v2.0');
+    expect(speechModelName('kotoba-v2.0-mlx')).toBe('kotoba-whisper-v2.0');
+    expect(speechModelName('small')).toBe('whisper-small');
+    expect(speechModelName('small-mlx')).toBe('whisper-small');
+    expect(speechModelName('large-v3-turbo-mlx')).toBe('whisper-large-v3-turbo');
   });
 });

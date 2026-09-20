@@ -32,6 +32,7 @@
 
 「60秒魔法ゲーム」の試作です。プレイヤーが手で線を描き、声で唱えた言葉から魔法を作り、敵の騎士へ放ちます。
 今は最初の24秒（一回目の魔法）だけを作っています。仕様の全体は `60秒魔法ゲーム_設計仕様.md`、作った範囲と使い方は `README.md`、確認の記録は `docs/` にあります。
+速さや大きさを見積もるときは、確認に使っているPC（Apple M4のMac）の値を `docs/確認に使うPC.md` にまとめてあるので、そこを基準にしてください。
 
 主な構成：
 
@@ -39,7 +40,7 @@
 - `src/input/`、`public/*worker*.js`、`public/audio-worklet.js`：カメラとマイク
 - `src/render/`：Babylon.jsの背景、騎士、術式と魔法の描画
 - `server/`：接続情報を持つサーバー、Jevへの12問、PC内とGoogleの音声認識
-- `speech/`：PC内で動かす音声認識（Kotoba-Whisper）
+- `speech/`：PC内で動かす音声認識（Kotoba-Whisper）。`engines.py` がPCに合わせて動かし方を選ぶ
 - `tests/`：単体の試験と、Playwrightによるブラウザーの試験
 
 ## よく使うコマンド
@@ -52,6 +53,8 @@ npm run dev            # 開発用に起動する（http://localhost:5173）
 npm test               # 単体の試験
 npm run build          # 型の確認とビルド
 npm run test:browser   # ブラウザーの試験（先に npx playwright install chromium）
+npm run make:speech-fixtures  # 確認用の日本語音声をPC内で作る
+npm run benchmark:speech      # 認識モデルの速さを比べる
 ```
 
 ## 作業するときの決まり
