@@ -9,10 +9,16 @@ import { drawParticles, type Frame, type XY } from './effects/frame';
 import { drawCharge } from './effects/charge';
 import { drawRelease, drawTravel } from './effects/release';
 import { drawImpact } from './effects/impact';
+import { drawWordReactions } from './effects/words';
+import { drawStrokeReactions } from './effects/strokes';
+import { emptyLive, type LiveInput } from '../game/live-input';
 
 /** 属性ごとの主色。術式の線と結果の縮小図が使う。 */
 export const colors: Record<Element, string> = Object.fromEntries(Object.entries(getPreset(null).palettes).map(([k, v]) => [k, v.main])) as Record<Element, string>;
 const still: ScreenState = { shakeX: 0, shakeY: 0, flash: 0, darken: 0, chromatic: 0, hitStop: 0 };
+/** 魔法が確定する前に部品へ渡す仮のレシピ。無属性の球。 */
+const pending: Recipe = { version: 'recipe-1', element: 'neutral', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .5, area: .5, duration: .5, concentration: .5,
+  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null };
 
 /**
  * 光、蓄積、放出、命中、余韻を一つの時刻で描く差配役。
@@ -47,14 +53,14 @@ export class MagicCanvas {
   }
   private reset() { this.pool.clear(); this.pool.reseed(7); this.fired.clear(); this.lastRaw = -1; this.lastEffect = -1; this.state = still; }
 
-  renderEffects(points: Point[], ms: number, recipe: Recipe | null, voice: number, cursors: XY[], ready: boolean, target: XY, origin: XY) {
+  renderEffects(points: Point[], ms: number, recipe: Recipe | null, voice: number, cursors: XY[], ready: boolean, target: XY, origin: XY, live: LiveInput = emptyLive) {
     const c = this.ctx, w = this.width, h = this.height, t = ms / 1000;
     c.clearRect(0, 0, w, h);
     if (ready || t >= 23.5) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
     // 時刻が戻ったら（確認画面のつまみなど）粒と一度きりの発生をやり直す。
     if (t < this.lastRaw - .05) this.reset();
     this.lastRaw = t;
-    const preset = this.preset, palette = preset.palettes[recipe?.element ?? 'neutral'], intensity = intensityOf(recipe, preset);
+    const preset = this.preset, palette = preset.palettes[recipe?.element ?? 'neutral'], intensity = intensityOf(recipe, preset), accent = recipe?.accent ? preset.palettes[recipe.accent] : null;
     this.state = screenState(t, intensity, preset, recipe?.purpose ?? null);
     const te = effectTime(t, this.state.hitStop), dt = this.lastEffect < 0 ? 0 : clamp(te - this.lastEffect, 0, .05);
     this.lastEffect = te;
@@ -91,10 +97,12 @@ export class MagicCanvas {
       // 手の跡に小さな光を残す。
       if (dt > 0 && this.pool.random() < .6) this.pool.spawn({ x: p.x * w, y: p.y * h, vx: (this.pool.random() - .5) * 20, vy: -10 - this.pool.random() * 20, life: .5 + this.pool.random() * .5, size: 1 + this.pool.random() * 1.2, drag: .5, color: palette.main, core: palette.core, kind: 0 });
     }
+    const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, target: hit, accent, live, points, cursors,
+      once: (key, run) => { if (!this.fired.has(key)) { this.fired.add(key); run(); } } };
+    c.globalAlpha = fade;
+    // 描いている間の即時反応。動きと言葉に、その場で光が応える。
+    if (t < 17) { c.save(); drawStrokeReactions(frame); drawWordReactions(frame); c.restore(); c.globalCompositeOperation = 'lighter'; }
     if (recipe) {
-      const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe, origin, target: hit,
-        once: (key, run) => { if (!this.fired.has(key)) { this.fired.add(key); run(); } } };
-      c.globalAlpha = fade;
       drawCharge(frame);
       if (te >= RELEASE_AT) { c.save(); drawRelease(frame); drawTravel(frame); drawImpact(frame); c.restore(); }
       c.globalCompositeOperation = 'lighter';

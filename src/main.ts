@@ -9,6 +9,7 @@ import { CastScene } from './render/cast-scene';
 import { MagicCanvas, colors } from './render/magic';
 import { chantDictionary } from './game/chant-dictionary';
 import { CastAudio } from './audio/cast-audio';
+import { liveInput, emptyLive } from './game/live-input';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas>
@@ -210,7 +211,9 @@ function animate(now:number) {
   }
   const ms=session?Math.min(24000,session.elapsed):now;
   if(session&&!resultShown)sound.update(ms,session.recipe,magic.preset);
-  stage.render(session?.motion.display??[],ms,session?.recipe??null,voice?.level??0,cursors,!session);
+  // 描いている間の言葉と動きを、確定前から演出へ渡す。
+  const live=session&&!resultShown&&ms<17000?liveInput(session.motion.raw,session.speech.snapshot(),voice?.level??0):emptyLive;
+  stage.render(session?.motion.display??[],ms,session?.recipe??null,voice?.level??0,cursors,!session,live);
 }
 requestAnimationFrame(animate);
 void Promise.all([stage.ready,document.fonts.ready]).then(()=>show('loading',false)).catch(()=>{el('loading').textContent='背景と光を読み込めませんでした。再読み込みしてください。';});

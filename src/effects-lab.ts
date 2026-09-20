@@ -3,6 +3,7 @@ import { MagicCanvas } from './render/magic';
 import { Knight } from './render/knight';
 import { presets, defaultPresetName } from './render/effects/presets';
 import { spellPose } from './render/spell-layout';
+import type { LiveInput } from './game/live-input';
 import { ELEMENTS, FORMS, PURPOSES, TRAJECTORIES, ELEMENT_LABELS, FORM_LABELS, PURPOSE_LABELS, type Recipe, type Point } from './game/types';
 
 /** 演出だけを見比べる画面。本編を遊ばずに、放出から命中までを繰り返し見られる。カメラ、マイク、通信は使わない。 */
@@ -104,7 +105,9 @@ function renderSides(dt = 0) {
     const pose = spellPose(points, w, h, ms);
     const displayed = points.map(p => ({ ...p, x: ((p.x - .5) * w * pose.scale + pose.dx + w / 2) / w, y: ((p.y - .5) * h * pose.scale + pose.dy + h / 2) / h }));
     s.knight.render(ms, true, current);
-    s.magic.renderEffects(displayed, ms, current, 0, [], false, s.knight.target, pose.center);
+    // 見比べ画面では入力の量を URL の amount= で仮に与える。言葉は空。
+    const live: LiveInput = { words: [], amount: Number(params.get('amount') ?? .5), voice: 0 };
+    s.magic.renderEffects(displayed, ms, current, 0, [], false, s.knight.target, pose.center, live);
     const shake = s.magic.screen, transform = shake.shakeX || shake.shakeY ? `translate(${shake.shakeX}px,${shake.shakeY}px)` : '';
     if (transform !== s.lastShake) { for (const layer of s.layers) layer.style.transform = transform; s.lastShake = transform; }
     if (dt) { s.frames.push(dt); if (s.frames.length > 90) s.frames.shift(); }

@@ -2,6 +2,8 @@ import type { Recipe } from '../../game/types';
 import type { EffectPreset, Palette } from './presets';
 import type { GlowSprites } from './sprites';
 import type { ParticlePool } from './particles';
+import type { LiveInput } from '../../game/live-input';
+import type { Point } from '../../game/types';
 
 export type XY = { x: number; y: number };
 /** 各部品が受け取る、そのコマの道具と値。部品は属性名ではなく色と派手さだけを見る。 */
@@ -12,7 +14,12 @@ export type Frame = {
   /** 前のコマからの経過（秒） */
   dt: number;
   sprites: GlowSprites; pool: ParticlePool; preset: EffectPreset; palette: Palette; intensity: number;
-  recipe: Recipe; origin: XY; target: XY;
+  /** 確定した魔法。未確定の間は無属性の仮の値 */
+  recipe: Recipe; locked: boolean; origin: XY; target: XY;
+  /** 二つ目の属性の色。なければ null */
+  accent: Palette | null;
+  /** いまの入力（言葉、量、声）と、表示用の点列、手の位置 */
+  live: LiveInput; points: Point[]; cursors: XY[];
   /** 一度だけ実行する。粒の発生などに使う */
   once: (key: string, run: () => void) => void;
 };
