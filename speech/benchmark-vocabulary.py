@@ -9,10 +9,13 @@ import wave
 import numpy as np
 
 from engines import create_engine
+from vocabulary import load_hints
 from worker import MODEL_DIR, PRESET, ROOT
 
 engine = create_engine(MODEL_DIR)
-hints, metadata = engine.hints, engine.vocabulary
+# 設定で手掛かりを切っていても、比較では14語を渡した側を必ず測る。
+hints, metadata = load_hints(None, True)
+metadata['hintsUsedInGame'] = engine.vocabulary['hintsUsed']
 warm = np.zeros(16000, dtype=np.float32)
 for _ in range(2):
     engine.transcribe(warm)

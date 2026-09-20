@@ -18,6 +18,16 @@ MIN_LOGPROB = -1.0
 MAX_NO_SPEECH = 0.6
 
 
+def hints_enabled(kind):
+    """手掛かりの語を認識へ渡すか。LOCAL_SPEECH_HINTS が auto のときは faster だけ渡す。
+    MacのGPUで動かす方式（mlx）は、前置きに語を入れると文が途中で切れたり空になったりして悪くなった
+    （2026年9月20日、合成音声14件で確認）。"""
+    chosen = os.environ.get('LOCAL_SPEECH_HINTS', 'auto')
+    if chosen not in ('auto', 'on', 'off'):
+        raise ValueError('LOCAL_SPEECH_HINTS は auto、on、off のいずれかを設定してください')
+    return chosen == 'on' or (chosen == 'auto' and kind == 'faster')
+
+
 def _threads():
     """CPUで動かすときは、描画を担当するブラウザーのために半分を空けておく。"""
     cores = os.cpu_count() or 4
@@ -53,7 +63,7 @@ class FasterWhisperEngine:
                 print(f'{device} では読み込めませんでした: {error}', file=sys.stderr, flush=True)
         else:
             raise RuntimeError('認識モデルを読み込めませんでした') from last_error
-        self.hints, self.vocabulary = load_hints(self.model.hf_tokenizer)
+        self.hints, self.vocabulary = load_hints(self.model.hf_tokenizer, hints_enabled(self.kind))
 
     def transcribe(self, audio):
         segments, _ = self.model.transcribe(
@@ -90,7 +100,7 @@ class MlxWhisperEngine:
         self.compute_type = str(getattr(model.encoder.conv1.weight, 'dtype', mx.float16)).replace('mlx.core.', '')
         # 手掛かりの語は文字のまま前置き（initial_prompt）として渡す。mlxには手掛かり専用の入口がない。
         # 前置きは最初の30秒の窓の解読に入る。この用途の音は14秒までなので、全体に効く。
-        self.hints, self.vocabulary = load_hints(None)
+        self.hints, self.vocabulary = load_hints(None, hints_enabled(self.kind))
 
     def transcribe(self, audio):
         result = self.transcribe_fn(

@@ -5,8 +5,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def load_hints(tokenizer=None):
-    """tokenizer を渡すと語の長さも数える。数え方を持たない動かし方では省略できる。"""
+def load_hints(tokenizer=None, enabled=True):
+    """認識へ渡す手掛かりの文字列と、記録用の情報を返す。
+    tokenizer を渡すと語の長さも数える。数え方を持たない動かし方では省略できる。
+    enabled が False のときは空の文字列を返し、認識へは何も渡さない。"""
     data = json.loads((ROOT / 'src/game/chant-dictionary.json').read_text(encoding='utf-8'))
     # 20語・41語への増加で通常の詠唱まで欠落した。実測で通った14語を維持する。
     # 全110語は文字の読みと意味の確認に使う。hint=trueは今後比較する候補。
@@ -15,6 +17,6 @@ def load_hints(tokenizer=None):
     tokens = len(tokenizer.encode(' ' + text).ids) if tokenizer is not None else None
     if tokens is not None and tokens > 64:
         raise ValueError('音声認識の手掛かりが長すぎます。test:chants で比較してください。')
-    return text, {'version': data['version'], 'dictionaryWords': len(data['entries']),
-                  'hintWords': len(words), 'hintTokens': tokens,
+    return (text if enabled else ''), {'version': data['version'], 'dictionaryWords': len(data['entries']),
+                  'hintWords': len(words), 'hintTokens': tokens, 'hintsUsed': enabled,
                   'candidateWords': sum(bool(e.get('hint')) for e in data['entries'])}
