@@ -290,9 +290,9 @@ describe('属性ごとの消え方', () => {
 });
 
 describe('控えめモードは部品にも届く', () => {
-  /** 命中の部品だけを呼ぶための仮の Frame。光の絵は描かず、粒の数だけを見る。 */
+  /** 命中の部品だけを呼ぶための仮の Frame。光の絵は描かず、粒の数だけを見る。単発の攻撃は破裂を命中の0.08秒後に出すので、その直後で数える。 */
   const frame = (calm: boolean, pool: ParticlePool): Frame => ({
-    c: stubContext(), w: 1280, h: 720, t: IMPACT_AT + .01, dt: .016,
+    c: stubContext(), w: 1280, h: 720, t: IMPACT_AT + .09, dt: .016,
     sprites: { draw: () => {} } as unknown as Frame['sprites'], pool,
     preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
     recipe: recipe(), locked: true, origin: { x: 200, y: 500 }, target: { x: 900, y: 360 },
