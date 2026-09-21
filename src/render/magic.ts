@@ -22,11 +22,12 @@ export const colors: Record<Element, string> = Object.fromEntries(Object.entries
 /** canvas内の色ずれを出す長さ（秒）。命中からこの時間だけ。 */
 const CHROMATIC_WINDOW = .2;
 /**
- * とどめの余韻で粒と術式が消えきる時刻を、余韻の始まりから何秒後にするか（秒）。世界の88.4秒。
+ * とどめの余韻で粒と術式が消えきる時刻を、余韻の始まりから何秒後にするか（秒）。
+ * 回の表の「余韻の始まり」から「回の終わり」までの長さで、世界の時刻で90.0秒に0になる。
  * 術式の光が抜けきる長さ（FINISH_SETTLE）と同じ値を使う。二か所で別々に書かない。
  */
 const FINISH_FADE_TAIL = FINISH_SETTLE.seconds;
-/** 余韻の濃さが0へ落ちきる時刻（秒）。一回目と防御は命中の4.5秒後（実際）、とどめは余韻の終わり（世界）。 */
+/** 余韻の濃さが0へ落ちきる時刻（秒）。一回目と防御は命中の4.5秒後（実際）、とどめは回の終わり（世界）。 */
 export const afterglowEnd = (beat: Beat) => beat.finish ? beat.handoff + FINISH_FADE_TAIL : beat.impact + 4.5;
 /**
  * 粒と術式の消え際の濃さ（0〜1）。落ちきる2秒前から下がる。
@@ -38,7 +39,9 @@ export function afterglowFade(t: number, te: number, beat: Beat) {
 }
 /**
  * 演出を描くのをやめる実際の時刻（秒）。ここを過ぎたら粒も術式も消す。
- * とどめだけは、余韻を回の終わり（90.0秒）まで残して、結果画面へそのまま渡す。
+ * とどめだけは、余韻を回の終わり（実際の90.0秒）まで残して、結果画面へそのまま渡す。
+ * 世界の時計は命中のゆがみのぶんだけ遅れているので、切り替わる瞬間もまだ光がわずかに残る。
+ * 動かない絵のまま結果画面を待つ間を作らないため、ここは短くしない。
  */
 export const stopAtOf = (beat: Beat) => beat.finish ? beat.end : Math.max(beat.end - .5, beat.impact + 4.5);
 /**

@@ -55,6 +55,13 @@ export function reactionPower(recipe:Recipe|null|undefined,amount=0,preset:Effec
 export const IDLE_BREATH_SECONDS=5.6;
 /** 息づかいで、上げた構え（姿勢9）へどれだけ寄せるか。1にすると上げきったまま止まって見える。 */
 export const IDLE_BREATH_DEPTH=.62;
+/**
+ * 待機の息づかい（0〜IDLE_BREATH_DEPTH）。待機（姿勢0）を、剣を上げた待機（姿勢9）へどれだけ寄せるか。
+ * 一回目と防御の回で同じ式を使う。別々に書くと、切り替わる時刻で姿勢が飛ぶ。
+ * 動きを減らす設定では止める。
+ */
+export const idleSway=(ms:number,reduced=false)=>
+  reduced?0:(.5-.5*Math.cos(ms/1000*Math.PI*2/IDLE_BREATH_SECONDS))*IDLE_BREATH_DEPTH;
 
 export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45,calm=false,impactMs=ROUNDS[0].impact) {
   const t=(ms-impactMs)/1000;
@@ -73,8 +80,9 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
   const step=struck&&t<.15?Math.floor(t/.05):-1;
   // 待機の息づかい。構え（0）と、剣をもう少し上げた構え（9）をゆっくり行き来する。
   // ひるみと構え戻しの間は、その分だけ薄まる。動きを減らす設定では止める。
-  const rest=1-hit-recover;
-  const sway=reduced?0:(.5-.5*Math.cos(ms/1000*Math.PI*2/IDLE_BREATH_SECONDS))*IDLE_BREATH_DEPTH;
+  // 割り算の端数で 1-hit-recover がごくわずかに負へ回ることがあるので、0で受け止める。
+  const rest=Math.max(0,1-hit-recover);
+  const sway=idleSway(ms,reduced);
   const weights=pad([rest*(1-sway),hit,recover]);weights[9]=rest*sway;
   return {weights,lean:reduced?0:hit*force,
     breath:reduced?0:Math.sin(ms*.0016)*.003,flash,
@@ -137,6 +145,13 @@ export const FALL_FROM=FINISH_FALL_FROM_MS/1000,FALL_TO=FINISH_FALL_TO_MS/1000;
 export const FALL_TURN=1,FALL_NEAR=.25;
 /** 防御の姿勢へ移り始める時刻（秒）。一回目の受け渡しの始まり。 */
 export const GUARD_FROM=FIRST.handoff/1000;
+/**
+ * 胸の核の光が満ちきるまでの長さ（ms）。一回目の締め切りから、魔法が届く時刻まで。
+ * 決め打ちにすると表を直したときにずれ、届く前に満ちきって待つ形になる。
+ */
+const CHARGE_MS=FIRST.impact-FIRST.inputEnd;
+/** 胸の核の光の満ち具合（0〜1）。締め切りから溜まり、魔法が届く時刻でちょうど満ちる。 */
+export const coreCharge=(ms:number,active=true)=>active?clamp((ms-FIRST.inputEnd)/CHARGE_MS):0;
 /** 防御の回の姿勢の順。at の時刻から ramp 秒かけて、その姿勢へ移る。 */
 const GUARD_STEPS:Array<{at:number;pose:number;ramp:number}>=[
   {at:0,pose:0,ramp:.5},                        // 待機
@@ -286,6 +301,11 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
   const u=smooth((t-step.at)/step.ramp);
   const weights=new Array(POSES.length).fill(0);
   weights[previous.pose]+=1-u;weights[step.pose]+=u;
+  // 待機（姿勢0）が残っている間は、一回目と同じ息づかいを混ぜる。
+  // 混ぜないと、待機から構えへ移る時刻で息づかいの分だけ姿勢が一コマで飛ぶ。
+  // 構えより後ろの姿勢に姿勢0は混ざらないので、そこから先は何も変わらない。
+  const sway=idleSway(ms,reduced);
+  if(sway>0&&weights[0]>0){const move=weights[0]*sway;weights[0]-=move;weights[9]+=move;}
   // 溜めの間は剣が低く脈打つ。毎秒1回まで。
   const charging=index===2?smooth((t-GUARD_STEPS[2].at)/2):0;
   // 弾かれた瞬間だけ押し戻される。
@@ -962,7 +982,7 @@ export class Knight {
     this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);
     // 一回目の締め切りからの蓄積で核が明るくなり、命中では前から強く照らす。弱点が出たら脈打つ。
     // とどめの回は、明滅の速さを回の表から作った corePulse に任せる。56秒の境目もここでつなぐ。
-    const charge=active?clamp((ms-FIRST.inputEnd)/4500):0;
+    const charge=coreCharge(ms,active);
     const pulse=active?corePulse(t):idlePulse(t);
     const glow=.22+charge*.5+pose.flash*1.5+open*pulse*.7;
     this.coreMaterial.emissiveColor.set(.42+glow,.32+glow*.86,.17+glow*.7);

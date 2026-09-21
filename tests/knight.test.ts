@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { knightPose, guardPose, GUARD_FROM, reactionPower, knightTransform, knightMatrix, knightPoint, blendPose, IDLE_BREATH_SECONDS,
   FINISH_DROPS, droppedAt, debrisMotion, coreBlink, corePulse, idlePulse, FINISH_THROWS, FALL_TURN, FALL_NEAR,
-  FINISH_FLASH, FINAL_BLOW_AT, KNEEL_AT } from '../src/render/knight';
+  FINISH_FLASH, FINAL_BLOW_AT, KNEEL_AT, coreCharge, idleSway } from '../src/render/knight';
 import { getPreset } from '../src/render/effects/presets';
 import { FINISH_COLLAPSE_MS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_SWORD_DROP_MS, ROUNDS } from '../src/game/rounds';
 
@@ -148,6 +148,71 @@ describe('待機の構え', () => {
   });
   it('動きを減らす設定では待機が止まる', () => {
     expect(sword(half, true)).toBeCloseTo(sword(0, true), 10);
+  });
+});
+
+/**
+ * 待機から防御の構えへ移るところ（一回目の受け渡し）で、姿勢が一コマで飛ばないことの確かめ。
+ * 待機の息づかい（姿勢9）を一回目にだけ混ぜていたころは、ここで息づかいの分がまるごと消えていた。
+ */
+describe('待機から防御の構えへ移るとき、姿勢が飛ばない', () => {
+  const 切り替え = GUARD_FROM * 1000;
+  /** その時刻の姿勢の重み。切り替えの前は一回目、後ろは防御の回の作り方で出す。画面と同じ切り替え方。 */
+  const 重み = (ms: number, reduced = false) =>
+    (ms >= 切り替え ? guardPose(ms, reduced, 'block') : knightPose(ms, true, reduced, 'attack', .7, false)).weights;
+  const 角度 = (ms: number, reduced = false) => blendPose(重み(ms, reduced));
+  const KEYS = Object.keys(角度(0)) as Array<keyof ReturnType<typeof blendPose>>;
+
+  it('切り替わる時刻の手前と後ろで、同じ姿勢になる', () => {
+    const 前 = knightPose(切り替え, true, false, 'attack', .7, false).weights;
+    const 後 = guardPose(切り替え, false, 'block').weights;
+    expect(後).toEqual(前);
+    // どちらにも息づかい（姿勢9）が入っている。入っていなければ、この確かめに意味がない。
+    expect(後[9]).toBeGreaterThan(0);
+    expect(後[9]).toBeCloseTo(idleSway(切り替え), 12);
+  });
+  it('1msずらしても値が飛ばない', () => {
+    for (let ms = 切り替え - 200; ms <= 切り替え + 200; ms++) {
+      const a = 角度(ms), b = 角度(ms + 1);
+      // 構えへ移る1秒の間でも、1msあたりの動きは0.002ラジアン（0.1度）ほど。
+      // 息づかいが消えていたころは、切り替えの1msで0.045ラジアン（2.6度）飛んでいた。
+      for (const key of KEYS) expect(Math.abs(a[key] - b[key])).toBeLessThan(.005);
+    }
+  });
+  it('姿勢の重みは、いつも合計1で負にならない', () => {
+    for (let ms = 0; ms <= ROUNDS[2].end; ms += 50) {
+      const w = 重み(ms);
+      expect(w.reduce((sum: number, value: number) => sum + value, 0)).toBeCloseTo(1, 12);
+      for (const value of w) expect(value).toBeGreaterThanOrEqual(0);
+    }
+  });
+  it('動きを減らす設定では、防御の回でも息づかいを混ぜない', () => {
+    for (const ms of [切り替え, 切り替え + 300, ROUNDS[1].start, ROUNDS[1].start + 500])
+      expect(重み(ms, true)[9]).toBe(0);
+  });
+  it('構えより後ろの姿勢には、息づかいを混ぜない', () => {
+    // 構え、溜め、振り下ろし、弾かれる、前屈、崩れ落ち。どれも待機（姿勢0）を含まない。
+    for (const ms of [ROUNDS[1].start + 1000, ROUNDS[1].lock, ROUNDS[1].impact, ROUNDS[1].handoff, ROUNDS[2].impact, FINISH_FALL_TO_MS]) {
+      expect(重み(ms)[9]).toBe(0);
+      expect(重み(ms)[0]).toBe(0);
+    }
+  });
+});
+
+/** 胸の核の光。一回目の締め切りから溜まり、魔法が届く時刻でちょうど満ちる。 */
+describe('胸の核の光', () => {
+  it('魔法が届く時刻に満ちきる', () => {
+    expect(coreCharge(first.inputEnd)).toBe(0);
+    expect(coreCharge(first.inputEnd - 1000)).toBe(0);
+    // 届く手前ではまだ満ちていない。満ちたまま待つ間を作らない。
+    expect(coreCharge(first.impact - 100)).toBeLessThan(1);
+    expect(coreCharge(first.impact - 100)).toBeGreaterThan(.9);
+    expect(coreCharge(first.impact)).toBe(1);
+    expect(coreCharge(first.impact + 2000)).toBe(1);
+    // 途中はまっすぐ増える。
+    expect(coreCharge((first.inputEnd + first.impact) / 2)).toBeCloseTo(.5, 6);
+    // 始まる前（active でないとき）は光らない。
+    expect(coreCharge(first.impact, false)).toBe(0);
   });
 });
 
@@ -332,8 +397,8 @@ describe('崩れ落ちの時刻は一か所で決める', () => {
 /**
  * 一回目と防御の姿勢を、うっかり変えていないことの確かめ。
  * 一回目と防御の終わりまでを0.1秒刻みで全部並べた値から、決まった手順で一つの数を作って固定しておく。
- * 待機に息づかい（姿勢9）を足したときに、この数を取り直した。見るのは混ぜ方と反応の値で、
- * 角度の表そのものはこの数に入らない（角度は「待機の構え」の試験で見る）。
+ * 待機に息づかい（姿勢9）を足したときと、その息づかいを防御の待機にも混ぜたときに、この数を取り直した。
+ * 見るのは混ぜ方と反応の値で、角度の表そのものはこの数に入らない（角度は「待機の構え」の試験で見る）。
  * 変えたつもりがないのに数が変わったら、直し過ぎている。
  */
 describe('一回目と防御の姿勢は変わらない', () => {
@@ -349,7 +414,7 @@ describe('一回目と防御の姿勢は変わらない', () => {
     expect(values.length).toBe((ROUNDS[1].end / 100 + 1) * 22);
     let digest = 0;
     for (const value of values) digest = (digest * 31 + Math.round(value * 1e9)) % 2147483647;
-    expect(digest).toBe(1842800863);
+    expect(digest).toBe(809665487);
   });
   it('とどめの命中までは部品が一つも落ちない', () => {
     for (let t = 0; t <= FINISH_HIT_MS[0] / 1000 - .1; t += .1) expect(droppedAt(t)).toEqual([]);

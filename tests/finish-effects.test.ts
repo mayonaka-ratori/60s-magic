@@ -1,11 +1,11 @@
 import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest';
-import { BEATS, beatOf, ROUNDS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS } from '../src/game/rounds';
+import { BEATS, beatOf, ROUNDS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS } from '../src/game/rounds';
 import { AIM } from '../src/game/guard';
 import { presets } from '../src/render/effects/presets';
 import { ParticlePool } from '../src/render/effects/particles';
 import { drawTravel, arrivalOf, bodyPoint, hitDelay } from '../src/render/effects/release';
-import { screenState, FINISH_PASS_FLASH } from '../src/render/effects/screen';
-import { MagicCanvas, afterglowFade, stopAtOf } from '../src/render/magic';
+import { screenState, warpOf, warpTime, FINISH_PASS_FLASH, HIT_STOPS } from '../src/render/effects/screen';
+import { MagicCanvas, afterglowEnd, afterglowFade, stopAtOf } from '../src/render/magic';
 import type { Frame } from '../src/render/effects/frame';
 import type { Point, Recipe } from '../src/game/types';
 import {
@@ -250,15 +250,32 @@ describe('描く値だけを止める間と、余韻', () => {
     expect(holdTime(from + FINISH_HOLD.seconds, finishBeat)).toBeNull();
     for (const beat of [BEATS[0], BEATS[1]]) expect(holdTime(beat.release - .2, beat)).toBeNull();
   });
-  it('術式の光は余韻の始まりから抜け、回の終わりの手前で消える', () => {
+  it('術式の光は余韻の始まりから抜け、回の終わりまで残る', () => {
     const 消える = finishBeat.handoff + FINISH_SETTLE.seconds;
     expect(settleFade(finishBeat.handoff - .1, finishBeat)).toBe(1);
     expect(settleFade(finishBeat.handoff, finishBeat)).toBe(1);
     expect(settleFade(finishBeat.handoff + FINISH_SETTLE.seconds / 2, finishBeat)).toBeCloseTo(.5, 6);
-    // 消えきってから魔導書までの間は1.6秒。ここで画面が暗く沈む。
-    expect(finishBeat.end - 消える).toBeCloseTo(1.6, 6);
+    // 抜けきるのは回の終わり（世界の時刻）。手前で消して、動かない絵が続く間を作らない。
+    expect(消える).toBeCloseTo(finishBeat.end, 6);
     expect(settleFade(消える, finishBeat)).toBe(0);
-    expect(settleFade(finishBeat.end, finishBeat)).toBe(0);
+    // 魔導書へ移る実際の90.0秒では、世界の時計がまだ手前なので光が残っている。
+    // 控えめモード（止めなし）でも同じ。
+    for (const hitStop of [HIT_STOPS.strong, 0]) {
+      const 世界 = warpTime(finishBeat.end, warpOf(finishBeat, hitStop));
+      expect(世界).toBeLessThan(finishBeat.end);
+      expect(settleFade(世界, finishBeat)).toBeGreaterThan(0);
+    }
+  });
+  it('床の塵は、騎士が倒れ始めてから立つ', () => {
+    const 倒れ始め = FINISH_FALL_FROM_MS / 1000, 倒れきり = FINISH_FALL_TO_MS / 1000;
+    // 塵の時刻は一撃からの秒で持つが、指す先は倒れ始めと同じ時刻。
+    expect((finishBeat.finalBlow ?? 0) + FINISH_SETTLE.dustFrom).toBeCloseTo(倒れ始め, 6);
+    expect(FINISH_SETTLE.dustFrom).toBeLessThan(倒れきり - (finishBeat.finalBlow ?? 0));
+    // 倒れ始めの手前のコマでは粒が増えず、倒れ始めのコマで増える。
+    // 受け皿は大きめに取る。いっぱいになると、増えたかどうかが分からなくなる。
+    const 粒 = (t: number) => { const f = frame(t, { pool: new ParticlePool(20000) }); drawFinish(f); return f.pool.count; };
+    expect(粒(倒れ始め)).toBeGreaterThan(粒(倒れ始め - .001));
+    expect(粒(倒れ始め - .001)).toBe(粒(倒れ始め - .5));
   });
 });
 
@@ -337,6 +354,13 @@ describe('とどめの見せ方を通しで描く', () => {
   });
   it('とどめの余韻は、世界の時刻で消えきり、術式は回の終わりまで残る', () => {
     const 消える = finishBeat.handoff + FINISH_SETTLE.seconds;
+    // 粒が消えきる時刻も、術式の光と同じく回の終わり（世界の時刻）。
+    expect(afterglowEnd(finishBeat)).toBeCloseTo(finishBeat.end, 6);
+    // 魔導書へ移る実際の90.0秒では、世界の時計がまだ手前なので粒も残っている。
+    for (const hitStop of [HIT_STOPS.strong, 0]) {
+      const 世界 = warpTime(finishBeat.end, warpOf(finishBeat, hitStop));
+      expect(afterglowFade(finishBeat.end, 世界, finishBeat)).toBeGreaterThan(0);
+    }
     // 消えきるのは世界の時刻で見る。実際の時刻ではそこから0.725秒あと。
     expect(afterglowFade(消える + .725, 消える, finishBeat)).toBeCloseTo(0, 9);
     expect(afterglowFade(消える + .725, 消える - 1, finishBeat)).toBeCloseTo(.5, 9);
