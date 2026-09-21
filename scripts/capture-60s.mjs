@@ -22,7 +22,7 @@ await page.locator('#start').click();
 // 準備の3秒。ここまでは時計を動かしたまま。
 for (let i = 0; i < 40; i++) { await page.waitForTimeout(250); await page.evaluate(() => window.__flushRaf()); if (await page.locator('#countdown').isHidden() && await page.locator('#hud').isVisible()) break; }
 // ここで時計を止め、以後は runFor で進めた分だけ動かす。
-await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1));
+await page.clock.pauseAt(await page.evaluate(() => Date.now() + 200));
 let t = 0;
 // 本編の時刻は進行バーの幅（t/60）から読み取り、写真の秒を本編に合わせる。
 const appTime = async () => parseFloat((await page.evaluate(() => document.getElementById('progress').style.width)) || '0') / 100 * 60;
