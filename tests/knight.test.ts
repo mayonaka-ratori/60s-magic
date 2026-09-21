@@ -143,8 +143,13 @@ describe('待機の構え', () => {
     expect(blendPose(knightPose(0, false).weights).turn).toBeGreaterThan(.1);
   });
   it('防御の回の溜めは、待機のどこよりも高く上げる', () => {
+    // 剣の角は回り方が一周を超えることがあるので、数の大小ではなく「真上（πラジアン）からの差」で見る。
+    // 差が小さいほど高い。待機は後ろ回りの負の角、溜めは前回りの正の角で、どちらも真上の手前にある。
+    const 真上からの差 = (a: number) => { const n = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return Math.abs(n - Math.PI); };
     // 溜めは確定の3秒前に上げきる。上げきったところを見る。
-    expect(blendPose(guardPose(ROUNDS[1].lock - 1000).weights).swordSwing).toBeLessThan(sword(half) - .3);
+    const 溜め = blendPose(guardPose(ROUNDS[1].lock - 1000).weights).swordSwing;
+    expect(真上からの差(溜め)).toBeLessThan(真上からの差(sword(half)) - .3);
+    expect(真上からの差(溜め)).toBeLessThan(真上からの差(sword(0)) - .3);
   });
   it('動きを減らす設定では待機が止まる', () => {
     expect(sword(half, true)).toBeCloseTo(sword(0, true), 10);

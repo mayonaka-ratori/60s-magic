@@ -335,6 +335,42 @@ describe('防御の回の画面と姿勢',()=>{
     // 崩れ落ちる姿勢は、防御の回までは一度も混ざらない。
     for(let ms=first.handoff;ms<=defend.end+1000;ms+=50)expect(guardPose(ms).weights[8]).toBe(0);
   });
+  it('刃の赤は溜めの間だけ脈打ち、振り下ろしで消える',()=>{
+    // 時刻は回の表から作る。構えの間（29.5秒）と、弾かれた後（55秒）は光らない。
+    expect(guardPose(first.handoff+500).bladeHeat).toBe(0);
+    expect(guardPose(defend.handoff).bladeHeat).toBe(0);
+    // 溜めの終わりに近いほど強い。32秒と47秒で比べる。
+    const early=guardPose(defend.start+2000).bladeHeat,late=guardPose(defend.lock-1000).bladeHeat;
+    expect(early).toBeGreaterThan(0);
+    expect(late).toBeGreaterThan(early);
+    // 毎秒1回脈打つ。山（x.25秒）のほうが、その0.5秒後の谷より強い。
+    expect(guardPose(46250).bladeHeat).toBeGreaterThan(guardPose(46750).bladeHeat);
+    // 控えめモードでは脈打たず、時間とともに強くなるだけ。
+    expect(guardPose(46250,true).bladeHeat).toBeLessThan(guardPose(46750,true).bladeHeat);
+    // 一回目の姿勢では光らない。
+    expect(knightPose(first.impact+200,true).bladeHeat).toBe(0);
+  });
+  it('黒い光は溜めで強まり、振り下ろしで弾けて、弾かれるまでに消える',()=>{
+    // 時刻は回の表から作る。構えの間は出ず、溜めが進むほど強まる。
+    expect(guardPose(first.handoff+500).aura).toBe(0);
+    expect(guardPose(defend.start+2000).aura).toBeGreaterThan(0);
+    expect(guardPose(defend.lock-1000).aura).toBeGreaterThan(guardPose(defend.start+2000).aura);
+    // 振り下ろし（48秒）の直後は溜めより強く、0.3秒で広がりきる。
+    expect(guardPose(defend.lock+100).aura).toBeGreaterThan(.8);
+    expect(guardPose(defend.lock).auraBurst).toBe(0);
+    expect(guardPose(defend.lock+300).auraBurst).toBeCloseTo(1,6);
+    // 一撃が盾に当たる50.4秒には消えている。
+    expect(guardPose(defend.impact).aura).toBe(0);
+    // 剣の残像は振り下ろしの0.75秒だけ。控えめモードでは出さず、黒い光も薄い。
+    expect(guardPose(defend.lock-100).smear).toBe(0);
+    expect(guardPose(defend.lock+100).smear).toBeGreaterThan(0);
+    expect(guardPose(defend.lock+800).smear).toBe(0);
+    expect(guardPose(defend.lock+100,true).smear).toBe(0);
+    expect(guardPose(defend.lock-1000,true).aura).toBeLessThan(guardPose(defend.lock-1000).aura);
+    // 一回目の姿勢では出ない。
+    expect(knightPose(first.impact+200,true).aura).toBe(0);
+    expect(knightPose(first.impact+200,true).smear).toBe(0);
+  });
   it('弾き返したときだけ、騎士が戻ってきた一撃を受ける',()=>{
     // 戻ってきた一撃を受けるのは、盾に当たってから0.8秒後。その0.1秒後を見る。
     const back=defend.impact+900;
