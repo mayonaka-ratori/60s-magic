@@ -15,6 +15,8 @@ const SPARK_LENGTH_BASE = 2, SPARK_LENGTH_PER_SPEED = .03;
 export const SPARK_MAX_LENGTH = 18;
 
 export type XY = { x: number; y: number };
+/** 画面の上の四角（画素）。左上の位置と大きさ。 */
+export type Box = { x: number; y: number; width: number; height: number };
 /** 各部品が受け取る、そのコマの道具と値。部品は属性名ではなく色と派手さだけを見る。 */
 export type Frame = {
   c: CanvasRenderingContext2D; w: number; h: number;
@@ -25,6 +27,13 @@ export type Frame = {
   sprites: GlowSprites; pool: ParticlePool; preset: EffectPreset; palette: Palette; intensity: number;
   /** 確定した魔法。未確定の間は無属性の仮の値 */
   recipe: Recipe; locked: boolean; origin: XY; target: XY;
+  /**
+   * 弾の出どころ（画素）。術式の光点で、最初の一つは中心。
+   * 無いときは origin だけとみなす（originsOf を通して読む）。
+   */
+  origins?: XY[];
+  /** 表示している術式の範囲（画素）。無いときは中心のまわりの小さな箱とみなす（extentOf を通して読む）。 */
+  extent?: Box;
   /** 二つ目の属性の色。なければ null */
   accent: Palette | null;
   /** いまの入力（言葉、量、声）と、表示用の点列、手の位置 */
@@ -43,6 +52,10 @@ export type Frame = {
   calm: boolean;
 };
 
+/** 弾の出どころ。術式の光点があればそれを、無ければ中心だけを返す。最初の一つはいつも中心。 */
+export function originsOf(f: Frame): XY[] { return f.origins && f.origins.length ? f.origins : [f.origin]; }
+/** 表示している術式の範囲。点が無いときは中心のまわりの小さな箱。 */
+export function extentOf(f: Frame): Box { return f.extent ?? { x: f.origin.x - 60, y: f.origin.y - 30, width: 120, height: 60 }; }
 /** 控えめモードのときだけ数を3分の1にする。粒や火花の個数の式に掛けて使う。 */
 export function few(f: Frame, n: number) { return f.calm ? n / 3 : n; }
 /** 控えめモードのときだけ脈動の速さを半分にする。 */

@@ -38,6 +38,16 @@ export const ROUNDS: Round[] = [
   { id: 'finish', index: 3, castId: 'cast-03', start: 56000, build: null, chant: 64000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
 ];
 
+/**
+ * 一回目の受付中に、騎士が自分から動く時刻（ms）。足を踏み替える（step）、盾を打ち鳴らす（clang）。
+ * 画面の揺れ、騎士の動き、効果音がこの一つの表を見る。案内の音（6秒、11秒）と重ねない。
+ */
+export const ENEMY_MOVES: ReadonlyArray<{ at: number; kind: 'step' | 'clang' }> = [{ at: 3500, kind: 'step' }, { at: 9500, kind: 'clang' }];
+/** 防御の回で、騎士が溜めの姿勢に入る時刻（ms）。ここから振り下ろしまで、画面が低く震え続ける。 */
+export const ENEMY_CHARGE_FROM_MS = ROUNDS[1].start + 200;
+/** 防御の回で、振り下ろした剣が床を打つ時刻（ms）。振り下ろし（lock）の0.55秒後。床の亀裂、塵、下向きの大きな揺れ、音がここに揃う。 */
+export const ENEMY_SLAM_MS = ROUNDS[1].lock + 550;
+
 /** 戦いの終わり。回の表の最後の行から決まる。 */
 export const BATTLE_END = ROUNDS[ROUNDS.length - 1].end;
 /**

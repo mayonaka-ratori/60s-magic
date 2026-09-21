@@ -5,7 +5,7 @@ import { getPreset, intensityOf, type EffectPreset } from './effects/presets';
 import { GlowSprites } from './effects/sprites';
 import { ParticlePool } from './effects/particles';
 import { screenState, effectTime, hitStopOf, type ScreenState } from './effects/screen';
-import { drawParticles, type Frame, type XY } from './effects/frame';
+import { drawParticles, type Box, type Frame, type XY } from './effects/frame';
 import { drawCharge } from './effects/charge';
 import { drawRelease, drawTravel } from './effects/release';
 import { drawImpact } from './effects/impact';
@@ -49,6 +49,16 @@ export const stopAtOf = (beat: Beat) => beat.finish ? beat.end : Math.max(beat.e
  * 放出と命中では、その先頭のコマで種を戻す。コマ落ちして乱数の使う順が変わっても、同じ入力なら同じ火花になる。
  */
 const POOL_SEED = 7, RELEASE_SEED = 1013, IMPACT_SEED = 2027;
+/**
+ * 表示している術式の範囲（画素）。点が無いときは中心のまわりの小さな箱。
+ * 弾の出どころの散らばりや、光線の太さ、床の明るさの広さに使う。
+ */
+export function spellExtent(points: readonly Point[], w: number, h: number, center: XY): Box {
+  if (!points.length) return { x: center.x - 60, y: center.y - 30, width: 120, height: 60 };
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of points) { const x = p.x * w, y = p.y * h; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+  return { x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
+}
 const still: ScreenState = { shakeX: 0, shakeY: 0, flash: 0, darken: 0, chromatic: 0, hitStop: 0, rotate: 0, zoom: 1, blackout: 0, saturate: 1 };
 /** 魔法が確定する前に部品へ渡す仮のレシピ。無属性の球。 */
 const pending: Recipe = { version: 'recipe-1', element: 'neutral', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .5, area: .5, duration: .5, concentration: .5,
@@ -183,7 +193,11 @@ export class MagicCanvas {
       // 手の跡に小さな光を残す。
       if (dt > 0 && this.pool.random() < .6) this.pool.spawn({ x: p.x * w, y: p.y * h, vx: (this.pool.random() - .5) * 20, vy: -10 - this.pool.random() * 20, life: .5 + this.pool.random() * .5, size: 1 + this.pool.random() * 1.2, drag: .5, color: palette.main, core: palette.core, kind: 0 });
     }
-    const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, target: hit, accent, live, points, cursors,
+    // 弾の出どころと術式の範囲。表示している点列（画素）から作る。点が無ければ中心だけ。
+    const launch = getNodes(points, 12).map(p => ({ x: p.x * w, y: p.y * h }));
+    const origins: XY[] = [origin, ...launch];
+    const extent = spellExtent(points, w, h, origin);
+    const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, origins, extent, target: hit, accent, live, points, cursors,
       beat, guard, aim: AIM, inherited, calm: this.calm,
       once: (key, run) => { if (!this.fired.has(key)) { this.fired.add(key); run(); } } };
     // 放出と命中に入る先頭のコマで、粒の乱数の種を戻す。コマ落ちしても同じ火花になる。
