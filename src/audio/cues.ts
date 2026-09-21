@@ -1,7 +1,14 @@
-import { BATTLE_END, ROUNDS, beatOf, type Round } from '../game/rounds';
+import { BATTLE_END, ENEMY_MOVES, ENEMY_SLAM_MS, ROUNDS, beatOf, type Round } from '../game/rounds';
 import { HIT_STOPS, warpOf, warpReal } from '../render/effects/screen';
 
-export type SoundCue='trace'|'chant'|'build'|'complete'|'release'|'impact'|'finish'|'collapse-sword'|'collapse-knee'|'collapse-fall'|'settle'|'book'|'block'|'ring';
+/**
+ * 音の合図の名前。自分の魔法の音のほかに、敵（騎士）の側の音を持つ。
+ * step：足を踏み替える。clang：盾を打ち鳴らす。swing：剣を振り下ろす風切り。slam：振り下ろした剣が床を打つ。
+ */
+export type SoundCue='trace'|'chant'|'build'|'complete'|'release'|'impact'|'finish'|'collapse-sword'|'collapse-knee'|'collapse-fall'|'settle'|'book'|'block'|'ring'
+  |'step'|'clang'|'swing'|'slam';
+/** 敵の側の音。素材の表で受け付ける名前の確認や、鳴らし方の分岐に使う。 */
+export const ENEMY_CUES:ReadonlyArray<SoundCue>=['step','clang','swing','slam'];
 export type Cue={name:SoundCue;at:number;quietUntil:number;round:Round['id']};
 
 /** 録音を止めてから効果音を鳴らし始めるまでの余裕（ms）。 */
@@ -40,6 +47,11 @@ function cuesOf(round:Round,calm:boolean):Cue[] {
   }
   // 静かな音への切り替え。一回目と防御は今までどおり命中の3.5秒後、とどめは余韻の始まり（57秒）。
   list.push(['settle',round.finalBlow!==null?round.handoff:round.impact+3500]);
+  // 敵の側の音。時刻は回の表（rounds.ts）が持ち、画面の揺れと騎士の動きも同じ表を見る。
+  // 一回目の足音と盾の音は受付中なので、マイクを使う回では quietUntil の決まりでそのまま鳴らない（マウスで遊ぶときだけ鳴る）。
+  if(round.id==='first')for(const move of ENEMY_MOVES)list.push([move.kind,move.at]);
+  // 防御の回は、確定の時刻に剣を振り下ろし（swing）、その0.55秒後に床を打つ（slam）。どちらも録音の後なので必ず鳴る。
+  if(round.id==='defend')list.push(['swing',round.lock],['slam',ENEMY_SLAM_MS]);
   // 魔導書の静かな一音。魔導書の枠が浮かび始める59.4秒に鳴らす。
   // 60秒ちょうどに置くと、そのコマでは結果画面へ移っていて永遠に鳴らない。
   if(round.finalBlow!==null)list.push(['book',round.end-BOOK_BEFORE]);
