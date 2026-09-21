@@ -74,7 +74,8 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   const violent = purpose === 'attack' || purpose === null;
   // 攻撃は全部、守りは弱く、それ以外は揺らさない。
   // 防御の回だけは、揺らすのが敵の一撃なので、作った魔法の用途にかかわらず揺らす。
-  const weight = calm ? 0 : beat.defend ? 1 : violent ? 1 : purpose === 'defend' ? .3 : 0;
+  // とどめの回も、揺らすのが自分の一撃そのものなので、作った魔法の用途にかかわらず揺らす。
+  const weight = calm ? 0 : beat.defend || beat.finish ? 1 : violent ? 1 : purpose === 'defend' ? .3 : 0;
   const shakeMax = increase(preset.shake, intensity, .6) * weight;
   // 放出は小さく、命中は大きい。強さは時間とともに減り、その二乗で揺らす。
   const shock = shockAt(t, .55, 1, beat);
@@ -91,8 +92,11 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   const rotate = wobble(t * SHAKE_HZ * .7, seed + 3) * weight * power;
   const shakeZoom = 1 + (wobble(t * SHAKE_HZ * .8, seed + 4) * .5 + .5) * .03 * weight * power;
 
-  // とどめの一撃の時刻。ほかの回は null なので、ここから下の足し算は何も起こらない（値は今までと同じまま）。
-  const finalBlow = beat.finish ? beat.finalBlow : null;
+  // 命中で世界を止める長さ。下のとどめの時刻を実際の時刻へ直すのにも使う。
+  const hitStop = hitStopOf(preset, intensity, calm, beat);
+  // とどめの一撃の時刻。t は実際の時刻なので、世界の時刻で置いた54.5秒を実際の時刻（54.6秒）へ直してから比べる。
+  // ほかの回は null なので、ここから下の足し算は何も起こらない（値は今までと同じまま）。
+  const finalBlow = beat.finish && beat.finalBlow !== null ? warpReal(beat.finalBlow, warpOf(beat, hitStop)) : null;
   // 一撃からの強さ。0.3秒で0へ戻る。傾きと寄りに使う。
   const blow = finalBlow !== null && t >= finalBlow ? Math.max(0, 1 - (t - finalBlow) / .3) : 0;
   const flashMax = preset.flash * clamp(.4 + intensity * .25, 0, 1) * (calm ? 1 / 3 : 1);
@@ -126,7 +130,7 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   const saturate = 1 - .4 * pale;
 
   return { shakeX, shakeY, flash: clamp(flash), darken: clamp(darken), chromatic,
-    hitStop: hitStopOf(preset, intensity, calm, beat), rotate: rotate + (calm ? 0 : FINISH_TILT * blow), zoom, blackout, saturate };
+    hitStop, rotate: rotate + (calm ? 0 : FINISH_TILT * blow), zoom, blackout, saturate };
 }
 
 /**
@@ -138,14 +142,25 @@ export type TimeWarp = {
   slow: { from: number; seconds: number; rate: number } | null;
 };
 
+/** 止めとスローを時刻の順に並べたもの。同じゆがみなら作り直さない（毎コマ並べ替えないため）。 */
+type WarpEvent = { at: number; seconds: number; rate: number };
+const warpEvents = new WeakMap<TimeWarp, WarpEvent[]>();
+function eventsOf(warp: TimeWarp): WarpEvent[] {
+  const ready = warpEvents.get(warp);
+  if (ready) return ready;
+  const events: WarpEvent[] = warp.stops.map(stop => ({ at: stop.at, seconds: stop.hold, rate: 0 }));
+  if (warp.slow) events.push({ at: warp.slow.from, seconds: warp.slow.seconds, rate: warp.slow.rate });
+  events.sort((a, b) => a.at - b.at);
+  warpEvents.set(warp, events);
+  return events;
+}
+
 /**
  * 実際の時刻から世界の時刻を出す。止めの間は世界が進まず、スローの間は rate 倍の速さで進む。
  * 時刻だけで決まる計算で、逆戻りはしない。長さが0の出来事は無いものとして飛ばす。
  */
 export function warpTime(t: number, warp: TimeWarp) {
-  const events = [...warp.stops.map(stop => ({ at: stop.at, seconds: stop.hold, rate: 0 }))];
-  if (warp.slow) events.push({ at: warp.slow.from, seconds: warp.slow.seconds, rate: warp.slow.rate });
-  events.sort((a, b) => a.at - b.at);
+  const events = eventsOf(warp);
   // 遅れ（delay）は、その出来事までに世界が実際より遅れた秒数。
   let delay = 0, last: { at: number; seconds: number; rate: number } | null = null, lastStart = 0;
   for (const event of events) {
@@ -167,9 +182,7 @@ export function warpTime(t: number, warp: TimeWarp) {
  * 世界の時刻で決めた出来事（崩れ落ちる音など）を、実際の時計で鳴らすときに使う。
  */
 export function warpReal(world: number, warp: TimeWarp) {
-  const events = [...warp.stops.map(stop => ({ at: stop.at, seconds: stop.hold, rate: 0 }))];
-  if (warp.slow) events.push({ at: warp.slow.from, seconds: warp.slow.seconds, rate: warp.slow.rate });
-  events.sort((a, b) => a.at - b.at);
+  const events = eventsOf(warp);
   let delay = 0;
   for (const event of events) {
     if (event.seconds <= 0) continue;
@@ -182,12 +195,23 @@ export function warpReal(world: number, warp: TimeWarp) {
   return world + delay;
 }
 
+/** 同じ回と同じ停止の長さなら、作ったゆがみを使い回す。毎コマ作り直さないため。 */
+const warpCache = new Map<string, TimeWarp>();
 /**
  * その回のゆがみ。一回目と防御は命中の一回だけ止める。
  * とどめは一発目の命中ととどめの一撃で止め、そのあとスローにする。中身は本人の魔法では変えない。
  * 控えめモードでは hitStop が0で来るので、そのときだけ止めをなくす（スローは残す）。
+ * 同じ組み合わせでは同じものを返すので、返ってきたゆがみは書き換えない。
  */
 export function warpOf(beat: Beat = BEATS[0], hitStop = 0): TimeWarp {
+  const key = `${beat.impact}|${beat.finalBlow}|${beat.finish}|${hitStop}`;
+  const ready = warpCache.get(key);
+  if (ready) return ready;
+  const made = buildWarp(beat, hitStop);
+  warpCache.set(key, made);
+  return made;
+}
+function buildWarp(beat: Beat, hitStop: number): TimeWarp {
   if (beat.finish && beat.finalBlow !== null) {
     const hold = hitStop > 0 ? 1 : 0;
     return {

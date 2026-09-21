@@ -16,7 +16,7 @@ export class Battle {
   cancelled=false;
   /** 前の回から引き継ぐ光点。一回目の分を23秒、防御の分を39秒で決め、あとの回の間ずっと薄く残す。 */
   inherited:Point[]=[];
-  /** 光点をもう受け取った回の名前。同じ回から二度取らないための覚え書き。 */
+  /** 光点をもう受け取った回の名前。同じ回から二度取らないための覚え書き。魔法の引き継ぎとは別に数える。 */
   private handedOff=new Set<string>();
   constructor(private clock:()=>number=()=>performance.now(), id:string=crypto.randomUUID()) {
     this.id=id;this.startMs=clock();
@@ -42,14 +42,19 @@ export class Battle {
     this.handOff(0,this.first,this.defend);
     this.handOff(1,this.defend,this.finish);
   }
-  /** ひとつの回が終わる時刻に、その回の光点と魔法を次の回へ渡す。 */
+  /**
+   * ひとつの回が終わる時刻に、その回の光点と魔法を次の回へ渡す。
+   * 光点と魔法は別々に覚える。光点だけ先に渡して覚え書きを立ててしまうと、
+   * あとから魔法（summary）が出来上がっても二度と渡せなくなるため。
+   */
   private handOff(index:number,from:CastSession,to:CastSession) {
     const round=ROUNDS[index];
-    if(this.elapsed<round.handoff||this.handedOff.has(round.id))return;
-    if(!from.motion.display.length&&!from.summary)return;
-    this.handedOff.add(round.id);
-    if(from.motion.display.length)this.inherited=[...this.inherited,...getNodes(from.motion.display,3)];
-    if(!to.previous)to.previous=from.summary;
+    if(this.elapsed<round.handoff)return;
+    if(from.motion.display.length&&!this.handedOff.has(round.id)) {
+      this.handedOff.add(round.id);
+      this.inherited=[...this.inherited,...getNodes(from.motion.display,3)];
+    }
+    if(!to.previous&&from.summary)to.previous=from.summary;
   }
   cancel() {this.cancelled=true;for(const cast of this.casts)cast.cancel();}
   report() {

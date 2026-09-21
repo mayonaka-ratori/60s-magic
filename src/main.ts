@@ -93,6 +93,8 @@ function setCalm(on:boolean,remember=true){
   calmMode=calmForced||on;
   magic.setCalm(calmMode);
   calmTarget?.setCalm(calmMode);
+  // 控えめモードは命中で世界を止めないので、崩れの音ととどめの一撃の時刻も変わる。音にも伝える。
+  sound.setCalm(calmMode);
   const label=calmMode?'演出を派手にする':'演出を控えめにする';
   for(const button of [calmToggle,calmOption]){button.textContent=label;button.setAttribute('aria-pressed',String(calmMode));button.disabled=calmForced&&calmMode;}
   if(remember&&!calmForced){try{localStorage.setItem(CALM_KEY,calmMode?'1':'0');}catch{/* 保存できなくても遊べます。 */}}
@@ -264,6 +266,21 @@ el('chant').addEventListener('input',()=>{diag?.log('文字を入力',{length:el
 /** 回の始まりに出す幕の名前。一回目は出さない。 */
 const ACT_NAMES:Record<string,string>={defend:'防御',finish:'とどめ'};
 
+/**
+ * 体力の枠をゆらす世界の時刻（ms）。一回目の命中、防御の反撃、とどめの一発目、とどめの直撃。
+ * 体力と同じ世界の時計で見るので、命中で止めている間は先へ進まない。
+ * とどめの間の3回（53.76、53.92、54.10秒）ではゆらさない。
+ */
+/** 二回目からの回。声の受付を作り直す相手なので、毎コマ切り出さずに一度だけ作る。 */
+const LATER_ROUNDS=ROUNDS.slice(1);
+
+const HEALTH_SHAKE_MS=[ROUNDS[0].impact,GUARD_STEP_MS,ROUNDS[2].impact,
+  ...ROUNDS.flatMap(round=>round.finalBlow===null?[]:[round.finalBlow])];
+
+/** 回ごとの、まだ何も唱えていない人へ出す詠唱の例。 */
+const CHANT_EXAMPLES:Record<Round['id'],string>={
+  first:'たとえば「雷よ、七つに分かれろ」',defend:'たとえば「氷よ、弾き返せ」',finish:'たとえば「炎よ、集まれ、貫け」'};
+
 /** 回ごとの、画面下の文と三段の見出し。 */
 const ROUND_STEPS:Record<string,[string,string,string]>={first:['線を描く','形になる','放つ'],defend:['印を囲む','盾になる','受け止める'],finish:['弱点へ描く','形になる','とどめ']};
 
@@ -313,7 +330,7 @@ function updateUi() {
   // 描き始めの4秒で線が動いていなければ、描き方をもう一度伝える。
   if(t>=round.start/1000+2&&t<round.start/1000+6&&drawing&&!cast.motion.hasMovement)el('hint').textContent=mode==='pointer'?'画面を押したまま、少し動かそう':'片手を少し動かそう';
   // まだ何も唱えていない人には、唱える時間になったところで例をひとつ出す。
-  if(phase==='chant'&&!cast.speech.snapshot().length)el('hint').textContent=round.id==='defend'?'たとえば「氷よ、弾き返せ」':'たとえば「雷よ、七つに分かれろ」';
+  if(phase==='chant'&&!cast.speech.snapshot().length)el('hint').textContent=CHANT_EXAMPLES[round.id];
   // 手が見つからないことは、描けていない状態そのものなので一番強く出す。
   if(mode==='camera'&&drawing&&!cursors.length&&performance.now()-lastHandAt>800)el('hint').textContent='手を画面の前に戻そう。描いた線は消えません';
   // 幕の表示。回の切り替わりで0.8秒だけ大きく出す。
@@ -333,14 +350,6 @@ function updateUi() {
   const typing=(!voice||voiceLost)&&!demo;
   el<HTMLInputElement>('chant').disabled=!drawing;show('input-panel',typing&&drawing);
   show('meter',!!voice&&!voiceLost);
-  // 当たった瞬間だけ体力バーを揺らす。減る量と速さは HealthBar が受け持つ。
-  // とどめは一発目（53.6秒）と直撃（54.5秒）の2回だけで、間の3回ではゆらさない。
-  for(const at of [ROUNDS[0].impact,GUARD_STEP_MS,ROUNDS[2].impact,ROUNDS[2].finalBlow!]) {
-    if(battle.elapsed<at||damaged.has(at))continue;
-    damaged.add(at);
-    healthWrapEl.classList.add('hit');healthWrapEl.dataset.hit='1';
-    setTimeout(()=>healthWrapEl.classList.remove('hit'),700);
-  }
   showReveal(t,round,recipe);
   if(cast.locked&&recipe&&t>=round.lock/1000&&t<round.release/1000){show('recognized',true);el('recognized').textContent=[ELEMENT_LABELS[recipe.element],recipe.count>1?`${recipe.count}つ`:PURPOSE_LABELS[recipe.purpose]].join('　・　');}
   else show('recognized',false);
@@ -470,10 +479,13 @@ function fillSpellList(rows:ResultRow[]) {
 }
 
 function finish() {
-  const battle=session;if(!battle)return;
-  const last=battle.finish.recipe?battle.finish:battle.defend.recipe?battle.defend:battle.first;
-  const main=last.recipe;if(!main)return;
+  const battle=session;if(!battle||resultShown)return;
+  // 先に「結果を出した」を立てる。魔法が一つも出来ていなくても、毎コマここへ来ないようにする。
   resultShown=true;sound.stop();voice?.dispose();voice=null;camera?.dispose();camera=null;cursors=[];
+  const last=battle.finish.recipe?battle.finish:battle.defend.recipe?battle.defend:battle.first;
+  const main=last.recipe;
+  // 三回とも魔法が出来なかったときは、出すものがないのでタイトルへ戻す。
+  if(!main){toReady('魔法ができませんでした。もう一度遊べます。');return;}
   show('bottom-hud',false);show('input-panel',false);show('meter',false);show('voice-label',false);show('act-title',false);show('reveal',false);
   // はじめの0.9秒は魔法名だけを見せ、そのあとに残りを出す。
   el('result').classList.add('name-only');show('result',true);show('feedback',!demo);
@@ -568,10 +580,10 @@ function animate(now:number) {
     if(demo)demoInput(battle);
     for(const cast of battle.casts)driveRound(battle,cast);
     // 魔法が確定するたび（16、33、51秒）に、このPCの中へ保存し直す。増えたときだけ書く。
-    const locked=battle.casts.filter(cast=>cast.locked&&cast.recipe).length;
+    let locked=0;for(const cast of battle.casts)if(cast.locked&&cast.recipe)locked++;
     if(recorder&&locked>savedRounds){savedRounds=locked;void recorder.save(battle);}
     // 二回目からの回は、その少し前に声の受付を作り直す。
-    for(const round of ROUNDS.slice(1))
+    for(const round of LATER_ROUNDS)
       if(battle.elapsed>=round.start-VOICE_RECONNECT_MS&&battle.elapsed<round.inputEnd)prepareRoundVoice(battle,round);
     if(battle.elapsed>=BATTLE_END&&!resultShown)finish();
     if(now-lastUi>80){updateUi();lastUi=now;}
@@ -597,9 +609,19 @@ function animate(now:number) {
   // 閃光、ビネット、グレイン、暗転、背景の彩度はHTMLの層で出す。
   overlay.update(magic.screen,magic.preset.palettes[cast?.recipe?.element??'neutral'],calmMode);
   // 体力も世界の時計で減らす。命中で止めている間は先へ進まない（stage.render の後に読む）。
-  if(cast)healthBar.update(stage.effectMs,session!.first.recipe);
-  // とどめの一撃の0.9秒後から、体力の枠を名前ごと薄くして消す。消したら戻さない。
-  if(cast&&!healthGone&&stage.effectMs>=HEALTH_HIDE_MS){healthGone=true;healthWrapEl.dataset.gone='1';}
+  // 結果画面へ移るコマでも一度は世界の時刻で確定させたいので、cast ではなく session の有無で判断する。
+  if(session) {
+    healthBar.update(stage.effectMs,session.first.recipe);
+    // 当たった瞬間だけ体力の枠をゆらす。減る量と速さは HealthBar が受け持つ。
+    for(const at of HEALTH_SHAKE_MS) {
+      if(stage.effectMs<at||damaged.has(at))continue;
+      damaged.add(at);
+      healthWrapEl.classList.add('hit');healthWrapEl.dataset.hit='1';
+      setTimeout(()=>healthWrapEl.classList.remove('hit'),700);
+    }
+    // とどめの一撃の0.9秒後から、体力の枠を名前ごと薄くして消す。消したら戻さない。
+    if(!healthGone&&stage.effectMs>=HEALTH_HIDE_MS){healthGone=true;healthWrapEl.dataset.gone='1';}
+  }
   // 受け取った入力を描き終えた時刻との差を、手応えの記録に足す。
   if(pendingInputAt){inputLags.push(performance.now()-pendingInputAt);if(inputLags.length>3000)inputLags.shift();pendingInputAt=0;}
 }

@@ -21,6 +21,23 @@ import { BEATS, beatAt, type Beat } from '../game/rounds';
 export const colors: Record<Element, string> = Object.fromEntries(Object.entries(getPreset(null).palettes).map(([k, v]) => [k, v.main])) as Record<Element, string>;
 /** canvas内の色ずれを出す長さ（秒）。命中からこの時間だけ。 */
 const CHROMATIC_WINDOW = .2;
+/** とどめの余韻で粒と術式が消えきる時刻を、余韻の始まりから何秒後にするか（秒）。世界の59.25秒。 */
+const FINISH_FADE_TAIL = 2.25;
+/** 余韻の濃さが0へ落ちきる時刻（秒）。一回目と防御は命中の4.5秒後（実際）、とどめは余韻の終わり（世界）。 */
+export const afterglowEnd = (beat: Beat) => beat.finish ? beat.handoff + FINISH_FADE_TAIL : beat.impact + 4.5;
+/**
+ * 粒と術式の消え際の濃さ（0〜1）。落ちきる2秒前から下がる。
+ * t は実際の時刻、te は世界の時刻。とどめだけ世界の時刻で数えるので、スローの分だけ長く残る。
+ */
+export function afterglowFade(t: number, te: number, beat: Beat) {
+  const end = afterglowEnd(beat);
+  return 1 - clamp(((beat.finish ? te : t) - (end - 2)) / 2);
+}
+/**
+ * 演出を描くのをやめる実際の時刻（秒）。ここを過ぎたら粒も術式も消す。
+ * とどめだけは、余韻を回の終わり（60.0秒）まで残して、結果画面へそのまま渡す。
+ */
+export const stopAtOf = (beat: Beat) => beat.finish ? beat.end : Math.max(beat.end - .5, beat.impact + 4.5);
 /**
  * 粒の乱数の種。作り始めと作り直しで同じ値にして、1回目と2回目の散り方をそろえる。
  * 放出と命中では、その先頭のコマで種を戻す。コマ落ちして乱数の使う順が変わっても、同じ入力なら同じ火花になる。
@@ -72,6 +89,9 @@ export class MagicCanvas {
   /** 与えた時刻から、停止を含んだ演出の時刻（ms）を出す。時刻だけで決まる純粋な計算。 */
   effectMsOf(ms: number, recipe: Recipe | null, amount = 0, beat: Beat = BEATS[0]) {
     const t = ms / 1000;
+    // とどめの発動前の「間」は、騎士も術式も体力も同じ時刻で止める。演出だけを止めると騎士が動いてしまう。
+    const held = holdTime(t, beat);
+    if (held !== null) return held * 1000;
     if (t < beat.release) return ms;
     return effectTime(t, hitStopOf(this.preset, intensityOf(recipe, this.preset, amount), this.calm, beat), beat) * 1000;
   }
@@ -86,6 +106,12 @@ export class MagicCanvas {
     const rect = this.canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio, 1.5);
     this.width = rect.width; this.height = rect.height; this.canvas.width = rect.width * dpr; this.canvas.height = rect.height * dpr; this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
+  /** とどめで単発として描くためのレシピ。もとのレシピが変わるまで作り直さない。 */
+  private single: { from: Recipe; one: Recipe } | null = null;
+  private singleShot(recipe: Recipe) {
+    if (this.single?.from !== recipe) this.single = { from: recipe, one: { ...recipe, count: 1 } };
+    return this.single.one;
+  }
   private reset() { this.pool.clear(); this.pool.reseed(POOL_SEED); this.strokeMemory = newStrokeMemory(); this.fired.clear(); this.lastRaw = -1; this.lastEffect = -1; this.lastEffectMs = 0; this.state = still; }
 
   /** 一コマ分の演出。時刻と確定した内容だけで決まるようにしてある。 */
@@ -99,7 +125,7 @@ export class MagicCanvas {
     const beat = input.beat ?? beatAt(t);
     c.clearRect(0, 0, w, h);
     // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前（23.5秒）で変わらない。
-    const stopAt = Math.max(beat.end - .5, beat.impact + 4.5);
+    const stopAt = stopAtOf(beat);
     if (ready || t >= stopAt) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
     // 時刻が戻ったら（確認画面のつまみなど）粒と一度きりの発生をやり直す。
     if (t < this.lastRaw - .05) this.reset();
@@ -113,7 +139,7 @@ export class MagicCanvas {
     this.lastEffect = te; this.lastEffectMs = te * 1000;
     // 放出直前の暗転の間は、粒も光も見せない。
     const lit = 1 - this.state.blackout;
-    const fade = (1 - clamp((t - (beat.impact + 2.5)) / 2)) * lit, hit = { x: target.x * w, y: target.y * h };
+    const fade = afterglowFade(t, te, beat) * lit, hit = { x: target.x * w, y: target.y * h };
 
     // 揺れ、傾き、寄りをまとめて演出の面にもかける。中心を軸に回して拡大する。
     c.save();
@@ -167,7 +193,11 @@ export class MagicCanvas {
       if (!beat.defend && te >= beat.release) {
         c.save(); drawRelease(frame); drawTravel(frame, beat.finish ? finishBoost(frame) : undefined);
         // とどめの回は当たる時刻を4回に固定して finish.ts が受け持つので、もとの命中は単発として一度だけ出す。
-        drawImpact(beat.finish && frame.recipe.count > 1 ? { ...frame, recipe: { ...frame.recipe, count: 1 } } : frame);
+        // 毎コマ作り直さないよう、単発のレシピは作り置きし、frame のレシピを一時的に差し替えて戻す。
+        if (beat.finish && frame.recipe.count > 1) {
+          const all = frame.recipe;
+          frame.recipe = this.singleShot(all); drawImpact(frame); frame.recipe = all;
+        } else drawImpact(frame);
         c.restore();
       }
       c.globalCompositeOperation = 'lighter';
