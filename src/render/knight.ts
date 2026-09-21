@@ -73,8 +73,8 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
     state:hit>.1?'hit':recover>.1?'recover':'idle',
     // 崩れ落ちはとどめの回だけ。一回目はいつも立っている。
     fall:0,still:1,blink:0,
-    // 刃の赤は防御の回の溜めだけ。一回目は光らない。
-    bladeHeat:0,
+    // 刃の赤と黒い光、剣の残像は防御の回の溜めと振り下ろしだけ。一回目には出ない。
+    bladeHeat:0,aura:0,auraBurst:0,smear:0,
     strength,push:reduced?0:push,collapse:reduced?0:collapse,
     // 打撃の向きに合わせ、右へのけぞる。単位は度。
     spin:reduced?0:push*(1.4+strength*2.6)+collapse*3.4,
@@ -284,6 +284,15 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
   const heatRise=index===2?clamp((t-GUARD_STEPS[2].at)/chargeSpan):0;
   const bladeHeat=index===2?heatRise*(reduced?.6:.55+.45*(.5+.5*Math.sin(t*Math.PI*2)))
     :index===3?Math.max(0,1-(t-GUARD_STEPS[3].at)/GUARD_STEPS[3].ramp)*(reduced?.6:1):0;
+  // 黒い光。溜めの間に騎士の後ろへ暗いにじみが広がり、刃の赤と同じ拍で脈打つ。
+  // 振り下ろしでは一気に膨らんでから、弾かれるまでに消える。控えめモードでは薄く、脈打たない。
+  const swingAt=GUARD_STEPS[3].at,sinceSwing=t-swingAt;
+  const aura=index===2?heatRise*(reduced?.35:.6+.4*(.5+.5*Math.sin(t*Math.PI*2)))
+    :index===3?(sinceSwing<.12?.6+sinceSwing/.12*.4:Math.max(0,1-(sinceSwing-.12)/1.6))*(reduced?.35:1):0;
+  // 振り下ろしの瞬間に黒い光が外へ弾ける。0.3秒で広がりきる。
+  const auraBurst=index===3?smooth(sinceSwing/.3):0;
+  // 剣の残像。振り下ろしの間だけ、前のコマの形を暗い色で後ろに残す。控えめモードでは出さない。
+  const smear=reduced?0:index===3&&sinceSwing<.75?1-sinceSwing/.75:0;
   // 弾かれた瞬間だけ押し戻される。
   const hitAt=DEFEND.impact/1000;
   const repel=t>=hitAt?Math.max(0,1-(t-hitAt)/1.2):0;
@@ -298,7 +307,7 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
   const fall=fallAt(t),still=1-fall;
   // とどめの4回の命中と直撃の白飛び。防御の弾き返しとは時刻が離れているが、念のため濃いほうを使う。
   const blast=finishFlashAt(t);
-  return {weights,lean:reduced?0:repel*.35,bladeHeat,
+  return {weights,lean:reduced?0:repel*.35,bladeHeat,aura,auraBurst,smear,
     // 0に丸めるときに符号が残らないよう、0を足しておく。
     breath:reduced?0:(Math.sin(ms*.0016)*.003+charging*Math.sin(t*Math.PI*2)*.004)*still+0,
     flash,fall,still,blink:corePulse(t),
@@ -380,6 +389,10 @@ export class Knight {
   private stencil=document.createElement('canvas');
   private stencilContext:CanvasRenderingContext2D|null;
   private trail:KnightTransform[]=[];
+  /** 剣の残像に使う、前のコマの形。半分の大きさで3コマぶん持ち、振り下ろしの間だけ書き足す。 */
+  private smears:HTMLCanvasElement[]=[];
+  private smearAt:KnightTransform[]=[];
+  private smearMs=-1;
   /** とどめの回で落ちる部品。落ちた後は親から外し、重力で床まで落として止める。 */
   private parts:Part[]=[];
   /** 部品を名前で引く表。毎コマ一覧を探し直さない。 */
@@ -853,7 +866,7 @@ export class Knight {
     return this.stencil;
   }
   /** 立体の絵を、吹き飛びと回転、白飛び、残像、輪郭の発光と合わせて表の面へ写す。 */
-  private compose(pose:ReturnType<typeof knightPose>,recipe:Recipe|null,spot:KnightTransform,unit:number) {
+  private compose(pose:ReturnType<typeof knightPose>,recipe:Recipe|null,spot:KnightTransform,unit:number,ms=0) {
     const context=this.view;if(!context)return;
     const w=this.canvas.width,h=this.canvas.height;if(w<2||h<2)return;
     // 置き方は knightTransform が出した一つだけを使う。命中の位置も同じものを見る。
@@ -881,6 +894,42 @@ export class Knight {
         place(spot);context.drawImage(glow,-spread,-spread,w+spread*2,h+spread*2);
       }
     }
+    // 黒い光。騎士の形を暗い色で塗り、大きさを変えて3層重ねる。外ほど黒く薄く、内ほど赤黒く濃い。
+    // 上へ少しずらして、炎のように立ち上って見せる。本体の後ろに置くので、鎧の色は変わらない。
+    if(pose.aura>0) {
+      // 広がりは騎士の絵の高さに対する割合。ぼかしはcanvasのfilterで付け、使えないブラウザーでは硬い縁のまま出る。
+      const base=h*(1+pose.auraBurst*1.4);
+      const layers:Array<[string,number,number,number,number]>=[
+        ['#05020a',.075,.6,.5,.03],   // いちばん外。黒に近く、上へ立ち上る
+        ['#1c0620',.04,.55,.3,.018],  // 中。黒紫
+        ['#5a0e2a',.018,.7,.12,.009], // 内。赤黒く、輪郭に沿う
+      ];
+      for(const [color,spread,alpha,lift,blur] of layers) {
+        const dark=this.paintStencil(color);if(!dark)continue;
+        const s=base*spread*(.75+.25*pose.aura);
+        context.globalAlpha=alpha*pose.aura;
+        context.filter=`blur(${Math.round(base*blur)}px)`;
+        place(spot);context.drawImage(dark,-s,-s*(1+lift),w+s*2,h+s*2);
+      }
+      context.filter='none';
+    }
+    // 剣の残像。振り下ろしの間に取っておいた前のコマの形を、古いものほど薄く暗い赤で重ねる。
+    if(pose.smear>0&&this.smears.length) {
+      const stencil=this.stencilContext;
+      for(let i=this.smears.length-1;i>=0;i--) {
+        const age=this.smears.length-1-i;
+        if(stencil){
+          stencil.setTransform(1,0,0,1,0,0);stencil.globalAlpha=1;stencil.globalCompositeOperation='source-over';
+          stencil.clearRect(0,0,this.stencil.width,this.stencil.height);stencil.drawImage(this.smears[i],0,0);
+          stencil.globalCompositeOperation='source-in';stencil.fillStyle=age===0?'#5a1020':'#1a0610';
+          stencil.fillRect(0,0,this.stencil.width,this.stencil.height);
+        }
+        context.globalAlpha=(.55-age*.15)*pose.smear;
+        context.filter=`blur(${Math.round(h*.004*(1+age))}px)`;
+        place(this.smearAt[i]);context.drawImage(this.stencil,0,0,w,h);
+      }
+      context.filter='none';
+    }
     if(pose.ghost>0&&this.trail.length) {
       const ghost=this.paintStencil(mix('#ffffff',main,.25));
       if(ghost)for(let i=0;i<3&&i<this.trail.length;i++) {
@@ -891,6 +940,21 @@ export class Knight {
     }
     context.setTransform(1,0,0,1,0,0);context.globalAlpha=1;context.globalCompositeOperation='source-over';
     this.trail.push(spot);if(this.trail.length>4)this.trail.shift();
+    // 振り下ろしの間だけ、今のコマの形を取っておく。終わったら捨てて、次の振りに古い形が混ざらないようにする。
+    // 毎コマ取ると残像が本体に重なって見えないので、45msおきにする。
+    if(pose.smear>0){if(ms-this.smearMs>=45){this.keepSmear(spot);this.smearMs=ms;}}
+    else if(this.smears.length){this.smears.length=0;this.smearAt.length=0;this.smearMs=-1;}
+  }
+  /** 今描いた騎士の形を半分の大きさで写し、残像の列の最後に足す。3コマまで。 */
+  private keepSmear(spot:KnightTransform) {
+    const w=this.stencil.width,h=this.stencil.height;
+    const full=this.smears.length>=3;
+    const frame=full?this.smears.shift()!:document.createElement('canvas');
+    if(full)this.smearAt.shift();
+    if(frame.width!==w||frame.height!==h){frame.width=w;frame.height=h;}
+    const c=frame.getContext('2d');
+    if(c){c.setTransform(1,0,0,1,0,0);c.globalAlpha=1;c.globalCompositeOperation='source-over';c.clearRect(0,0,w,h);c.drawImage(this.source,0,0,w,h);}
+    this.smears.push(frame);this.smearAt.push(spot);
   }
   /**
    * 当たった場所に魔法の色の傷あとを残す。体力バーを見なくても効いたと分かるようにする。
@@ -977,7 +1041,7 @@ export class Knight {
     const unit=w/Math.max(1,this.canvas.clientWidth||w);
     // 置き方は一度だけ出し、絵と胸の狙い先の両方に同じものを使う。
     const spot=knightTransform(pose,w,h,unit);
-    this.compose(pose,recipe,spot,unit);
+    this.compose(pose,recipe,spot,unit,ms);
     const hit=knightPoint(spot,projected.x*w/rw,projected.y*h/rh);
     // 命中から0.9秒かけて薄くなり、その後は残り続ける傷あと。倒れ始めたら0.5秒で全部消す。
     const wipe=active?1-clamp((t-FALL_FROM)/.5):1;

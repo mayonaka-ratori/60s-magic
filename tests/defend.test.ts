@@ -248,6 +248,26 @@ describe('防御の回の画面と姿勢',()=>{
     // 一回目の姿勢では光らない。
     expect(knightPose(18700,true).bladeHeat).toBe(0);
   });
+  it('黒い光は溜めで強まり、振り下ろしで弾けて、弾かれるまでに消える',()=>{
+    expect(guardPose(23500).aura).toBe(0);
+    expect(guardPose(26000).aura).toBeGreaterThan(0);
+    expect(guardPose(32000).aura).toBeGreaterThan(guardPose(26000).aura);
+    // 振り下ろしの直後は溜めより強く、0.3秒で広がりきる。
+    expect(guardPose(33100).aura).toBeGreaterThan(.8);
+    expect(guardPose(33000).auraBurst).toBe(0);
+    expect(guardPose(33300).auraBurst).toBeCloseTo(1,6);
+    // 一撃が盾に当たる35.4秒には消えている。
+    expect(guardPose(35400).aura).toBe(0);
+    // 剣の残像は振り下ろしの0.75秒だけ。控えめモードでは出さず、黒い光も薄い。
+    expect(guardPose(32900).smear).toBe(0);
+    expect(guardPose(33100).smear).toBeGreaterThan(0);
+    expect(guardPose(33800).smear).toBe(0);
+    expect(guardPose(33100,true).smear).toBe(0);
+    expect(guardPose(32000,true).aura).toBeLessThan(guardPose(32000).aura);
+    // 一回目の姿勢では出ない。
+    expect(knightPose(18700,true).aura).toBe(0);
+    expect(knightPose(18700,true).smear).toBe(0);
+  });
   it('弾き返したときだけ、騎士が戻ってきた一撃を受ける',()=>{
     expect(guardPose(36300,false,'reflect').flash).toBeGreaterThan(0);
     expect(guardPose(36300,false,'block').flash).toBe(0);
