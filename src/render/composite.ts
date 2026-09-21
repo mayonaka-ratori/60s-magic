@@ -55,9 +55,17 @@ export const FPS_DROP = 55, FPS_BACK = 58;
 
 const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
 
+/**
+ * とどめの回で重い後処理を切る時刻を、余韻の始まりから何秒後にするか（秒）。
+ * この時刻は世界の時刻で比べるので、設計3章の表の「実際の58.5秒」にあたる世界の57.775秒に合わせる。
+ * 余韻の始まり（世界の57.0秒）からの差なので0.775秒。
+ */
+export const POST_FINISH_TAIL = .775;
+
 /** その回で重い後処理を入れる時刻と切る時刻（秒）。一回目は 16.9 と 21 で今までと同じ。 */
 export const postFromOf = (beat: Beat = BEATS[0]) => beat.release - (RELEASE_AT - POST_FROM);
-export const postToOf = (beat: Beat = BEATS[0]) => beat.impact + (POST_TO - IMPACT_AT);
+/** とどめの回だけは命中の2.5秒後では余韻の途中で切れてしまうので、余韻の始まりから測る。 */
+export const postToOf = (beat: Beat = BEATS[0]) => beat.finish ? beat.handoff + POST_FINISH_TAIL : beat.impact + (POST_TO - IMPACT_AT);
 
 /** 重い後処理（ブルーム、色収差、歪み）を出す時間帯かどうか。回ごとに、発動の直前から余韻までだけ。 */
 export function postHeavyActive(t: number, beat: Beat = BEATS[0]) {

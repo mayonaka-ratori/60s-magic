@@ -32,10 +32,10 @@ describe('回の時刻表',()=>{
   });
   it('時刻から今の回が決まり、待ちと打ち切りは回ごとにずれる',()=>{
     expect(roundAt(0).id).toBe('first');expect(roundAt(23999).id).toBe('first');
-    expect(roundAt(24000).id).toBe('defend');expect(roundAt(99999).id).toBe('defend');
+    expect(roundAt(24000).id).toBe('defend');expect(roundAt(40000).id).toBe('finish');expect(roundAt(99999).id).toBe('finish');
     expect(speechLimitOf(defend)).toBe(32400);expect(replyLimitOf(defend)).toBe(32900);
     expect(speechLimitOf(first)).toBe(15400);expect(replyLimitOf(first)).toBe(15900);
-    expect(BATTLE_END).toBe(40000);
+    expect(BATTLE_END).toBe(60000);
     expect(beatAt(30).defend).toBe(true);expect(beatAt(10).defend).toBe(false);
     expect(beatAt(30).release).toBe(34);expect(beatAt(30).impact).toBe(35.4);
   });
@@ -48,7 +48,9 @@ describe('60秒の進行役',()=>{
     now=20000;battle.tick();expect(battle.accepting).toBe(false);expect(battle.active.round.id).toBe('first');
     now=24000;battle.tick();expect(battle.active.round.id).toBe('defend');expect(battle.accepting).toBe(true);
     now=31000;battle.tick();expect(battle.accepting).toBe(false);
-    now=40000;battle.tick();expect(battle.finished).toBe(true);
+    now=40000;battle.tick();expect(battle.active.round.id).toBe('finish');expect(battle.accepting).toBe(true);
+    now=49000;battle.tick();expect(battle.accepting).toBe(false);
+    now=60000;battle.tick();expect(battle.finished).toBe(true);
   });
   it('一回目の魔法と光点を防御の回へ渡す',()=>{
     let now=0;const battle=new Battle(()=>now);
@@ -225,9 +227,11 @@ describe('防御の回の画面と姿勢',()=>{
       expect(pose.weights.reduce((a,b)=>a+b,0)).toBeCloseTo(1);
       expect(Math.min(...pose.weights)).toBeGreaterThanOrEqual(-.00001);
     }
-    // 一回目と防御で、姿勢の表の長さがそろっている。
-    expect(knightPose(18700,true).weights).toHaveLength(8);
-    expect(guardPose(23500).weights).toHaveLength(8);
+    // 一回目と防御で、姿勢の表の長さがそろっている。とどめの「崩れ落ちる」を足して9つ。
+    expect(knightPose(18700,true).weights).toHaveLength(9);
+    expect(guardPose(23500).weights).toHaveLength(9);
+    // 崩れ落ちる姿勢は、防御の回までは一度も混ざらない。
+    for(let ms=23000;ms<=41000;ms+=50)expect(guardPose(ms).weights[8]).toBe(0);
   });
   it('弾き返したときだけ、騎士が戻ってきた一撃を受ける',()=>{
     expect(guardPose(36300,false,'reflect').flash).toBeGreaterThan(0);
@@ -293,20 +297,23 @@ describe('防御の回の入力',()=>{
 describe('体力の減り方',()=>{
   it('一回目の命中と、防御の受け止めの二回で減る',()=>{
     const steps=healthSteps(null);
-    expect(steps.at(-1)?.at).toBe(GUARD_STEP_MS);
-    expect(steps.at(-1)!.from-steps.at(-1)!.left).toBe(GUARD_DAMAGE);
+    // 防御の段の後ろに、とどめの回の5段（多段命中4回ととどめの一撃）が続く。
+    const guard=steps.find(step=>step.at===GUARD_STEP_MS)!;
+    expect(guard).toBeTruthy();
+    expect(guard.from-guard.left).toBe(GUARD_DAMAGE);
     expect(steps[0].at).toBe(first.impact);
     // 一回目で20〜45%、防御で10%。0より下へは行かない。
-    expect(steps.at(-1)!.left).toBeGreaterThanOrEqual(0);
-    expect(steps.at(-1)!.left).toBeLessThan(steps[0].from);
+    expect(guard.left).toBeGreaterThanOrEqual(0);
+    expect(guard.left).toBeLessThan(steps[0].from);
   });
   it('連弾は弾の届く時刻ごとに分けて減らし、最後に防御の段が付く',()=>{
     const recipe={version:'recipe-1',element:'lightning',purpose:'attack',form:'swarm',trajectory:'straight',count:7,explicitCount:7,
       defense:.1,area:.5,duration:.5,concentration:.5,enclosure:false,split:true,developsPrevious:null,motionSpeechAligned:null,
       noAttack:false,name:'',source:'local' as const,decisions:{},assistance:[],model:null} as unknown as Parameters<typeof healthSteps>[0];
     const steps=healthSteps(recipe);
-    // 7発それぞれに一段。最後の段が防御の受け止め。
-    expect(steps).toHaveLength(8);
+    // 7発それぞれに一段、8段目が防御の受け止め。そのあとにとどめの5段が続く。
+    expect(steps).toHaveLength(13);
+    expect(steps[7].at).toBe(GUARD_STEP_MS);
     expect(steps[1].at-steps[0].at).toBe(80);
     // 段の時刻は弾と同じ hitDelay から作るので、最後の1発（19.18秒）でも減る。
     expect(steps[6].at).toBeCloseTo(first.impact+hitDelay(6,7)*1000);

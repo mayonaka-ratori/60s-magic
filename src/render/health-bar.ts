@@ -1,12 +1,18 @@
 import type { Recipe } from '../game/types';
 import { hitDelay } from './effects/release';
-import { ROUNDS } from '../game/rounds';
+import { FINAL_BLOW_MS as FINISH_BLOW_MS, FINISH_COLLAPSE_MS, FINISH_HIT_MS, ROUNDS } from '../game/rounds';
 
 const clamp = (x: number) => Math.min(1, Math.max(0, x));
 /** 防御で一撃を受け止めきったときに減る量。止め方や入力では変わらない。 */
 export const GUARD_DAMAGE=10;
 /** 騎士がよろめいて体力が減る時刻（ms）。一撃が盾に当たってから2.1秒後。 */
 export const GUARD_STEP_MS=ROUNDS[1].impact+2100;
+/** とどめの一撃の時刻（ms）。ここで体力を直に0にする。回の表から作る。 */
+export const FINAL_BLOW_MS=FINISH_BLOW_MS;
+/** とどめの多段命中で減らす割合。そのとき残っている量の9割を4回に等分する。 */
+export const FINISH_DAMAGE_RATIO=.9;
+/** 体力の枠を消し始める時刻（ms、世界の時刻）。とどめの一撃の0.9秒後。騎士の崩れ落ちと同じ値を使う。 */
+export const HEALTH_HIDE_MS=FINISH_COLLAPSE_MS;
 /** 命中で減る量。派手さ（個数、範囲、収束）で20〜45%にする。 */
 function damage(recipe: Recipe | null) {
   if (!recipe) return 24;
@@ -44,13 +50,20 @@ export function healthAt(ms: number, steps: HealthStep[]) {
 }
 
 /**
- * 一戦を通した体力の段。一回目の命中の段に、防御で一撃を受け止めきったときの一段を足す。
- * とどめの回を作るときは、ここに0までの段を足す。
+ * 一戦を通した体力の段。一回目の命中の段に、防御で一撃を受け止めきったときの一段と、
+ * とどめの回の段を足す。とどめの多段命中では、そのとき残っている量の9割を4回に等分して減らし、
+ * 最後のとどめの一撃では「残りを全部」ではなく 0 と直に書く。
+ * 前の二回でどれだけ減っていても、54.5秒には必ず0になる。
  */
 export function healthSteps(recipe: Recipe | null): HealthStep[] {
   const steps = planHealthSteps(recipe);
   const after = steps.at(-1)!.left;
   steps.push({ at: GUARD_STEP_MS, from: after, left: Math.max(0, after - GUARD_DAMAGE) });
+  // とどめの多段命中。減らす量は4回とも同じで、弾の数や属性では変えない。
+  const before = steps.at(-1)!.left, each = before * FINISH_DAMAGE_RATIO / FINISH_HIT_MS.length;
+  for (let i = 0; i < FINISH_HIT_MS.length; i++)
+    steps.push({ at: FINISH_HIT_MS[i], from: Math.max(0, before - each * i), left: Math.max(0, before - each * (i + 1)) });
+  steps.push({ at: FINAL_BLOW_MS, from: steps.at(-1)!.left, left: 0 });
   return steps;
 }
 

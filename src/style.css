@@ -24,7 +24,11 @@ header{position:absolute;z-index:2;inset:30px 42px auto;display:flex;align-items
 @media(max-width:520px){.calm-toggle{top:96px;right:190px}}
 
 /* 体力表示は二層。本体はすぐ減り、薄い赤の残りが0.3秒待ってから0.5秒かけて追いつく。幅の動きはJSで出すので、ここでは動かさない。（段階3） */
-.enemy-health .health-trail{background:#ffb4a2}/* 一枚絵の背景と、独立した発光の描画面を重ねる。 */#world{object-fit:cover;object-position:center;transition:filter .6s}#world.spell-finished{filter:blur(5px) brightness(.63)}
+.enemy-health .health-trail{background:#ffb4a2}
+/* とどめの一撃のあと、体力の枠を「遺跡の騎士」の名前ごと0.8秒かけて薄くして消す。消したら戻さない。（とどめの回） */
+.enemy-health{transition:opacity .8s linear}
+.enemy-health[data-gone]{opacity:0}
+/* 一枚絵の背景と、独立した発光の描画面を重ねる。 */#world{object-fit:cover;object-position:center;transition:filter .6s}#world.spell-finished{filter:blur(5px) brightness(.63)}
 #spell{position:absolute;inset:0;width:100%;height:100%;mix-blend-mode:screen;pointer-events:none}
 #knight{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;transition:filter .6s}
 /* 段階4の合成。四枚の層をまとめて描き直した絵を、いちばん手前に一枚だけ置く。使わない間は隠す。 */
@@ -126,3 +130,68 @@ body:not([data-dev]) .dev-only{display:none!important}
 .spell-list span{font-family:'Noto Serif JP',serif;font-size:14px;color:#f0e4c7}
 .spell-list small{font-size:10px;color:#8fa8b8}
 @media(prefers-reduced-motion:reduce){.act-title{animation:none;opacity:1}}
+
+/* 魔導書（結果画面）。横長は左に最終術式、右に魔法名とQR、下に三件の帯。
+   前の結果画面の決まりをそのまま上書きできるよう、.grimoire を重ねて書いてある。 */
+.result.grimoire{position:absolute;z-index:4;inset:0;left:0;top:0;right:0;bottom:0;transform:none;width:100%;height:100%;max-height:none;overflow:hidden;display:grid;grid-template-rows:auto minmax(0,1fr) auto auto;gap:clamp(8px,1.4vh,20px);padding:clamp(14px,2.2vh,34px) clamp(18px,3vw,64px) clamp(12px,1.8vh,26px);text-align:left;background:radial-gradient(120% 90% at 32% 42%,#0c1a26f5,#040a11fc 72%),#040a11;border:0;border-radius:0;box-shadow:none}
+.grimoire .chapter{justify-content:flex-start;font-size:clamp(11px,.8vw,15px)}
+.grimoire .grimoire-main{display:grid;grid-template-columns:6fr 4fr;gap:clamp(18px,2.6vw,52px);min-height:0}
+/* 最終術式。枠の外は暗く沈め、線だけを見せる。 */
+.grimoire .spell-frame{position:relative;min-height:0;border:1px solid #83abc13b;overflow:hidden;background:radial-gradient(62% 62% at 50% 50%,#0a1a2a,#03070c 78%)}
+.grimoire #result-spell{position:absolute;inset:0;float:none;display:block;width:100%;height:100%;margin:0;border:0;background:transparent}
+/* 右の列。横長で高さの低い画面（1280×720など）でも確認番号が切れないよう、はみ出したら縦に送れるようにする。 */
+.grimoire .spell-side{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden auto}
+/* 魔法名だけ明朝。1920×1080で72〜96px相当。 */
+.grimoire h2{font-family:'Noto Serif JP',serif;font-weight:400;font-size:clamp(26px,7.2vh,96px);line-height:1.25;letter-spacing:.1em;color:#f4e9cf;margin:clamp(4px,1vh,14px) 0}
+.grimoire h2 rt{font-size:.3em;letter-spacing:.06em;color:#cfd9e0;font-family:'Noto Sans JP','Yu Gothic',sans-serif}
+/* 属性と用途の札。 */
+.grimoire .spell-description{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 clamp(6px,1.2vh,14px);font-size:clamp(11px,1.5vh,19px)}
+.grimoire .spell-description i{font-style:normal;border:1px solid #9bbdd066;background:#0e2334a8;color:#dbe7ee;padding:.3em .9em;letter-spacing:.1em}
+.grimoire .transcript{font-size:clamp(12px,1.7vh,22px);color:#dccfb3;line-height:1.8;margin:0 0 clamp(8px,1.6vh,20px);min-height:0}
+/* 持ち帰りの場所。公開ページができるまでは白地の枠だけを置き、嘘のQRは出さない。 */
+.grimoire .keepsake{margin-top:auto}
+.grimoire .qr-slot{width:min(320px,26vh);height:min(320px,26vh);display:grid;place-items:center;text-align:center;background:#f3f1ea;color:#4a5560;border:1px solid #d6d2c6;font-size:clamp(11px,1.4vh,17px);letter-spacing:.08em}
+.grimoire .confirm-code{display:flex;align-items:baseline;gap:.7em;margin:clamp(6px,1.2vh,14px) 0 0}
+.grimoire .confirm-code small{font-size:clamp(10px,1.1vh,14px);letter-spacing:.18em;color:#9db1bf}
+.grimoire .confirm-code b{font-weight:400;font-size:clamp(22px,3.4vh,44px);letter-spacing:.22em;color:#f2e6c9;font-variant-numeric:tabular-nums}
+.grimoire .save-state{margin:4px 0 0;font-size:clamp(10px,1.2vh,16px);color:#a9bdc9;letter-spacing:.06em}
+/* 下の帯。三件を横に並べ、左に術式の小さい絵、右に三行の文字。 */
+.grimoire .spell-list{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(10px,1.8vw,32px);margin:0;padding:clamp(8px,1.2vh,18px) 0 0;border-top:1px solid #8aa0b42e;min-height:0}
+.grimoire .spell-list li{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:clamp(8px,1vw,18px);border:0;padding:0;min-width:0;font-size:clamp(11px,1.9vh,24px);color:#c6d8e4}
+.grimoire .spell-list li[data-main=true] .row-text span{color:#f7ecd2}
+.grimoire .spell-thumb{display:block;width:clamp(54px,17vh,190px);height:clamp(54px,17vh,190px);border:1px solid #83abc133;background:#03070c}
+.grimoire .row-text{display:flex;flex-direction:column;gap:.28em;min-width:0}
+.grimoire .row-text b{font-weight:400;font-size:.62em;letter-spacing:.16em;color:#8fa8b8;min-width:0}
+.grimoire .row-text span{font-family:'Noto Serif JP',serif;font-size:1em;color:#f0e4c7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grimoire .row-text rt{font-size:.42em;color:#c3d0d9;font-family:'Noto Sans JP','Yu Gothic',sans-serif}
+.grimoire .row-text small{font-size:.62em;color:#8fa8b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grimoire .grimoire-foot{display:flex;flex-wrap:wrap;align-items:center;gap:clamp(8px,1.4vw,22px)}
+.grimoire .result-actions{justify-content:flex-start;margin:0}
+.grimoire .feedback,.grimoire .report-actions{border:0;margin:0;padding:0}
+.grimoire .credits{margin:0}
+/* 文字が小さくなりすぎるときは、三件の「ひとこと」を省いて二行にする。 */
+@media(max-height:760px){.grimoire .row-text small{display:none}}
+/* 縦長（スマートフォンでの確認）は、上から術式、魔法名、札、詠唱、三件、QRの枠、
+   確認番号、保存の状態、ボタンの順に積む。入りきらないぶんは縦にスクロールする。 */
+@media(orientation:portrait),(max-width:900px){
+  .result.grimoire{display:flex;flex-direction:column;gap:14px;overflow:hidden auto;padding:18px 16px 28px}
+  .grimoire .grimoire-main,.grimoire .spell-side{display:contents}
+  .grimoire .chapter{order:0}
+  .grimoire .spell-frame{order:1;width:100%;aspect-ratio:1}
+  .grimoire h2{order:2;font-size:clamp(26px,7vw,52px);margin:0}
+  .grimoire .spell-description{order:3;margin:0;font-size:12px}
+  .grimoire .transcript{order:4;margin:0;font-size:13px;min-height:auto}
+  .grimoire .spell-list{order:5;grid-template-columns:1fr;gap:10px;min-height:auto}
+  .grimoire .spell-list li{font-size:14px}
+  .grimoire .spell-thumb{width:72px;height:72px}
+  .grimoire .row-text small{display:block}
+  .grimoire .keepsake{order:6;margin:0}
+  .grimoire .qr-slot{width:min(320px,70vw);height:min(320px,70vw)}
+  .grimoire .grimoire-foot{order:7}
+  /* 積んだものは縮ませない。縮むと中身がはみ出して、下の枠と重なる。 */
+  .grimoire .chapter,.grimoire .spell-frame,.grimoire h2,.grimoire .spell-description,.grimoire .transcript,
+  .grimoire .spell-list,.grimoire .keepsake,.grimoire .grimoire-foot{flex:0 0 auto}
+}
+/* まず魔法名だけを見せ、ひと呼吸おいてから残りを出す。 */
+.grimoire .spell-frame,.grimoire .keepsake,.grimoire .spell-list,.grimoire .grimoire-foot{transition:opacity .6s ease}
+.grimoire.name-only .spell-frame,.grimoire.name-only .spell-description,.grimoire.name-only .transcript,.grimoire.name-only .keepsake,.grimoire.name-only .spell-list,.grimoire.name-only .grimoire-foot{opacity:0}

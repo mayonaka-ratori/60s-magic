@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { knightPose, reactionPower, knightTransform, knightMatrix, knightPoint } from '../src/render/knight';
+import { knightPose, guardPose, GUARD_FROM, reactionPower, knightTransform, knightMatrix, knightPoint,
+  FINISH_DROPS, droppedAt, debrisMotion, coreBlink, corePulse, idlePulse, FINISH_THROWS, FALL_TURN, FALL_NEAR,
+  FINISH_FLASH, FINAL_BLOW_AT, KNEEL_AT } from '../src/render/knight';
 import { getPreset } from '../src/render/effects/presets';
+import { FINISH_COLLAPSE_MS, FINISH_HIT_MS } from '../src/game/rounds';
 import type { Recipe } from '../src/game/types';
 
 const recipe = (over: Partial<Recipe>): Recipe => ({ version: 'recipe-1', accent: null, element: 'fire', purpose: 'attack', form: 'orb',
@@ -117,5 +120,252 @@ describe('騎士の置き方', () => {
   it('動きを減らす設定では置き方も動かない', () => {
     const t = place(knightPose(18600, true, true, 'attack', 1));
     expect(t.y).toBe(0); expect(t.scale).toBe(1); expect(t.rot).toBe(0);
+  });
+});
+
+/**
+ * とどめの回（40〜60秒）の崩れ落ち。時刻から姿勢と脱落を出す計算だけを試す。
+ * ここで見る時刻はすべて世界の時刻で、騎士の render に来るミリ秒と同じもの。
+ */
+describe('とどめの崩れ落ち', () => {
+  const at = (t: number) => guardPose(t * 1000, false, 'block');
+  it('40秒から55.4秒までは前屈のまま', () => {
+    for (const t of [40, 44, 49, 52, 53.6, 54.5, 55.39]) {
+      const pose = at(t);
+      expect(pose.weights[7]).toBeCloseTo(1, 6);
+      expect(pose.weights[8]).toBe(0);
+      expect(pose.fall).toBe(0);
+      expect(pose.state).toBe('exposed');
+    }
+  });
+  it('55.4秒から膝をつき、56.2秒でつききる', () => {
+    expect(at(55.4).weights[8]).toBeCloseTo(0, 6);
+    const half = at(55.8);
+    expect(half.weights[8]).toBeGreaterThan(.2);
+    expect(half.weights[8]).toBeLessThan(.8);
+    expect(half.weights[7]).toBeCloseTo(1 - half.weights[8], 10);
+    expect(at(56.2).weights[8]).toBeCloseTo(1, 6);
+    expect(at(55.8).state).toBe('collapse');
+  });
+  it('56.2秒から56.9秒で手前へ倒れる', () => {
+    expect(at(56.19).fall).toBe(0);
+    expect(at(56.55).fall).toBeGreaterThan(.4);
+    expect(at(56.55).fall).toBeLessThan(.6);
+    expect(at(56.9).fall).toBe(1);
+    // 倒れる途中は増えるだけで戻らない。
+    for (let t = 56.2; t < 56.9; t += .02) expect(at(t + .02).fall).toBeGreaterThanOrEqual(at(t).fall);
+  });
+  it('56.9秒から後は何も動かない', () => {
+    const down = at(56.9);
+    expect(down.state).toBe('down');
+    // 呼吸の揺れも止める。
+    expect(down.breath).toBe(0);
+    for (const t of [57, 58.4, 59.25, 60]) {
+      expect(at(t)).toEqual(down);
+      expect(at(t).state).toBe('down');
+    }
+  });
+  it('控えめモードでも崩れ落ちは残す', () => {
+    const quiet = guardPose(56.55 * 1000, true, 'block'), loud = at(56.55);
+    expect(quiet.fall).toBe(loud.fall);
+    expect(quiet.weights).toEqual(loud.weights);
+    expect(quiet.state).toBe(loud.state);
+  });
+});
+
+describe('とどめの部品の脱落', () => {
+  it('落ちる時刻は多段命中の一覧から作る', () => {
+    const map = Object.fromEntries(FINISH_DROPS.map(drop => [drop.key, drop.at]));
+    expect(map.shoulderSpike).toBeCloseTo(53.6, 6);
+    expect(map.shield).toBeCloseTo(53.76, 6);
+    expect(map.horn).toBeCloseTo(53.92, 6);
+    expect(map.chestPlate).toBeCloseTo(54.1, 6);
+    expect(map.core).toBeCloseTo(54.8, 6);
+    expect(map.sword).toBeCloseTo(54.925, 6);
+    // 時刻は前から順に進む。
+    for (let i = 1; i < FINISH_DROPS.length; i++) expect(FINISH_DROPS[i].at).toBeGreaterThan(FINISH_DROPS[i - 1].at);
+  });
+  it('53.6秒で肩の棘が落ち、54.925秒で剣が落ちる', () => {
+    expect(droppedAt(53.59)).toEqual([]);
+    expect(droppedAt(53.6)).toEqual(['shoulderSpike']);
+    expect(droppedAt(54.11)).toEqual(['shoulderSpike', 'shield', 'horn', 'chestPlate']);
+    expect(droppedAt(54.9)).not.toContain('sword');
+    expect(droppedAt(54.925)).toContain('sword');
+    expect(droppedAt(60)).toHaveLength(6);
+  });
+  it('落ちた部品は床で1回跳ねて止まる', () => {
+    const v = { vx: .8, vy: 1.4, vz: -1.2, spin: 5 };
+    const trace = [];
+    for (let dt = 0; dt <= 4; dt += .02) trace.push(debrisMotion(dt, 2, v));
+    // 床より下へは行かない。
+    for (const step of trace) expect(step.y).toBeGreaterThanOrEqual(0);
+    // 一度上がってから落ち、跳ねてまた上がり、最後は止まる。
+    expect(Math.max(...trace.map(s => s.y))).toBeGreaterThan(2);
+    const last = trace.at(-1)!;
+    expect(last.y).toBe(0);
+    expect(last.resting).toBe(true);
+    // 止まった後は動かない。
+    expect(debrisMotion(9, 2, v)).toEqual(last);
+    // 高さ0から落ちても床より下へ行かない。
+    expect(debrisMotion(1, 0, { vx: 0, vy: 0, vz: 0, spin: 0 }).y).toBe(0);
+  });
+});
+
+describe('とどめの核の明滅', () => {
+  it('40〜44秒は2秒に1回、44〜49秒は1秒に1回', () => {
+    expect(coreBlink(39.9)).toBe(0);
+    // 2秒に1回。40秒で中ほど、40.5秒で最大、41.5秒で最小。
+    expect(coreBlink(40)).toBeCloseTo(.5, 6);
+    expect(coreBlink(40.5)).toBeCloseTo(1, 6);
+    expect(coreBlink(41.5)).toBeCloseTo(0, 6);
+    expect(coreBlink(42.5)).toBeCloseTo(1, 6);
+    // 1秒に1回へ速まる。
+    expect(coreBlink(44.25)).toBeCloseTo(1, 6);
+    expect(coreBlink(44.75)).toBeCloseTo(0, 6);
+    expect(coreBlink(45.25)).toBeCloseTo(1, 6);
+  });
+  it('50.6秒から51.6秒で最大の明るさになり、そのまま保つ', () => {
+    for (const t of [51.6, 52.5, 53.6, 54.5, 60]) expect(coreBlink(t)).toBeCloseTo(1, 6);
+    // 途中は上がっていくだけ。
+    for (let t = 50.6; t < 51.6; t += .05) expect(coreBlink(t + .05)).toBeGreaterThanOrEqual(coreBlink(t) - 1e-9);
+  });
+  it('0〜1の間に収まる', () => {
+    for (let t = 39; t <= 60; t += .05) {
+      expect(coreBlink(t)).toBeGreaterThanOrEqual(0);
+      expect(coreBlink(t)).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe('核の脈打ちは40秒でつながる', () => {
+  it('39.99秒と40.01秒で明るさが飛ばない', () => {
+    expect(Math.abs(corePulse(40.01) - corePulse(39.99))).toBeLessThanOrEqual(.05);
+    // 混ぜ終わる40秒より前は、今までの速い脈のまま。
+    expect(corePulse(39.5)).toBeCloseTo(idlePulse(39.5), 6);
+    // 40秒から後は、とどめの回の明滅そのもの。
+    for (const t of [40, 40.5, 44.5, 52]) expect(corePulse(t)).toBeCloseTo(coreBlink(t), 6);
+  });
+  it('混ぜている間も0〜1に収まり、急に飛ばない', () => {
+    let previous = corePulse(39);
+    for (let t = 39; t <= 41; t += .01) {
+      const now = corePulse(t);
+      expect(now).toBeGreaterThanOrEqual(0);
+      expect(now).toBeLessThanOrEqual(1);
+      expect(Math.abs(now - previous)).toBeLessThanOrEqual(.08);
+      previous = now;
+    }
+  });
+});
+
+describe('とどめの白飛び', () => {
+  const alpha = (t: number, reduced = false) => guardPose(t * 1000, reduced, 'block').flashAlpha;
+  it('4回の命中はそれぞれ0.08秒の白', () => {
+    for (const ms of FINISH_HIT_MS) {
+      const at = ms / 1000;
+      expect(alpha(at - .01)).toBe(0);
+      expect(alpha(at)).toBeCloseTo(FINISH_FLASH.hitAlpha, 6);
+      expect(alpha(at + FINISH_FLASH.hit - .001)).toBeCloseTo(FINISH_FLASH.hitAlpha, 6);
+      expect(alpha(at + FINISH_FLASH.hit + .001)).toBe(0);
+      // 命中の白に属性色は混ぜない。
+      expect(guardPose(ms, false, 'block').flashTint).toBe(0);
+    }
+  });
+  it('直撃は白、属性色、白の三段で0.15秒', () => {
+    const 直撃 = FINAL_BLOW_AT;
+    expect(alpha(直撃 - .01)).toBe(0);
+    expect(alpha(直撃)).toBeCloseTo(.85, 6);
+    expect(guardPose(直撃 * 1000, false, 'block').flashTint).toBe(0);
+    expect(guardPose((直撃 + .06) * 1000, false, 'block').flashTint).toBe(1);
+    expect(alpha(直撃 + .06)).toBeCloseTo(.65, 6);
+    expect(guardPose((直撃 + .12) * 1000, false, 'block').flashTint).toBe(0);
+    expect(alpha(直撃 + .12)).toBeCloseTo(.45, 6);
+    expect(alpha(直撃 + FINISH_FLASH.blow + .001)).toBe(0);
+  });
+  it('控えめモードでは3分の1になる', () => {
+    expect(alpha(FINISH_HIT_MS[0] / 1000, true)).toBeCloseTo(FINISH_FLASH.hitAlpha / 3, 6);
+    expect(alpha(FINAL_BLOW_AT, true)).toBeCloseTo(.85 / 3, 6);
+  });
+});
+
+describe('崩れ落ちの時刻は一か所で決める', () => {
+  it('膝をつき始める時刻は回の表の値と同じ', () => {
+    expect(KNEEL_AT).toBe(FINISH_COLLAPSE_MS / 1000);
+    expect(KNEEL_AT).toBeCloseTo(FINAL_BLOW_AT + .9, 6);
+  });
+});
+
+/**
+ * 一回目と防御の姿勢を変えていないことの確かめ。
+ * 0〜40秒を0.1秒刻みで全部並べた値から、決まった手順で一つの数を作って固定しておく。
+ * とどめを足す前に同じ手順で出した数と同じになる。
+ */
+describe('一回目と防御の姿勢は変わらない', () => {
+  it('0〜40秒の姿勢の値がとどめを足す前と同じ', () => {
+    const values: number[] = [];
+    for (let ms = 0; ms <= 40000; ms += 100) {
+      const p = ms >= GUARD_FROM * 1000 ? guardPose(ms, false, 'block') : knightPose(ms, true, false, 'attack', .7, false);
+      // 崩れ落ちの姿勢は、40秒までは一度も混ざらない。
+      expect(p.weights[8] ?? 0).toBe(0);
+      expect(p.fall).toBe(0);
+      values.push(...p.weights.slice(0, 8), p.lean, p.breath, p.flash, p.shake, p.strength, p.push, p.collapse, p.spin, p.flashAlpha, p.flashTint, p.ghost, p.rim);
+    }
+    expect(values.length).toBe(8020);
+    let digest = 0;
+    for (const value of values) digest = (digest * 31 + Math.round(value * 1e9)) % 2147483647;
+    expect(digest).toBe(1482580436);
+  });
+  it('40秒までは部品が一つも落ちない', () => {
+    for (let t = 0; t <= 40; t += .1) expect(droppedAt(t)).toEqual([]);
+  });
+});
+
+/**
+ * 落ちた盾と剣の行き先。手前（視点の側）へ寄せると画面いっぱいに映るので、
+ * 足元の左右へ落として床で止める。
+ */
+describe('盾と剣は足元の左右へ落ちる', () => {
+  it('手前へは飛ばさない', () => {
+    for (const key of ['shield', 'sword'] as const) {
+      const v = FINISH_THROWS[key];
+      // zの負の向きが視点の側。盾と剣はそちらへ動かさない。
+      expect(v.vz).toBeGreaterThanOrEqual(0);
+      // 横へ流す量のほうが大きい。盾は右、剣は左。
+      expect(Math.abs(v.vx)).toBeGreaterThan(Math.abs(v.vz));
+    }
+    expect(FINISH_THROWS.shield.vx).toBeGreaterThan(0);
+    expect(FINISH_THROWS.sword.vx).toBeLessThan(0);
+  });
+  it('肩の高さから落として、足元の1.5m以内で止まる', () => {
+    // 盾は腕のあたり（高さ約1m）、剣は握りのあたり（高さ約0.8m）から落ちる。
+    for (const [key, height] of [['shield', 1], ['sword', .8]] as const) {
+      const v = FINISH_THROWS[key];
+      const rest = debrisMotion(9, height - v.floor, v);
+      expect(rest.resting).toBe(true);
+      expect(rest.y).toBe(0);
+      expect(Math.abs(rest.x)).toBeLessThan(1.5);
+      expect(Math.abs(rest.z)).toBeLessThan(.5);
+    }
+  });
+  it('床で止まる高さを持てる', () => {
+    expect(FINISH_THROWS.shield.floor).toBeGreaterThan(0);
+    expect(FINISH_THROWS.sword.floor).toBeGreaterThan(0);
+    // 小さい部品は床に置いたままでよい。
+    expect(FINISH_THROWS.horn.floor).toBe(0);
+  });
+});
+
+describe('倒れ込みの深さ', () => {
+  it('回す角と近づける量は控えめにする', () => {
+    // 近づけすぎると兜の上面だけの黒い形が画面いっぱいになる。
+    expect(FALL_TURN).toBeLessThanOrEqual(1);
+    expect(FALL_NEAR).toBeLessThanOrEqual(.3);
+    expect(FALL_TURN).toBeGreaterThan(.8);
+    expect(FALL_NEAR).toBeGreaterThan(.1);
+  });
+  it('倒れた体の一番上が視点より下へ来る', () => {
+    // 足元を軸に回した後、膝をついた分（crouch）だけ下がる。
+    // 騎士の高さは2.93m、視点の高さは約0.95m。
+    const top = 2.93 * Math.cos(FALL_TURN) - .92;
+    expect(top).toBeLessThan(.95);
   });
 });

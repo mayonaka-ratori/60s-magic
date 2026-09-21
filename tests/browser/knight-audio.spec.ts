@@ -1,6 +1,21 @@
 import { test,expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
+/**
+ * 鳴るはずの音の並び。実装から作らず、ここに直接書く。
+ * 一回目、防御、とどめの順。とどめの並びは tests/finish-audio.test.ts と同じ。
+ * 魔導書の音（book）は、魔導書の枠が浮かび始める59.4秒に戦いの中で鳴るので、とどめの最後に入る。
+ */
+const 鳴る音=[
+  // 一回目（0〜24秒）
+  'trace','chant','build','complete','release','impact','settle',
+  // 防御（24〜40秒）。命中ではなく、盾で受ける音になる。
+  'chant','build','complete','release','block','settle',
+  // とどめ（40〜60秒）
+  'chant','build','complete','release','impact','finish',
+  'collapse-sword','collapse-knee','collapse-fall','settle','book',
+];
+
 test('騎士が被弾して構えを戻し、効果音を鳴らして消音できる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(()=>{
@@ -33,14 +48,11 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
   await page.screenshot({path:'test-results/knight-hit.png'});
   await expect(page.locator('#knight')).toHaveAttribute('data-state','recover');
   await page.screenshot({path:'test-results/knight-recover.png'});
-  await expect(page.locator('#result')).toBeVisible({timeout:25000});
-  // 40秒の時点は前屈して弱点を晒した姿勢で止まる。
-  await expect(page.locator('#knight')).toHaveAttribute('data-state','exposed');
+  // とどめの回まで進むので、結果画面は60秒すぎに出る。
+  await expect(page.locator('#result')).toBeVisible({timeout:45000});
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.activeSources).toBe(0);
-  expect(report.audio.events.map((e:{name:string})=>e.name)).toEqual([
-    'trace','chant','build','complete','release','impact','settle',
-    'chant','build','complete','release','block','settle']);
+  expect(report.audio.events.map((e:{name:string})=>e.name)).toEqual(鳴る音);
   const measured=await page.evaluate(()=>({peak:(window as any).__soundProbe.peak,rms:(window as any).__soundProbe.rms}));
   expect(measured.peak).toBeGreaterThan(.01);expect(measured.peak).toBeLessThan(.98);
   await writeFile('.local-speech/knight-audio-report.json',JSON.stringify({audio:report.audio,measurement:report.measurement,output:measured},null,2));
