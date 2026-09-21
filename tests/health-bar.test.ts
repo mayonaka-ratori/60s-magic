@@ -70,19 +70,20 @@ describe('時刻ごとの体力', () => {
  */
 describe('命中の停止と体力', () => {
   const steps = planHealthSteps(recipe({ count: 7 }));
-  // 世界の時計は命中の18.5秒から0.09秒だけ止まる。
+  // 世界の時計は命中の18.5秒から0.14秒止まり、そのあと世界の18.58秒と18.7秒でもう一度短く止まる（三段）。
   const world = (ms: number) => effectTime(ms / 1000, HIT_STOPS.strong) * 1000;
   it('止まっている間は時刻も体力も動かない', () => {
     for (const ms of [18520, 18550, 18580]) expect(world(ms)).toBeCloseTo(18500, 10);
     expect(healthAt(world(18580), steps)).toEqual(healthAt(world(18520), steps));
   });
   it('止まった分だけ次の段が遅れる', () => {
-    // 2段目は18.58秒。本編の18.62秒は、世界の時計ではまだ18.53秒なので減っていない。
+    // 2段目は18.58秒。本編の18.67秒は、世界の時計ではまだ18.53秒なので減っていない。
     expect(steps[1].at).toBeCloseTo(18580);
-    expect(world(18620)).toBeCloseTo(18530, 10);
+    expect(world(18670)).toBeCloseTo(18530, 10);
     expect(healthAt(world(18620), steps).left).toBeGreaterThan(healthAt(18620, steps).left);
-    // 止まりが終われば、遅れたまま同じように減る。
-    expect(healthAt(world(18680), steps).left).toBe(healthAt(18590, steps).left);
+    // 止まりが終われば、遅れたまま同じように減る。本編の18.76秒は、二度目の止め直し（世界の18.58秒、0.03秒）を抜けた世界の18.59秒。
+    expect(world(18760)).toBeCloseTo(18590, 10);
+    expect(healthAt(world(18760), steps).left).toBe(healthAt(18590, steps).left);
   });
 });
 

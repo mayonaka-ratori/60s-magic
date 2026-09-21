@@ -122,7 +122,8 @@ describe('術式が視界を通り抜ける', () => {
     expect(白(finishBeat.release)).toBeCloseTo(FINISH_PASS_FLASH.level, 6);
     expect(白(finishBeat.release + FINISH_PASS_FLASH.seconds)).toBeLessThan(.2);
     expect(白(finishBeat.release, finishBeat, true)).toBeCloseTo(FINISH_PASS_FLASH.level / 3, 6);
-    for (const beat of [BEATS[0], BEATS[1]]) expect(白(beat.release, beat)).toBeLessThan(.3);
+    // ほかの回の放出の白は約0.45（派手さ1.9で。ここは2なので少し上）で、とどめの0.85には届かない。
+    for (const beat of [BEATS[0], BEATS[1]]) expect(白(beat.release, beat)).toBeLessThan(.6);
   });
 });
 

@@ -1,4 +1,4 @@
-/* 画面全体にかかる効果の層（閃光、ビネット、グレイン、放出直前の暗転）。
+/* 画面全体にかかる効果の層（閃光、ビネット、グレイン、放出直前の暗転、命中の反転）。
    演出canvasより上、見出しやHUDより下に置く。毎コマ変えるのは opacity だけ。
    本編（style.css）と演出の見比べ画面（effects-lab.css）の両方が読み込む。中身は src/render/overlay.ts が作る。 */
 .fx{position:absolute;inset:0;z-index:1;pointer-events:none;opacity:0;will-change:opacity}
@@ -9,3 +9,5 @@
 .fx-grain{mix-blend-mode:overlay;background-repeat:repeat;background-size:128px 128px}
 /* 閃光。中心が一番明るく、四隅は中心の2割以下。芯にだけ属性の色を少し混ぜる。 */
 .fx-flash{mix-blend-mode:screen;background:radial-gradient(circle closest-side at 50% 50%,var(--fx-core,#ffffff80) 0%,transparent 44%),radial-gradient(circle closest-side at 50% 50%,#fff 0%,#ffffffe6 24%,#ffffff8c 52%,#ffffff33 78%,#ffffff1f 100%)}
+/* 命中の最初の2コマだけの反転。白との差分を取るので、下の絵がそのまま裏返る。閃光の上に置き、濃さ1の間だけ効く。 */
+.fx-invert{mix-blend-mode:difference;background:#fff}
