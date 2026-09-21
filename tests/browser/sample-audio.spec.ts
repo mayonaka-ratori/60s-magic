@@ -6,10 +6,10 @@ import { test,expect } from '@playwright/test';
  * 魔導書の音（book）は、魔導書の枠が浮かび始める59.4秒に戦いの中で鳴るので、とどめの最後に入る。
  */
 const 鳴る音=[
-  // 一回目（0〜24秒）
-  'trace','chant','build','complete','release','impact','settle',
-  // 防御（24〜40秒）。命中ではなく、盾で受ける音になる。
-  'chant','build','complete','release','block','settle',
+  // 一回目（0〜24秒）。マウスで遊ぶので、騎士の足踏み（3.5秒）と盾打ち（9.5秒）も鳴る。
+  'step','trace','clang','chant','build','complete','release','impact','settle',
+  // 防御（24〜40秒）。命中ではなく、盾で受ける音になる。33秒の完成と同時に剣の風切り、0.55秒後に床を打つ。
+  'chant','build','complete','swing','slam','release','block','settle',
   // とどめ（40〜60秒）
   'chant','build','complete','release','impact','finish',
   'collapse-sword','collapse-knee','collapse-fall','settle','book',
