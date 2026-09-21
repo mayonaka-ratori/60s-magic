@@ -1,6 +1,7 @@
 import type { Point } from '../game/types';
 import { clamp } from '../game/motion';
 import { BEATS, type Beat } from '../game/rounds';
+import { AIM } from '../game/guard';
 
 export type SpellFrame = { x: number; y: number; width: number; height: number };
 
@@ -46,9 +47,12 @@ export function smoothStroke<T extends { x: number; y: number }>(points: readonl
 }
 
 export function completedSpellFrame(width: number, height: number, beat: Beat = BEATS[0]): SpellFrame {
-  // 防御の回は、狙いの印の前で形が決まるように、収める場所を少し上げる。
-  const y = beat.defend ? height * .62 : height * .66;
-  return { x: width * .5, y, width: Math.min(width * .68, height * .49), height: height * .32 };
+  const frameWidth = Math.min(width * .68, height * .49);
+  // 防御の回は、狙いの印の前で形が決まるように、収める場所を印へ寄せる。
+  // 画面が狭いと印の真上では枠がはみ出すので、そのときは画面の中へ押し戻す。
+  const x = beat.defend ? Math.min(Math.max(AIM.x * width, frameWidth / 2 + 8), width - frameWidth / 2 - 8) : width * .5;
+  const y = beat.defend ? height * AIM.y : height * .66;
+  return { x, y, width: frameWidth, height: height * .32 };
 }
 
 /** 締め切りまでは完全に入力位置のまま。締め切りから発動までだけ、形を保って移動する。 */

@@ -1,22 +1,26 @@
 import { v2 } from '@google-cloud/speech';
 import type { WebSocket } from 'ws';
 import { speechPhrases as phrases } from '../src/game/chant-dictionary';
+import { MAX_INPUT_MS, MAX_INPUT_SAMPLES, SAMPLES_PER_MS, speechSocketMsOf } from '../src/game/rounds';
 
 export function connectSpeech(ws:WebSocket, project:string|undefined, location='us') {
   let stream:ReturnType<InstanceType<typeof v2.SpeechClient>['_streamingRecognize']>|null=null;
   let client:InstanceType<typeof v2.SpeechClient>|null=null;
   let started=false,ended=false,totalSamples=0,resultId=0,revision=0,previousEndMs=0;
+  /** その回の受付の長さ（ms）。画面側が知らせる。届かなければ一番長い回として扱う。 */
+  let windowMs=MAX_INPUT_MS;
   const mapping:Array<{sampleStart:number;sampleEnd:number;startMs:number}>=[];
   const utteranceStarts:number[]=[];
   let sessionId='';
   const send=(data:Record<string,unknown>)=>{if(ws.readyState===ws.OPEN)ws.send(JSON.stringify({...data,sessionId}));};
   const stop=()=>{stream?.destroy();stream=null;if(client){void client.close();client=null;}};
-  const timeout=setTimeout(()=>{stop();ws.close(1000,'入力時間が終了しました');},20000);
+  // 画面側が閉じ忘れたときの受け皿。受付が終わる前に切れないよう、長さは回の表から作る。
+  let timeout=setTimeout(()=>{stop();ws.close(1000,'入力時間が終了しました');},speechSocketMsOf());
   ws.on('close',()=>{clearTimeout(timeout);stop();});
   ws.on('error',()=>stop());
   const originalTime=(sample:number)=> {
     const part=mapping.find(m=>sample<=m.sampleEnd)??mapping.at(-1);
-    return part?Math.min(14000,part.startMs+Math.max(0,sample-part.sampleStart)/16):0;
+    return part?Math.min(windowMs,part.startMs+Math.max(0,sample-part.sampleStart)/SAMPLES_PER_MS):0;
   };
   ws.on('message',(data,isBinary)=>{
     if(isBinary) {
@@ -24,7 +28,7 @@ export function connectSpeech(ws:WebSocket, project:string|undefined, location='
       const buffer=Buffer.from(data as Buffer);
       if(buffer.length<10||buffer.length>4008||(buffer.length-8)%2!==0){ws.close(1008);return;}
       const startMs=buffer.readDoubleLE(0),samples=(buffer.length-8)/2;
-      if(!Number.isFinite(startMs)||startMs<0||startMs+samples/16>14001||totalSamples+samples>224000){ws.close(1008);return;}
+      if(!Number.isFinite(startMs)||startMs<0||startMs+samples/SAMPLES_PER_MS>windowMs+1||totalSamples+samples>MAX_INPUT_SAMPLES){ws.close(1008);return;}
       mapping.push({sampleStart:totalSamples,sampleEnd:totalSamples+samples,startMs});totalSamples+=samples;
       stream.write({audio:buffer.subarray(8)});return;
     }
@@ -32,6 +36,10 @@ export function connectSpeech(ws:WebSocket, project:string|undefined, location='
     try {message=JSON.parse(data.toString());}catch{ws.close(1008);return;}
     if(message.type==='start'&&!started) {
       started=true;sessionId=typeof message.sessionId==='string'?message.sessionId.slice(0,80):'';
+      const asked=Number(message.windowMs);
+      if(Number.isFinite(asked)&&asked>=1000&&asked<=MAX_INPUT_MS)windowMs=asked;
+      // その回の長さが分かったので、受け皿の上限も張り直す。
+      clearTimeout(timeout);timeout=setTimeout(()=>{stop();ws.close(1000,'入力時間が終了しました');},speechSocketMsOf(windowMs));
       if(!project){send({type:'unavailable',reason:'音声認識の接続情報が未設定です'});ws.close();return;}
       client=new v2.SpeechClient({apiEndpoint:`${location}-speech.googleapis.com`});
       stream=client._streamingRecognize();

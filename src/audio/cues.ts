@@ -1,4 +1,4 @@
-import { BATTLE_END, ROUNDS, beatOf, type Round } from '../game/rounds';
+import { BATTLE_END, FINISH_COLLAPSE_MS, FINISH_FALL_FROM_MS, FINISH_SWORD_DROP_MS, ROUNDS, beatOf, type Round } from '../game/rounds';
 import { HIT_STOPS, warpOf, warpReal } from '../render/effects/screen';
 
 export type SoundCue='trace'|'chant'|'build'|'complete'|'release'|'impact'|'finish'|'collapse-sword'|'collapse-knee'|'collapse-fall'|'settle'|'book'|'block'|'ring';
@@ -8,10 +8,10 @@ export type Cue={name:SoundCue;at:number;quietUntil:number;round:Round['id']};
 const QUIET_TAIL=750;
 
 /**
- * 崩れ落ちる音。設計3章の世界の時刻（ms）。剣が落ちる、膝をつく、倒れる。
- * 音は実際の時計で鳴らすので、世界の時計のゆがみで実際の時刻へ直してから並べる。
+ * 崩れ落ちる音。剣が落ちる、膝をつく、倒れる。時刻は回の表から作る世界の時刻（ms）で、
+ * 騎士の動きと同じ値を見る。音は実際の時計で鳴らすので、世界の時計のゆがみで実際の時刻へ直してから並べる。
  */
-const COLLAPSE_WORLD:Array<[SoundCue,number]>=[['collapse-sword',54925],['collapse-knee',55400],['collapse-fall',56200]];
+const COLLAPSE_WORLD:Array<[SoundCue,number]>=[['collapse-sword',FINISH_SWORD_DROP_MS],['collapse-knee',FINISH_COLLAPSE_MS],['collapse-fall',FINISH_FALL_FROM_MS]];
 
 /**
  * 世界の時刻（ms）を実際の時刻（ms）に直す。
@@ -22,7 +22,7 @@ function realMsOf(worldMs:number,round:Round,calm:boolean) {
   return Math.round(warpReal(worldMs/1000,warpOf(beatOf(round),calm?0:HIT_STOPS.strong))*1000);
 }
 
-/** 魔導書の枠が浮かび始める時刻を、回の終わりの何ミリ秒前にするか。設計3章の59.4秒。 */
+/** 魔導書の枠が浮かび始める時刻を、回の終わりの何ミリ秒前にするか。設計3章の89.4秒。 */
 const BOOK_BEFORE=600;
 
 /** 一回分の音の時刻。回の表から作るので、回を足しても書き足さなくてよい。 */
@@ -34,14 +34,14 @@ function cuesOf(round:Round,calm:boolean):Cue[] {
     [round.id==='defend'?'block':'impact',round.impact]);
   // とどめの一撃と、そのあとの崩れ落ちる音。持たない回は飛ばす。
   if(round.finalBlow!==null) {
-    // とどめの一撃も世界の時刻（54.5秒）で置いてあるので、実際の時刻へ直してから鳴らす。
+    // とどめの一撃も世界の時刻（78.5秒）で置いてあるので、実際の時刻へ直してから鳴らす。
     list.push(['finish',realMsOf(round.finalBlow,round,calm)]);
     for(const [name,world] of COLLAPSE_WORLD)list.push([name,realMsOf(world,round,calm)]);
   }
-  // 静かな音への切り替え。一回目と防御は今までどおり命中の3.5秒後、とどめは余韻の始まり（57秒）。
+  // 静かな音への切り替え。一回目と防御は今までどおり命中の3.5秒後、とどめは余韻の始まり（84秒）。
   list.push(['settle',round.finalBlow!==null?round.handoff:round.impact+3500]);
-  // 魔導書の静かな一音。魔導書の枠が浮かび始める59.4秒に鳴らす。
-  // 60秒ちょうどに置くと、そのコマでは結果画面へ移っていて永遠に鳴らない。
+  // 魔導書の静かな一音。魔導書の枠が浮かび始める89.4秒に鳴らす。
+  // 90秒ちょうどに置くと、そのコマでは結果画面へ移っていて永遠に鳴らない。
   if(round.finalBlow!==null)list.push(['book',round.end-BOOK_BEFORE]);
   return list.map(([name,at])=>({name,at,quietUntil,round:round.id})).sort((a,b)=>a.at-b.at);
 }
@@ -52,7 +52,7 @@ export const calmSoundCues:Cue[]=ROUNDS.flatMap(round=>cuesOf(round,true));
 
 /**
  * そのコマで鳴らす音。前のコマの時刻から今の時刻までに来た合図を返す。
- * 60秒に届いたコマは結果画面へ移る（main.ts の animate が finish を呼ぶ）ので、そこでは何も鳴らさない。
+ * 90秒に届いたコマは結果画面へ移る（main.ts の animate が finish を呼ぶ）ので、そこでは何も鳴らさない。
  * 合図をこの時刻に置いても鳴らないので、魔導書の一音は手前に置いてある。
  */
 export function dueSounds(previous:number,now:number,microphone:boolean,calm=false) {
@@ -75,8 +75,8 @@ const FINISH_HUSH={
 
 /**
  * その時刻の音量の倍率（0〜1）。とどめの回だけ1より小さくなる。
- * 51.6秒から抜き始め、51.92〜51.95秒は無音、そこから発動の52.0秒までに1へ戻す。
- * 直撃の直前も同じように、実際の54.4〜54.55秒で弱め、直撃の54.6秒までに1へ戻す。
+ * 75.6秒から抜き始め、75.92〜75.95秒は無音、そこから発動の76.0秒までに1へ戻す。
+ * 直撃の直前も同じように、実際の78.4〜78.55秒で弱め、直撃の78.6秒までに1へ戻す。
  * 戻しを0.05秒前から始めるのは、発動音と一撃音の出だしが潰れないようにするため。
  */
 export function hushAt(ms:number,calm=false) {

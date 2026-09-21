@@ -1,17 +1,15 @@
 import type { Recipe } from '../game/types';
 import { hitDelay } from './effects/release';
-import { FINAL_BLOW_MS as FINISH_BLOW_MS, FINISH_COLLAPSE_MS, FINISH_HIT_MS, ROUNDS } from '../game/rounds';
+import { FINAL_BLOW_MS as FINISH_BLOW_MS, FINISH_COLLAPSE_MS, FINISH_HIT_MS, GUARD_STAGGER_MS, ROUNDS } from '../game/rounds';
 
 const clamp = (x: number) => Math.min(1, Math.max(0, x));
 /** 防御で一撃を受け止めきったときに減る量。止め方や入力では変わらない。 */
 export const GUARD_DAMAGE=10;
-/** 騎士がよろめいて体力が減る時刻（ms）。一撃が盾に当たってから2.1秒後。 */
-export const GUARD_STEP_MS=ROUNDS[1].impact+2100;
 /** とどめの一撃の時刻（ms）。ここで体力を直に0にする。回の表から作る。 */
 export const FINAL_BLOW_MS=FINISH_BLOW_MS;
 /** とどめの多段命中で減らす割合。そのとき残っている量の9割を4回に等分する。 */
 export const FINISH_DAMAGE_RATIO=.9;
-/** 体力の枠を消し始める時刻（ms、世界の時刻）。とどめの一撃の0.9秒後。騎士の崩れ落ちと同じ値を使う。 */
+/** 体力の枠を消し始める時刻（ms、世界の時刻）。とどめの一撃の1.3秒後。騎士の崩れ落ちと同じ値を使う。 */
 export const HEALTH_HIDE_MS=FINISH_COLLAPSE_MS;
 /** 命中で減る量。派手さ（個数、範囲、収束）で20〜45%にする。 */
 function damage(recipe: Recipe | null) {
@@ -24,9 +22,9 @@ function damage(recipe: Recipe | null) {
 export type HealthStep = { at: number; from: number; left: number };
 
 /**
- * 体力が減る段を作る。命中の18.5秒から、弾が届く時刻に合わせて一段ずつ減らす。
+ * 体力が減る段を作る。命中の23.5秒から、弾が届く時刻に合わせて一段ずつ減らす。
  * 段の時刻は弾と同じ `hitDelay` から作るので、最後の特大の1発でもきちんと減る。
- * 単発は18.5秒ちょうどの一段だけ。
+ * 単発は23.5秒ちょうどの一段だけ。
  */
 export function planHealthSteps(recipe: Recipe | null): HealthStep[] {
   const total = damage(recipe);
@@ -53,12 +51,12 @@ export function healthAt(ms: number, steps: HealthStep[]) {
  * 一戦を通した体力の段。一回目の命中の段に、防御で一撃を受け止めきったときの一段と、
  * とどめの回の段を足す。とどめの多段命中では、そのとき残っている量の9割を4回に等分して減らし、
  * 最後のとどめの一撃では「残りを全部」ではなく 0 と直に書く。
- * 前の二回でどれだけ減っていても、54.5秒には必ず0になる。
+ * 前の二回でどれだけ減っていても、78.5秒には必ず0になる。
  */
 export function healthSteps(recipe: Recipe | null): HealthStep[] {
   const steps = planHealthSteps(recipe);
   const after = steps.at(-1)!.left;
-  steps.push({ at: GUARD_STEP_MS, from: after, left: Math.max(0, after - GUARD_DAMAGE) });
+  steps.push({ at: GUARD_STAGGER_MS, from: after, left: Math.max(0, after - GUARD_DAMAGE) });
   // とどめの多段命中。減らす量は4回とも同じで、弾の数や属性では変えない。
   const before = steps.at(-1)!.left, each = before * FINISH_DAMAGE_RATIO / FINISH_HIT_MS.length;
   for (let i = 0; i < FINISH_HIT_MS.length; i++)
@@ -91,8 +89,9 @@ export class HealthBar {
     const { left, trail } = healthAt(ms, this.steps);
     this.show(left, trail);
   }
+  /** 縦の枠なので、残りは高さで見せる。下端を固定して、上から減らす。 */
   private show(left: number, trail: number) {
-    if (Math.abs(left - this.shown) > .05) { this.shown = left; this.bar.style.width = `${Math.max(0, left).toFixed(2)}%`; }
-    if (Math.abs(trail - this.shownTrail) > .05) { this.shownTrail = trail; this.trail.style.width = `${Math.max(0, trail).toFixed(2)}%`; }
+    if (Math.abs(left - this.shown) > .05) { this.shown = left; this.bar.style.height = `${Math.max(0, left).toFixed(2)}%`; }
+    if (Math.abs(trail - this.shownTrail) > .05) { this.shownTrail = trail; this.trail.style.height = `${Math.max(0, trail).toFixed(2)}%`; }
   }
 }

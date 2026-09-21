@@ -1,7 +1,7 @@
 import { MotionRecorder, summarizeMotion } from './motion';
 import { SpeechBook } from './speech-book';
 import { affirmativeText, explicitCount, makeRecipe } from './recipe';
-import { AIM, guardStyleOf, shieldOf, type GuardPlan } from './guard';
+import { AIM, DEFAULT_ASPECT, guardStyleOf, shieldOf, type GuardPlan } from './guard';
 import type { JevReply, Phase, Recipe, SpellState } from './types';
 import { readChant, type ChantCorrection } from './chant-dictionary';
 import { ROUNDS, SPEECH_WAIT_MS, phaseAt, replyLimitOf, speechLimitOf, type Round } from './rounds';
@@ -40,6 +40,8 @@ export class CastSession {
   cancelled=false;
   /** 防御の回だけ作る、盾の形と止め方。 */
   guard:GuardPlan|null=null;
+  /** 画面の横と縦の比。盾の判定を、実際に見えている輪と同じ形にするために画面側が入れる。 */
+  aspect=DEFAULT_ASPECT;
   /** 前の回の魔法。防御の回にだけ入る。 */
   previous:PreviousSpell|null=null;
   /** 辞書の読みへ寄せた言葉。元の聞き取りは state.speech.rawTranscript に残る。 */
@@ -62,7 +64,7 @@ export class CastSession {
     // 締め切りから1秒で終わるので、声の確定を待つ freeze() では間に合わない。
     // 形は締め切り後に動かないが、層の数と止め方は言葉が要るので freeze() で入れ直す。
     if(this.round.id==='defend'&&!this.guard&&this.elapsed>=this.round.inputEnd)
-      this.guard={shield:shieldOf(this.motion.raw,null,AIM),style:'block'};
+      this.guard={shield:shieldOf(this.motion.raw,null,AIM,this.aspect),style:'block'};
     if(this.elapsed>=this.round.lock&&!this.locked)this.lock();
   }
   get accepting() {
@@ -79,8 +81,10 @@ export class CastSession {
     const motion=summarizeMotion(this.motion.raw);
     const defend=round.id==='defend';
     this.state={schemaVersion:'spell-state-2',sessionId:this.id,castId:round.castId,inputRevision:1,phase:defend?'defend':'free',
-      currentTask:defend
+      currentTask:round.id==='defend'
         ?'自分の線と言葉から守る魔法を作り、狙いの印へ来る騎士の一撃を切り抜ける'
+        :round.id==='finish'
+        ?'自分の線と言葉からとどめの魔法を作り、崩れかけた騎士の胸の核へ届かせる'
         :'自分の線と言葉から最初の魔法を作り、目の前の騎士へ作用させる',
       inputWindow:{startSessionMs:round.start,endSessionMs:round.inputEnd,chantPromptSessionMs:round.chant,motionAndSpeechConcurrent:true},motion,
       timedEvents:[...this.motionEvents(),...entries.map(e=>({startMs:e.startMs+round.start,endMs:e.endMs+round.start,speech:e.text,speechTiming:e.source==='typed'?'typed' as const:'utterance' as const}))].sort((a,b)=>a.startMs-b.startMs),
@@ -88,7 +92,7 @@ export class CastSession {
       enemy:{attackKind:defend?'slash':'none',encounterMode:'exhibition_success'}};
     // 盾の形は締め切りの時点で決めてある（tick）。ここでは、言葉が要る層の数と止め方だけを入れ直す。
     // 点はもう増えないので、同じ形が出る。
-    if(defend)this.guard={shield:shieldOf(this.motion.raw,this.state.speech.explicitCount,AIM),
+    if(defend)this.guard={shield:shieldOf(this.motion.raw,this.state.speech.explicitCount,AIM,this.aspect),
       style:guardStyleOf(chant.meaning,text)};
     this.frozen=true;return this.state;
   }

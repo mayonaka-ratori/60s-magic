@@ -5,14 +5,14 @@ import { getPreset, intensityOf, type EffectPreset } from './effects/presets';
 import { GlowSprites } from './effects/sprites';
 import { ParticlePool } from './effects/particles';
 import { screenState, effectTime, hitStopOf, type ScreenState } from './effects/screen';
-import { drawParticles, type Frame, type XY } from './effects/frame';
+import { drawParticles, type Box, type Frame, type XY } from './effects/frame';
 import { drawCharge } from './effects/charge';
 import { drawRelease, drawTravel } from './effects/release';
 import { drawImpact } from './effects/impact';
 import { drawWordReactions } from './effects/words';
 import { drawStrokeReactions, newStrokeMemory, type StrokeMemory } from './effects/strokes';
 import { drawGuard } from './effects/guard';
-import { drawFinish, finishBoost, holdTime } from './effects/finish';
+import { drawFinish, finishBoost, holdTime, FINISH_SETTLE } from './effects/finish';
 import { emptyLive, type LiveInput } from '../game/live-input';
 import { AIM, type GuardPlan } from '../game/guard';
 import { BEATS, beatAt, type Beat } from '../game/rounds';
@@ -21,9 +21,13 @@ import { BEATS, beatAt, type Beat } from '../game/rounds';
 export const colors: Record<Element, string> = Object.fromEntries(Object.entries(getPreset(null).palettes).map(([k, v]) => [k, v.main])) as Record<Element, string>;
 /** canvas内の色ずれを出す長さ（秒）。命中からこの時間だけ。 */
 const CHROMATIC_WINDOW = .2;
-/** とどめの余韻で粒と術式が消えきる時刻を、余韻の始まりから何秒後にするか（秒）。世界の59.25秒。 */
-const FINISH_FADE_TAIL = 2.25;
-/** 余韻の濃さが0へ落ちきる時刻（秒）。一回目と防御は命中の4.5秒後（実際）、とどめは余韻の終わり（世界）。 */
+/**
+ * とどめの余韻で粒と術式が消えきる時刻を、余韻の始まりから何秒後にするか（秒）。
+ * 回の表の「余韻の始まり」から「回の終わり」までの長さで、世界の時刻で90.0秒に0になる。
+ * 術式の光が抜けきる長さ（FINISH_SETTLE）と同じ値を使う。二か所で別々に書かない。
+ */
+const FINISH_FADE_TAIL = FINISH_SETTLE.seconds;
+/** 余韻の濃さが0へ落ちきる時刻（秒）。一回目と防御は命中の4.5秒後（実際）、とどめは回の終わり（世界）。 */
 export const afterglowEnd = (beat: Beat) => beat.finish ? beat.handoff + FINISH_FADE_TAIL : beat.impact + 4.5;
 /**
  * 粒と術式の消え際の濃さ（0〜1）。落ちきる2秒前から下がる。
@@ -35,7 +39,9 @@ export function afterglowFade(t: number, te: number, beat: Beat) {
 }
 /**
  * 演出を描くのをやめる実際の時刻（秒）。ここを過ぎたら粒も術式も消す。
- * とどめだけは、余韻を回の終わり（60.0秒）まで残して、結果画面へそのまま渡す。
+ * とどめだけは、余韻を回の終わり（実際の90.0秒）まで残して、結果画面へそのまま渡す。
+ * 世界の時計は命中のゆがみのぶんだけ遅れているので、切り替わる瞬間もまだ光がわずかに残る。
+ * 動かない絵のまま結果画面を待つ間を作らないため、ここは短くしない。
  */
 export const stopAtOf = (beat: Beat) => beat.finish ? beat.end : Math.max(beat.end - .5, beat.impact + 4.5);
 /**
@@ -43,6 +49,16 @@ export const stopAtOf = (beat: Beat) => beat.finish ? beat.end : Math.max(beat.e
  * 放出と命中では、その先頭のコマで種を戻す。コマ落ちして乱数の使う順が変わっても、同じ入力なら同じ火花になる。
  */
 const POOL_SEED = 7, RELEASE_SEED = 1013, IMPACT_SEED = 2027;
+/**
+ * 表示している術式の範囲（画素）。点が無いときは中心のまわりの小さな箱。
+ * 弾の出どころの散らばりや、光線の太さ、床の明るさの広さに使う。
+ */
+export function spellExtent(points: readonly Point[], w: number, h: number, center: XY): Box {
+  if (!points.length) return { x: center.x - 60, y: center.y - 30, width: 120, height: 60 };
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of points) { const x = p.x * w, y = p.y * h; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+  return { x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
+}
 const still: ScreenState = { shakeX: 0, shakeY: 0, flash: 0, darken: 0, chromatic: 0, hitStop: 0, rotate: 0, zoom: 1, blackout: 0, saturate: 1 };
 /** 魔法が確定する前に部品へ渡す仮のレシピ。無属性の球。 */
 const pending: Recipe = { version: 'recipe-1', element: 'neutral', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .5, area: .5, duration: .5, concentration: .5,
@@ -124,7 +140,7 @@ export class MagicCanvas {
     const c = this.ctx, w = this.width, h = this.height, t = ms / 1000;
     const beat = input.beat ?? beatAt(t);
     c.clearRect(0, 0, w, h);
-    // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前（23.5秒）で変わらない。
+    // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前（29.5秒）で変わらない。
     const stopAt = stopAtOf(beat);
     if (ready || t >= stopAt) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
     // 時刻が戻ったら（確認画面のつまみなど）粒と一度きりの発生をやり直す。
@@ -177,7 +193,11 @@ export class MagicCanvas {
       // 手の跡に小さな光を残す。
       if (dt > 0 && this.pool.random() < .6) this.pool.spawn({ x: p.x * w, y: p.y * h, vx: (this.pool.random() - .5) * 20, vy: -10 - this.pool.random() * 20, life: .5 + this.pool.random() * .5, size: 1 + this.pool.random() * 1.2, drag: .5, color: palette.main, core: palette.core, kind: 0 });
     }
-    const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, target: hit, accent, live, points, cursors,
+    // 弾の出どころと術式の範囲。表示している点列（画素）から作る。点が無ければ中心だけ。
+    const launch = getNodes(points, 12).map(p => ({ x: p.x * w, y: p.y * h }));
+    const origins: XY[] = [origin, ...launch];
+    const extent = spellExtent(points, w, h, origin);
+    const frame: Frame = { c, w, h, t: te, dt, sprites: this.sprites, pool: this.pool, preset, palette, intensity, recipe: recipe ?? pending, locked: !!recipe, origin, origins, extent, target: hit, accent, live, points, cursors,
       beat, guard, aim: AIM, inherited, calm: this.calm,
       once: (key, run) => { if (!this.fired.has(key)) { this.fired.add(key); run(); } } };
     // 放出と命中に入る先頭のコマで、粒の乱数の種を戻す。コマ落ちしても同じ火花になる。

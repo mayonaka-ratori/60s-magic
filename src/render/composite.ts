@@ -26,8 +26,8 @@ import { LAYER_FRAGMENT, LAYER_VERTEX, SHOCKWAVE_SHADER, registerCompositeShader
  * WebGLを用意できないときは合成を使わず、今までのHTMLの層のまま遊べる。
  *
  * 見せるのは魔法の山場だけ。最初の150コマだけ隠したまま描いてシェーダーを用意し速さを測り、
- * そのあとは16.5秒まで板への転送も描画もしない（線を描いている間を軽くするため）。
- * 16.5秒から0.3秒かけて重ね、重なりきってから元のHTMLの層を消す。`?composite=always` なら0秒から見せる。
+ * そのあとは一回目の確定の0.5秒後（21.5秒。発動の0.5秒前）まで板への転送も描画もしない（線を描いている間を軽くするため）。
+ * そこから0.3秒かけて重ね、重なりきってから元のHTMLの層を消す。`?composite=always` なら0秒から見せる。
  *
  * 時刻はすべて render に渡される t（命中の停止を含む演出の時刻）だけで判断する。
  * このファイルの前半は画面を使わない計算だけにしてある（tests/composite.test.ts で確かめる）。
@@ -37,10 +37,10 @@ import { LAYER_FRAGMENT, LAYER_VERTEX, SHOCKWAVE_SHADER, registerCompositeShader
 // 画面を使わない計算
 // ------------------------------------------------------------------
 
-/** 重い後処理を有効にする時間帯（秒）。命中の前後だけ。 */
-export const POST_FROM = 16.9, POST_TO = 21;
-/** 合成を見せ始める時刻（秒）。ここまではHTMLの層をそのまま見せ、板への転送も描画もしない。 */
-export const SHOW_FROM = 16.5;
+/** 重い後処理を有効にする時間帯（秒）。命中の前後だけ。一回目の発動の0.1秒前から、命中の2.5秒後まで。 */
+export const POST_FROM = RELEASE_AT - .1, POST_TO = IMPACT_AT + 2.5;
+/** 合成を見せ始める時刻（秒）。一回目の確定の0.5秒後で、発動の0.5秒前。ここまではHTMLの層をそのまま見せ、板への転送も描画もしない。 */
+export const SHOW_FROM = BEATS[0].lock + .5;
 /** 見せ始めと切り際にかける時間（秒）。この間に合成の濃さとブルームの強さを0と1の間で動かす。 */
 export const FADE_SECONDS = .3;
 /** 衝撃波の輪が出ている長さ（秒）。命中から0.3〜0.6秒の範囲に収める。 */
@@ -57,12 +57,13 @@ const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
 
 /**
  * とどめの回で重い後処理を切る時刻を、余韻の始まりから何秒後にするか（秒）。
- * この時刻は世界の時刻で比べるので、設計3章の表の「実際の58.5秒」にあたる世界の57.775秒に合わせる。
- * 余韻の始まり（世界の57.0秒）からの差なので0.775秒。
+ * 魔法名が引くところ（余韻の始まりの1.5秒後）まで残し、そこで切る。
+ * この時刻は世界の時刻で比べる。スローはもう終わっているので長さは変わらないが、実際の時刻は
+ * 命中の止めとスローのぶんだけ後ろへずれる（世界の85.5秒が実際の86.225秒、控えめでは85.875秒）。
  */
-export const POST_FINISH_TAIL = .775;
+export const POST_FINISH_TAIL = 1.5;
 
-/** その回で重い後処理を入れる時刻と切る時刻（秒）。一回目は 16.9 と 21 で今までと同じ。 */
+/** その回で重い後処理を入れる時刻と切る時刻（秒）。一回目は 21.9 と 26 になる。 */
 export const postFromOf = (beat: Beat = BEATS[0]) => beat.release - (RELEASE_AT - POST_FROM);
 /** とどめの回だけは命中の2.5秒後では余韻の途中で切れてしまうので、余韻の始まりから測る。 */
 export const postToOf = (beat: Beat = BEATS[0]) => beat.finish ? beat.handoff + POST_FINISH_TAIL : beat.impact + (POST_TO - IMPACT_AT);
@@ -112,7 +113,7 @@ export const GIVE_UP_WARMUP = 90, GIVE_UP_FRAMES = 60;
 export const WARMUP_FRAMES = GIVE_UP_WARMUP + GIVE_UP_FRAMES;
 /**
  * 合成をやめるかどうか。時刻とブルームの状態も見る（画面には触らない計算だけ）。
- * - 山場（一回目は16.9〜21秒、回ごとに発動の直前から余韻まで）の間は判定を止める。命中の途中で合成が消えると絵が一瞬で変わってしまうため。
+ * - 山場（一回目は21.9〜26秒、回ごとに発動の直前から余韻まで）の間は判定を止める。命中の途中で合成が消えると絵が一瞬で変わってしまうため。
  * - 先にブルームを切る段を挟む。ブルームが付いている間はやめず、切れてもなお遅いときだけやめる。
  */
 export function giveUpDecision(fps: number, lowFrames: number, frames: number, t: number, bloomOn: boolean, beat: Beat = BEATS[0]) {
@@ -390,7 +391,7 @@ export class Composite {
 
   /**
    * 合成を使ってよいかどうか。cast-scene が毎コマ渡す。
-   * ここで決まるのは「描いてよいか」だけで、実際に見せ始めるのは showFrom（既定は16.5秒）から。
+   * ここで決まるのは「描いてよいか」だけで、実際に見せ始めるのは showFrom（既定は21.5秒）から。
    */
   setActive(on: boolean) {
     if (this.gaveUp) on = false;

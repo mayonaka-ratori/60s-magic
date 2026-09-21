@@ -1,7 +1,7 @@
 import { test,expect,type Page } from '@playwright/test';
 
 // 画面に出る文字の四角形を集め、親子でない組み合わせが重なっていないか確かめる。
-const watched='#timer,.trial,.brand-name,.eyebrow,.chapter,.intro,.privacy,#notice,.mode-options,.voice-option,.sound-options,#start,.welcome-actions,.enemy-health,#cancel,#sound-toggle,#service-notice,#demo-tag,#voice-label,#input-panel,.bottom-hud,#recognized,#result,#result-spell,.feedback,.report-actions';
+const watched='#timer,.trial,.brand-name,.eyebrow,.chapter,.intro,.privacy,#notice,.mode-options,.voice-option,.sound-options,#start,.welcome-actions,.enemy-health,#cancel,#sound-toggle,#calm-toggle,#service-notice,#demo-tag,#voice-label,#input-panel,.bottom-hud,#recognized,#result,#result-spell,.feedback,.report-actions';
 const overlaps=(page:Page,where:string)=>page.evaluate(([sel,label])=>{
   const name=(n:Element)=>(n.id?'#'+n.id:'.'+String(n.className).split(' ')[0]);
   const shown=[...document.querySelectorAll(sel)].filter(n=>{
@@ -26,12 +26,15 @@ async function playThrough(page:Page,where:string) {
   await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   await page.mouse.move(420,400);await page.mouse.down();await page.mouse.move(700,520,{steps:20});await page.mouse.up();
+  // 始めたら時計が出る。合図が消えてから出るので、合図の3秒ぶんを待てる長さにする。
+  await expect(page.locator('#timer')).toContainText('のこり',{timeout:15000});
   // 描いている間から余韻まで、1秒ごとに見る。描画が遅い環境でも取りこぼさない。
-  for(let i=0;i<44&&await page.locator('#result').isHidden();i++) {
+  for(let i=0;i<74&&await page.locator('#result').isHidden();i++) {
     found.push(...await overlaps(page,`${where}・${await page.locator('#timer').innerText()}`));
     await page.waitForTimeout(1000);
   }
-  await expect(page.locator('#result')).toBeVisible({timeout:14000});
+  // 上の繰り返しは最短でも74秒見張る。本編90秒の残りを待ちきれるよう、ここは余裕を持たせる。
+  await expect(page.locator('#result')).toBeVisible({timeout:30000});
   found.push(...await overlaps(page,`${where}・結果`));
   return [...new Set(found)];
 }
@@ -48,8 +51,12 @@ test('開始前の画面は、どの大きさでも文字が重ならない',asy
   expect(found).toEqual([]);
 });
 
-test('プレイ中と結果の画面で文字が重ならない（横長）',async({page})=>{
+test('プレイ中と結果の画面で文字が重ならず、確認用の表示も出ない（横長）',async({page})=>{
   expect(await playThrough(page,'1440×900')).toEqual([]);
+  // 遊ぶ人の画面では、結果になっても確認用の表示を出さない。
+  // ここは `/` を最後まで通したあとなので、専用の通しを別に持たなくてよい。
+  await expect(page.locator('.report-actions')).toBeHidden();
+  await expect(page.locator('#feedback')).toBeHidden();
 });
 
 test('プレイ中と結果の画面で文字が重ならない（縦長）',async({page})=>{
@@ -57,12 +64,28 @@ test('プレイ中と結果の画面で文字が重ならない（縦長）',asy
   expect(await playThrough(page,'390×844')).toEqual([]);
 });
 
-test('遊ぶ人の画面には確認用の表示を出さない',async({page})=>{
+test.describe('このPCの「動きを減らす」設定',()=>{
+  test.use({reducedMotion:'reduce'});
+  test('控えめから始まるが、演出を派手にするボタンはいつでも押せる',async({page})=>{
+    await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
+    await page.locator('.sound-settings summary').click();
+    const button=page.locator('#calm-option');
+    await expect(button).toHaveText('演出を派手にする');
+    await expect(button).toBeEnabled();
+    await expect(page.locator('body')).toHaveAttribute('data-calm','on');
+    await button.click();
+    await expect(button).toHaveText('演出を控えめにする');
+    await expect(page.locator('body')).toHaveAttribute('data-calm','off');
+    // 選んだほうは覚えていて、開き直しても派手のまま。
+    await page.reload();await expect(page.locator('#loading')).toBeHidden();
+    await expect(page.locator('body')).toHaveAttribute('data-calm','off');
+  });
+});
+
+test('確認用の表示は、遊ぶ人には出さず ?dev=1 でだけ出す',async({page})=>{
+  // 始めたときの時計と、結果の画面での確認は、上の横長の通しで見ている。ここは90秒を通さない。
   await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
   for(const target of ['.trial','#settings','.dev-only'])await expect(page.locator(target).first()).toBeHidden();
-  await page.locator('#start').click();await expect(page.locator('#timer')).toContainText('のこり');
-  await expect(page.locator('#result')).toBeVisible({timeout:50000});
-  await expect(page.locator('.report-actions')).toBeHidden();await expect(page.locator('#feedback')).toBeHidden();
   await page.goto('/?dev=1');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
 });
 
@@ -88,8 +111,8 @@ test('締め切りが近づくと知らせ、発動では魔法名を大きく�
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
   // 描画が遅い環境でも取りこぼさないよう、1秒ごとに見て、出たものを集める。
   const 見たもの=new Set<string>();
-  // 一回目と防御の回を合わせて40秒あるので、結果が出るまで最長50回（約47秒）見続ける。
-  for(let i=0;i<50&&await page.locator('#result').isHidden();i++) {
+  // 一回目と防御の回を合わせて56秒あるので、結果が出るまで最長80回（約76秒）見続ける。
+  for(let i=0;i<80&&await page.locator('#result').isHidden();i++) {
     const いま=await page.evaluate(()=>({
       段階:document.getElementById('app')!.dataset.deadline??'',
       時計:!(document.getElementById('timer') as HTMLElement).hidden,
@@ -106,7 +129,7 @@ test('締め切りが近づくと知らせ、発動では魔法名を大きく�
   }
   for(const 期待 of ['段階:soon','段階:urgent','外周の光','締め切り後は時計を消す','魔法名:7つの雷の連弾','発動中は案内を閉じる'])
     expect([...見たもの],`${期待}を見ていない`).toContain(期待);
-  await expect(page.locator('#result')).toBeVisible({timeout:20000});
+  await expect(page.locator('#result')).toBeVisible({timeout:26000});
   await page.waitForTimeout(1500);
   await expect(page.locator('#result')).not.toHaveClass(/name-only/);
   await expect(page.locator('#again')).toBeVisible();

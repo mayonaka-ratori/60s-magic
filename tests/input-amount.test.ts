@@ -1,21 +1,50 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { inputAmount, resetInputAmount } from '../src/game/input-amount';
+import { BEATS, ROUNDS } from '../src/game/rounds';
 import { intensityOf, presets } from '../src/render/effects/presets';
 import { screenState } from '../src/render/effects/screen';
-import type { Point, Recipe, SpeechEntry } from '../src/game/types';
+import type { Point, SpeechEntry } from '../src/game/types';
 
 /** まっすぐな一筆。長さ len の線を stroke 番の筆として作る。 */
 const stroke = (n: number, len: number, id: number): Point[] =>
   Array.from({ length: n }, (_, i) => ({ x: .1 + len * i / (n - 1), y: .5, t: i * 16, hand: 0, stroke: id }));
 const say = (text: string, id: number): SpeechEntry => ({ id, revision: 1, startMs: 0, endMs: 1000, text, final: true, stability: 1, source: 'typed' });
-const recipe = (): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null });
+// 試験用の魔法は tests/helpers.ts にまとめてある。
+import { testRecipe as recipe } from './helpers';
 
 describe('入力の量', () => {
   // 覚え書きは一戦ごとに消すので、試験も一つずつ消してから始める。
   beforeEach(() => resetInputAmount());
   it('何も入れなければ0', () => {
     expect(inputAmount([], [])).toBe(0);
+  });
+  it('前の回の言葉は次の回の量に足さない', () => {
+    // 回の分け方には、その回が始まった時刻を使う（一回目は0、防御は30000）。
+    const 一回目 = inputAmount([], [say('ほのおよあつまれおおきなたまになれもえさかれ', 1)], ROUNDS[0].start);
+    const 防御 = inputAmount([], [say('こおり', 1)], ROUNDS[1].start);
+    // 防御の回だけをまっさらな状態で数えたときと同じになる。
+    resetInputAmount();
+    const 防御だけ = inputAmount([], [say('こおり', 1)], ROUNDS[1].start);
+    expect(防御).toBeCloseTo(防御だけ, 10);
+    expect(防御).toBeLessThan(一回目);
+  });
+  it('文字入力は回ごとに数え直す（どの回も同じ発話idを使うため）', () => {
+    // 画面の文字入力は回が変わっても id 10000 のままなので、回で分けていないと混ざる。
+    const 一回目 = inputAmount([], [say('ながいながいえいしょうのことば', 10000)], ROUNDS[0].start);
+    const 防御 = inputAmount([], [say('あ', 10000)], ROUNDS[1].start);
+    expect(防御).toBeLessThan(一回目);
+  });
+  it('同じ回の中では、途中結果が短くなっても量は下がらない', () => {
+    const 長い = inputAmount([], [say('ほのおよあつまれ', 1)], ROUNDS[1].start);
+    const 短く = inputAmount([], [{ ...say('ほの', 1), revision: 2 }], ROUNDS[1].start);
+    expect(短く).toBeCloseTo(長い, 10);
+  });
+  it('とどめの回も、前の二回の言葉を足さない', () => {
+    inputAmount([], [say('ほのおよあつまれおおきなたまになれ', 1)], ROUNDS[0].start);
+    inputAmount([], [say('こおりよかべとなれはじきかえせ', 1)], ROUNDS[1].start);
+    const とどめ = inputAmount([], [say('つらぬけ', 1)], ROUNDS[2].start);
+    resetInputAmount();
+    expect(とどめ).toBeCloseTo(inputAmount([], [say('つらぬけ', 1)], ROUNDS[2].start), 10);
   });
   it('一筆と一言でだいたい0.4', () => {
     const a = inputAmount(stroke(20, .8, 1), [say('もえろ', 1)]);
@@ -82,8 +111,8 @@ describe('入力の量が演出に効く', () => {
     // 量は intensityOf の一か所で派手さに足す。screenState の6番目の引数はもう何にも効かない。
     const strong = intensityOf(null, presets.vivid, 1), weak = intensityOf(null, presets.vivid, 0);
     expect(strong).toBeGreaterThan(weak);
-    expect(screenState(16.5, strong, presets.vivid, 'attack', 0).darken).toBeGreaterThan(screenState(16.5, weak, presets.vivid, 'attack', 0).darken);
-    expect(screenState(16.5, 1, presets.vivid, 'attack', 0, 1).darken).toBe(screenState(16.5, 1, presets.vivid, 'attack', 0, 0).darken);
-    expect(screenState(16.5, 1, presets.vivid, 'attack', 0).darken).toBe(screenState(16.5, 1, presets.vivid, 'attack').darken);
+    expect(screenState(BEATS[0].lock-.5, strong, presets.vivid, 'attack', 0).darken).toBeGreaterThan(screenState(BEATS[0].lock-.5, weak, presets.vivid, 'attack', 0).darken);
+    expect(screenState(BEATS[0].lock-.5, 1, presets.vivid, 'attack', 0, 1).darken).toBe(screenState(BEATS[0].lock-.5, 1, presets.vivid, 'attack', 0, 0).darken);
+    expect(screenState(BEATS[0].lock-.5, 1, presets.vivid, 'attack', 0).darken).toBe(screenState(BEATS[0].lock-.5, 1, presets.vivid, 'attack').darken);
   });
 });
