@@ -207,9 +207,9 @@ describe('防御の回の画面と姿勢',()=>{
     const gentle=screenState(18.55,2,presets.vivid,'defend',0,.5);
     expect(Math.hypot(gentle.shakeX,gentle.shakeY)).toBeLessThan(Math.hypot(hit.shakeX,hit.shakeY));
   });
-  it('防御の停止は常に0.09秒。控えめモードでは止めない',()=>{
+  it('防御の停止は常に0.14秒（強）。控えめモードでは止めない',()=>{
     const beat=beatAt(30);
-    expect(hitStopOf(presets.vivid,0,false,beat)).toBe(.09);
+    expect(hitStopOf(presets.vivid,0,false,beat)).toBe(.14);
     expect(hitStopOf(presets.vivid,3,false,beat)).toBe(HIT_STOPS.strong);
     expect(hitStopOf(presets.vivid,3,true,beat)).toBe(0);
   });

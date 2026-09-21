@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { FLASH_FALL, FLASH_GAP, FLASH_MAX, FLASH_RISE, GRAIN_OPACITY, VIGNETTE_BASE, VIGNETTE_PEAK,
-  flashTarget, grainOpacity, newFlashMemory, opacityText, saturateFilter, shouldWrite, stepFlash, vignetteOpacity } from '../src/render/overlay';
+  flashTarget, grainOpacity, invertOpacity, newFlashMemory, opacityText, saturateFilter, shouldWrite, stepFlash, vignetteOpacity } from '../src/render/overlay';
+import { INVERT_SECONDS } from '../src/render/effects/screen';
 
 /** 60分の1秒を一コマとして、閃光を何コマか進める。 */
 function run(flash: number[], calm = false, start = 100) {
@@ -10,7 +11,8 @@ function run(flash: number[], calm = false, start = 100) {
 }
 
 describe('閃光の濃さ', () => {
-  it('上限は0.7で、それ以上の値が来ても頭打ちになる', () => {
+  it('上限は0.85で、それ以上の値が来ても頭打ちになる', () => {
+    expect(FLASH_MAX).toBeCloseTo(.85, 6);
     expect(flashTarget(1, false)).toBe(FLASH_MAX);
     expect(flashTarget(.4, false)).toBeCloseTo(.4, 6);
     expect(flashTarget(-1, false)).toBe(0);
@@ -104,6 +106,39 @@ describe('閃光の濃さ', () => {
     for (let i = 1; i < 30; i++) stepFlash(memory, 0, false, 1 / 60, i / 60);
     expect(memory.value).toBe(0);
     expect(stepFlash(memory, FLASH_MAX, false, 1 / 60, 2)).toBeGreaterThan(0);
+  });
+});
+
+describe('命中の反転', () => {
+  const dt = 1 / 60;
+  it('閃光が光り始めてから0.035秒だけ1になり、そのあと0へ戻る', () => {
+    const memory = newFlashMemory();
+    stepFlash(memory, .75, false, dt, 10);
+    expect(invertOpacity(1, memory, false, 10)).toBe(1);
+    expect(invertOpacity(1, memory, false, 10 + dt)).toBe(1);
+    expect(invertOpacity(1, memory, false, 10 + INVERT_SECONDS)).toBe(0);
+    expect(invertOpacity(1, memory, false, 10.1)).toBe(0);
+    expect(INVERT_SECONDS).toBeCloseTo(FLASH_RISE, 6);
+  });
+  it('screen.ts が反転の時刻でないと言えば出さない。控えめモードでも出さない', () => {
+    const memory = newFlashMemory();
+    stepFlash(memory, .75, false, dt, 10);
+    expect(invertOpacity(0, memory, false, 10)).toBe(0);
+    expect(invertOpacity(undefined, memory, false, 10)).toBe(0);
+    expect(invertOpacity(1, memory, true, 10)).toBe(0);
+  });
+  it('間隔が近すぎて閃光を始められなかったときは、反転もしない（閃光の回数を増やさない）', () => {
+    const memory = newFlashMemory();
+    stepFlash(memory, .75, false, dt, 0);
+    for (let i = 1; i < 6; i++) stepFlash(memory, 0, false, dt, i * dt);
+    // 0.1秒後にもう一度明るい値を入れても、0.34秒たっていないので新しい閃光にはならない。
+    stepFlash(memory, .75, false, dt, .1);
+    expect(memory.startedAt).toBe(0);
+    expect(invertOpacity(1, memory, false, .1)).toBe(0);
+    // 十分に間を空けた次の閃光では、また反転が出る。
+    for (let i = 7; i < 30; i++) stepFlash(memory, 0, false, dt, i * dt);
+    stepFlash(memory, .75, false, dt, 1);
+    expect(invertOpacity(1, memory, false, 1)).toBe(1);
   });
 });
 
