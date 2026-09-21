@@ -25,13 +25,22 @@ function crescent(f: Frame, at: XY, dir: number, size: number, alpha: number) {
   edged(f, 1.5, alpha * .6, () => { c.arc(back.x, back.y, size * 1.3, dir - .85, dir + .85); }, ENEMY.main, ENEMY.core);
 }
 
-/** 狙いの印。24秒から出し、1秒に1回だけ低く脈打つ。囲えたら赤から属性の色へ変わる。 */
+/** 印の縦の潰し。床の丸ではなく、宙に浮いた輪として見せるので、少しだけ潰す。 */
+const AIM_FLAT = .88;
+
+/**
+ * 狙いの印。防御の回の始まりから出し、1秒に1回だけ低く脈打つ。
+ * 印の範囲に線があれば属性の色へ変わり、囲えたら内側が濃く満ちる。
+ */
 function drawAim(f: Frame) {
   const { c, t, beat } = f;
   if (t < beat.start || t > beat.impact + .8) return;
   const g = aimAt(f), r = AIM_RADIUS * f.h;
+  const shield = f.guard?.shield ?? null;
   // 確定前は今の入力を、確定後は決まった盾を見る。
-  const held = f.guard ? f.guard.shield.enclosed : f.live.rings > 0;
+  const held = shield ? shield.enclosed : f.live.rings > 0;
+  // 囲めていなくても、印の範囲に線があれば「ここは守れる」と色で返す。
+  const covered = held || (shield ? !shield.moved : f.live.covered);
   const appear = smooth(clamp((t - beat.start) / 1.2));
   const gone = 1 - clamp((t - beat.impact) / .5);
   // 脈は毎秒1回まで。光に弱い人への配慮で、これより速くしない。
@@ -39,24 +48,24 @@ function drawAim(f: Frame) {
   const near = clamp((t - beat.lock) / Math.max(.1, beat.release - beat.lock));
   const alpha = appear * gone * (.45 + pulse * .3 + near * .25);
   if (alpha <= .01) return;
-  const main = held ? f.palette.main : ENEMY.main, core = held ? f.palette.core : ENEMY.core;
+  const main = covered ? f.palette.main : ENEMY.main, core = covered ? f.palette.core : ENEMY.core;
   const size = r * (1 + pulse * .06) * (held ? 1.06 : 1);
-  // 内側の輪、外側の輪、四方の目盛り。床に沿って見えるよう縦を潰す。
-  edged(f, 2, alpha, () => { c.ellipse(g.x, g.y, size, size * .62, 0, 0, Math.PI * 2); }, main, core);
+  // 内側の輪、外側の輪、四方の目盛り。宙に浮いて見えるよう、縦を少しだけ潰す。
+  edged(f, 2, alpha, () => { c.ellipse(g.x, g.y, size, size * AIM_FLAT, 0, 0, Math.PI * 2); }, main, core);
   c.globalAlpha = alpha * .5; c.lineWidth = 1.2; c.strokeStyle = main;
-  c.beginPath(); c.ellipse(g.x, g.y, size * 1.5, size * .95, 0, 0, Math.PI * 2); c.stroke();
+  c.beginPath(); c.ellipse(g.x, g.y, size * 1.5, size * 1.5 * AIM_FLAT, 0, 0, Math.PI * 2); c.stroke();
   c.beginPath();
   for (let i = 0; i < 4; i++) {
     const a = i / 4 * Math.PI * 2 + t * .4;
-    c.moveTo(g.x + Math.cos(a) * size * 1.6, g.y + Math.sin(a) * size * 1);
-    c.lineTo(g.x + Math.cos(a) * size * 2, g.y + Math.sin(a) * size * 1.25);
+    c.moveTo(g.x + Math.cos(a) * size * 1.6, g.y + Math.sin(a) * size * 1.6 * AIM_FLAT);
+    c.lineTo(g.x + Math.cos(a) * size * 2, g.y + Math.sin(a) * size * 2 * AIM_FLAT);
   }
   c.stroke();
-  // 囲えているときだけ内側が薄く満ちる。「掴んだ」ことがひと目で分かる。
-  if (held) {
-    c.globalAlpha = alpha * .16; c.fillStyle = f.palette.main;
-    c.beginPath(); c.ellipse(g.x, g.y, size, size * .62, 0, 0, Math.PI * 2); c.fill();
-    glow(f, g.x, g.y, 4 + pulse * 3, alpha * .5);
+  // 守れているときは内側が満ちる。囲えたときはもっと濃く出し、「掴んだ」ことが分かるようにする。
+  if (covered) {
+    c.globalAlpha = alpha * (held ? .16 : .07); c.fillStyle = f.palette.main;
+    c.beginPath(); c.ellipse(g.x, g.y, size, size * AIM_FLAT, 0, 0, Math.PI * 2); c.fill();
+    glow(f, g.x, g.y, 4 + pulse * 3, alpha * (held ? .5 : .22));
   }
 }
 
@@ -84,7 +93,7 @@ function drawInherited(f: Frame) {
   const appear = smooth(clamp((t - beat.start) / 1.5));
   for (let i = 0; i < f.inherited.length; i++) {
     const node = f.inherited[i], a = i / Math.max(1, f.inherited.length) * Math.PI * 2 + t * .25;
-    const g = aimAt(f), reach = AIM_RADIUS * f.h * 2.4;
+    const g = aimAt(f), reach = AIM_RADIUS * f.h * 1.8;
     const x = node.x * f.w + (g.x + Math.cos(a) * reach - node.x * f.w) * appear;
     const y = node.y * f.h + (g.y + Math.sin(a) * reach * .6 - node.y * f.h) * appear;
     glow(f, x, y, 2 + Math.sin(t * 2 + i) * .5, .25 + appear * .2);

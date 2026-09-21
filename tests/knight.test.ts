@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { knightPose, guardPose, GUARD_FROM, reactionPower, knightTransform, knightMatrix, knightPoint,
+import { knightPose, guardPose, GUARD_FROM, reactionPower, knightTransform, knightMatrix, knightPoint, blendPose, IDLE_BREATH_SECONDS,
   FINISH_DROPS, droppedAt, debrisMotion, coreBlink, corePulse, idlePulse, FINISH_THROWS, FALL_TURN, FALL_NEAR,
   FINISH_FLASH, FINAL_BLOW_AT, KNEEL_AT } from '../src/render/knight';
 import { getPreset } from '../src/render/effects/presets';
@@ -120,6 +120,26 @@ describe('騎士の置き方', () => {
   it('動きを減らす設定では置き方も動かない', () => {
     const t = place(knightPose(18600, true, true, 'attack', 1));
     expect(t.y).toBe(0); expect(t.scale).toBe(1); expect(t.rot).toBe(0);
+  });
+});
+
+describe('待機の構え', () => {
+  const sword = (ms: number, reduced = false) => blendPose(knightPose(ms, false, reduced).weights).swordSwing;
+  const half = IDLE_BREATH_SECONDS * 1000 / 2;
+  it('待機でも剣を振りかぶり、ゆっくり上げ下げする', () => {
+    // swordSwing は負の値ほど剣を後ろへ高く上げている。真下が0。
+    expect(sword(0)).toBeLessThan(-1.4);
+    // 周期の半分で一番高く上がり、一周で元へ戻る。
+    expect(sword(half)).toBeLessThan(sword(0) - .1);
+    expect(sword(half * 2)).toBeCloseTo(sword(0), 6);
+    // 上半身をひねって半身に構える。
+    expect(blendPose(knightPose(0, false).weights).turn).toBeGreaterThan(.1);
+  });
+  it('防御の回の溜めは、待機のどこよりも高く上げる', () => {
+    expect(blendPose(guardPose(32000).weights).swordSwing).toBeLessThan(sword(half) - .3);
+  });
+  it('動きを減らす設定では待機が止まる', () => {
+    expect(sword(half, true)).toBeCloseTo(sword(0, true), 10);
   });
 });
 
@@ -295,24 +315,26 @@ describe('崩れ落ちの時刻は一か所で決める', () => {
 });
 
 /**
- * 一回目と防御の姿勢を変えていないことの確かめ。
+ * 一回目と防御の姿勢を、うっかり変えていないことの確かめ。
  * 0〜40秒を0.1秒刻みで全部並べた値から、決まった手順で一つの数を作って固定しておく。
- * とどめを足す前に同じ手順で出した数と同じになる。
+ * 待機に息づかい（姿勢9）を足したときに、この数を取り直した。見るのは混ぜ方と反応の値で、
+ * 角度の表そのものはこの数に入らない（角度は「待機の構え」の試験で見る）。
+ * 変えたつもりがないのに数が変わったら、直し過ぎている。
  */
 describe('一回目と防御の姿勢は変わらない', () => {
-  it('0〜40秒の姿勢の値がとどめを足す前と同じ', () => {
+  it('0〜40秒の姿勢の値が決めたとおりのまま', () => {
     const values: number[] = [];
     for (let ms = 0; ms <= 40000; ms += 100) {
       const p = ms >= GUARD_FROM * 1000 ? guardPose(ms, false, 'block') : knightPose(ms, true, false, 'attack', .7, false);
       // 崩れ落ちの姿勢は、40秒までは一度も混ざらない。
       expect(p.weights[8] ?? 0).toBe(0);
       expect(p.fall).toBe(0);
-      values.push(...p.weights.slice(0, 8), p.lean, p.breath, p.flash, p.shake, p.strength, p.push, p.collapse, p.spin, p.flashAlpha, p.flashTint, p.ghost, p.rim);
+      values.push(...p.weights, p.lean, p.breath, p.flash, p.shake, p.strength, p.push, p.collapse, p.spin, p.flashAlpha, p.flashTint, p.ghost, p.rim);
     }
-    expect(values.length).toBe(8020);
+    expect(values.length).toBe(8822);
     let digest = 0;
     for (const value of values) digest = (digest * 31 + Math.round(value * 1e9)) % 2147483647;
-    expect(digest).toBe(1482580436);
+    expect(digest).toBe(578597514);
   });
   it('40秒までは部品が一つも落ちない', () => {
     for (let t = 0; t <= 40; t += .1) expect(droppedAt(t)).toEqual([]);

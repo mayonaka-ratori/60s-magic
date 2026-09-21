@@ -22,7 +22,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas><canvas id="composite" aria-hidden="true"></canvas>
   <div class="vignette"></div>
   <header><div class="brand"><span class="sigil" aria-hidden="true"></span><div><div class="brand-name">はじまりの魔法</div><p class="eyebrow">描いて、唱えて、解き放つ</p></div></div><div class="top-right"><span class="trial dev-only">60秒・試作</span><div class="timer" id="timer" hidden><small>のこり</small><b>24</b><small>秒</small></div></div></header>
-  <section class="welcome" id="welcome"><div class="chapter">第一幕 / 最初の魔法</div><h1><span>その手で描く</span><span>その言葉で放つ</span></h1><p class="intro">自由に描いた線が、ひとつの魔法になる。<br>手を動かしながら、好きな言葉を唱えよう。<br>二回目は、赤い印を囲めば盾になります</p>
+  <section class="welcome" id="welcome"><div class="chapter">第一幕 / 最初の魔法</div><h1><span>その手で描く</span><span>その言葉で放つ</span></h1><p class="intro">自由に描いた線が、ひとつの魔法になる。<br>手を動かしながら、好きな言葉を唱えよう。<br>二回目は、左に浮かぶ輪の中に描けば盾になります</p>
     <fieldset class="mode-options"><legend>描き方を選ぶ</legend><label class="mode-option"><input type="radio" name="mode" value="camera"><strong>手で描く</strong><small>カメラに手を映す（片手でも大丈夫）</small></label><label class="mode-option"><input type="radio" name="mode" value="pointer" checked><strong>マウスで試す</strong><small>画面を押したまま動かす</small></label></fieldset>
     <label class="voice-option"><input type="checkbox" id="use-voice">マイクで唱える <span id="voice-availability"></span></label>
     <details class="sound-settings"><summary>音と演出の設定</summary><div class="sound-options"><label><input id="use-sound" type="checkbox" checked>効果音</label><label for="sound-volume">音量</label><input id="sound-volume" type="range" min="0" max="100" value="25" aria-label="効果音の音量"><output id="sound-volume-value">25%</output><button id="test-sound" type="button">音を試す</button></div></details>
@@ -30,7 +30,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
     <p class="dev-only"><a class="text-button" href="/?view=look">新しい背景・騎士・術式を見る ↗</a></p>
     <p class="notice" id="notice" role="status"></p><p class="privacy" id="privacy">カメラの映像はこのPC内で処理します。音声認識の設定を確認しています。</p>
   </section>
-  <section class="hud" id="hud" hidden><div class="top-progress"><i id="progress"></i></div><div class="enemy-health">遺跡の騎士<i><b id="health"></b></i></div><button class="exit" id="cancel">中止する</button><div class="demo-tag" id="demo-tag" hidden>見本を再生中</div><div class="act-title" id="act-title" hidden aria-hidden="true"></div>
+  <section class="hud" id="hud" hidden><div class="top-progress"><i id="progress"></i></div><div class="enemy-health"><span>遺跡の騎士</span><i><b id="health"></b></i></div><button class="exit" id="cancel">中止する</button><div class="demo-tag" id="demo-tag" hidden>見本を再生中</div><div class="act-title" id="act-title" hidden aria-hidden="true"></div>
     <div class="countdown" id="countdown" hidden role="status"><p class="countdown-title">詠唱の準備を始めよ</p><div class="countdown-number" id="countdown-number">3</div><p class="countdown-hint" id="countdown-hint"></p></div>
     <div class="recognized" id="recognized" hidden></div><div class="voice-meter" id="meter" aria-hidden="true">${'<i></i>'.repeat(22)}</div><div class="voice-label" id="voice-label" hidden>声を受け付けています</div><p class="service-notice" id="service-notice" role="status"></p>
     <div class="input-panel" id="input-panel"><label for="chant">声の代わりに、文字で試す</label><input id="chant" type="text" maxlength="160" autocomplete="off" placeholder="例：雷よ、七つに分かれろ"><p>締め切りまで書き直せます<br>何も入れず、線だけでも遊べます</p></div>
@@ -70,11 +70,12 @@ const presetName=new URLSearchParams(location.search).get('preset');
 const magic=new MagicCanvas(el<HTMLCanvasElement>('magic'),presetName);
 // のこり秒の数字だけを書き換える。毎コマHTMLを作り直さない。
 const timerValue=el('timer').querySelector('b')!;
-// 控えめモード。?calm=1 と「動きを減らす」設定が一番強く、次に画面のボタン（前回の選択を覚えている）。
+// 控えめモード。このPCの「動きを減らす」設定と ?calm=1 は始めの値を決めるだけで、
+// ボタンはいつでも押せる。前に選んだほうを覚えていれば、そちらを先に使う。
 const CALM_KEY='calm-mode';
-const calmForced=new URLSearchParams(location.search).get('calm')==='1'||matchMedia('(prefers-reduced-motion: reduce)').matches;
-const calmSaved=(()=>{try{return localStorage.getItem(CALM_KEY)==='1';}catch{return false;}})();
-let calmMode=calmForced||calmSaved;
+const calmUrl=params.get('calm');
+const calmSaved=(()=>{try{const saved=localStorage.getItem(CALM_KEY);return saved===null?null:saved==='1';}catch{return null;}})();
+let calmMode=calmUrl==='1'?true:calmUrl==='0'?false:calmSaved??matchMedia('(prefers-reduced-motion: reduce)').matches;
 const overlay=new ScreenOverlay(el('app'),{world:el('world')});
 const healthBar=new HealthBar(el('health'));
 // 体力の枠（名前とバー）。とどめの一撃のあとに薄くして消すので、消したかどうかを覚えておく。
@@ -89,15 +90,16 @@ const calmOption=document.createElement('button');calmOption.id='calm-option';ca
 // 合成のシーンにも控えめモードを伝える。作られる前に呼ばれることがあるので、作れてから入れる。
 let calmTarget:{setCalm(on:boolean):void}|null=null;
 function setCalm(on:boolean,remember=true){
-  // ?calm=1 と「動きを減らす」設定のときは、ボタンで派手にはできない。
-  calmMode=calmForced||on;
+  calmMode=on;
+  // 画面の飾り（魔法名の出方、体力の枠の反応、幕の見出し）も、この一つの印を見て動く。
+  document.body.dataset.calm=calmMode?'on':'off';
   magic.setCalm(calmMode);
   calmTarget?.setCalm(calmMode);
   // 控えめモードは命中で世界を止めないので、崩れの音ととどめの一撃の時刻も変わる。音にも伝える。
   sound.setCalm(calmMode);
   const label=calmMode?'演出を派手にする':'演出を控えめにする';
-  for(const button of [calmToggle,calmOption]){button.textContent=label;button.setAttribute('aria-pressed',String(calmMode));button.disabled=calmForced&&calmMode;}
-  if(remember&&!calmForced){try{localStorage.setItem(CALM_KEY,calmMode?'1':'0');}catch{/* 保存できなくても遊べます。 */}}
+  for(const button of [calmToggle,calmOption]){button.textContent=label;button.setAttribute('aria-pressed',String(calmMode));}
+  if(remember){try{localStorage.setItem(CALM_KEY,calmMode?'1':'0');}catch{/* 保存できなくても遊べます。 */}}
 }
 calmToggle.addEventListener('click',()=>setCalm(!calmMode));
 calmOption.addEventListener('click',()=>setCalm(!calmMode));
@@ -126,7 +128,7 @@ let resultShown=false,lastUi=0,feedback:string|null=null,lastCameraLatency=0;
 // 回ごとに一度だけ行うことの覚え書き。魔法名の表示と体力の揺れもここで数える。
 const begun=new Set<string>(),ended=new Set<string>(),requested=new Set<string>(),lockLog=new Set<string>(),revealed=new Set<string>(),damaged=new Set<number>();
 // 声をいま受け付けている回。回が変わるたびに接続し直す。
-let voiceRound:Round['id']|null=null,voiceLost=false,lastRings=0,actShown='';
+let voiceRound:Round['id']|null=null,voiceLost=false,lastRings=0,lastCovered=false,actShown='';
 // 声をつなぎ直した回と、つなぎ終わってこれから録音できる回。
 const voicePrepared=new Set<string>();let voiceReadyFor:Round['id']|null=null;
 let requestAbort:AbortController|null=null;
@@ -166,7 +168,7 @@ for(const name of ['pointerdown','pointermove','keydown','wheel'])window.addEven
 window.addEventListener('pointerdown',()=>{if(attract&&session&&demo)toReady();});
 
 function cleanup(){sound.stop();camera?.dispose();camera=null;voice?.dispose();voice=null;requestAbort?.abort();requestAbort=null;cursors=[];pointerDown=false;
-  begun.clear();ended.clear();requested.clear();lockLog.clear();revealed.clear();damaged.clear();voiceRound=null;voicePrepared.clear();voiceReadyFor=null;voiceLost=false;lastRings=0;actShown='';show('act-title',false);}
+  begun.clear();ended.clear();requested.clear();lockLog.clear();revealed.clear();damaged.clear();voiceRound=null;voicePrepared.clear();voiceReadyFor=null;voiceLost=false;lastRings=0;lastCovered=false;actShown='';show('act-title',false);}
 function toReady(message='') {
   el('app').dataset.screen='ready';attract=false;clearTimeout(attractReturn);markActive();
   if(session&&!resultShown){diag?.log('中止');lastReport=report();
@@ -237,7 +239,7 @@ async function begin(isDemo=false) {
   voice?.start(Math.max(0,performance.now()-session.startMs));if(voice)voiceRound='first';
   sound.start(!!voice);
   el('app').dataset.screen='playing';
-  begun.clear();ended.clear();requested.clear();lockLog.clear();revealed.clear();damaged.clear();lastRings=0;actShown='';resultShown=false;preparing=false;feedback=null;serviceNotice='';lastHandAt=performance.now();lastCameraLatency=0;frameIntervals.length=0;
+  begun.clear();ended.clear();requested.clear();lockLog.clear();revealed.clear();damaged.clear();lastRings=0;lastCovered=false;actShown='';resultShown=false;preparing=false;feedback=null;serviceNotice='';lastHandAt=performance.now();lastCameraLatency=0;frameIntervals.length=0;
   inputLags.length=0;pendingInputAt=0;
   el('reveal').classList.remove('in');show('reveal',false);el('deadline').style.opacity='0';el('app').dataset.deadline='';
   healthWrapEl.classList.remove('hit');delete healthWrapEl.dataset.hit;showHealthFrame();
@@ -296,7 +298,7 @@ const CHANT_EXAMPLES:Record<Round['id'],string>={
   first:'たとえば「雷よ、七つに分かれろ」',defend:'たとえば「氷よ、弾き返せ」',finish:'たとえば「炎よ、集まれ、貫け」'};
 
 /** 回ごとの、画面下の文と三段の見出し。 */
-const ROUND_STEPS:Record<string,[string,string,string]>={first:['線を描く','形になる','放つ'],defend:['印を囲む','盾になる','受け止める'],finish:['弱点へ描く','形になる','とどめ']};
+const ROUND_STEPS:Record<string,[string,string,string]>={first:['線を描く','形になる','放つ'],defend:['輪を守る','盾になる','受け止める'],finish:['弱点へ描く','形になる','とどめ']};
 
 function updateUi() {
   // 結果を出したあとは触らない。下の案内や残り時間を出し直してしまうため。
@@ -315,19 +317,19 @@ function updateUi() {
   el('deadline').style.opacity=String(urgency?urgency*pulse:0);
   if(urgency)el('deadline').style.setProperty('--ring',`${64-urgency*18}%`);
   el('progress').style.width=`${Math.min(100,t/limit*100)}%`;
-  const rings=lastRings,guard=battle.defend.guard;
+  const rings=lastRings,covered=lastCovered,guard=battle.defend.guard;
   const first:Partial<Record<Phase,[string,string]>>={
     draw:[mode==='pointer'?'押したまま、自由に描こう':'手を動かしてみよう','止まっても、また描き足せます'],
     build:['そのまま、描き足して','好きな言葉を、いつ唱え始めても大丈夫'],
     chant:[voice?'描きながら、詠唱せよ':'描きながら、言葉を添えて','声や文字がなくても、魔法は完成します'],
     complete:[t<round.lock/1000?'描いた線に、力が集まる':'あなたの魔法が、完成する','もう手を止めても大丈夫'],
     release:[recipe?.name??'魔法を解き放つ',recipe?.purpose==='defend'?'あなたの壁が、騎士の前へ広がる':recipe?.purpose==='bind'?'あなたの魔法が、騎士を囲む':recipe?.purpose==='enhance'?'描いた形から出た力が、騎士へ届く':'あなたの描いた形から、騎士へ放たれる'],
-    handoff:['騎士が、剣を構えた','赤い印のところへ、一撃が来ます'],
+    handoff:['騎士が、剣を構えた','左に浮かぶ輪へ、一撃が来ます'],
   };
   const defend:Partial<Record<Phase,[string,string]>>={
-    draw:['赤い印を囲って、守る形を描け',rings?`囲えた。${rings>1?`${rings}重の盾になります`:'そのまま唱えてもいい'}`:'囲えなくても大丈夫。一番近い線が印の前へ動きます'],
+    draw:['左の輪の中に、守る形を描け',rings?`囲えた。${rings>1?`${rings}重の盾になります`:'そのまま唱えてもいい'}`:covered?'その線が、そのまま盾になります':'輪から離れていても大丈夫。一番近い線が輪の前へ動きます'],
     chant:[voice?'描きながら、詠唱せよ':'描きながら、言葉を添えて','「氷よ」で色が、「弾き返せ」「かき消せ」で止め方が変わります'],
-    complete:[t<round.lock/1000?'描いた線が、盾になる':'あなたの盾が、印の前に立つ',guard?.shield.moved?'描いた線を、印の前へ運びました':'囲った線が、そのまま盾の縁になります'],
+    complete:[t<round.lock/1000?'描いた線が、盾になる':'あなたの盾が、輪の前に立つ',guard?.shield.moved?'描いた線を、輪の前へ運びました':'描いた線が、そのまま盾の縁になります'],
     release:[t<round.impact/1000?'騎士の一撃が来る':GUARD_LABELS[guard?.style??'block'],'あなたの魔法が、一撃を受け止めます'],
     handoff:['騎士の胸が開いた','弱点が現れました。ここまでが今回の試作です'],
   };
@@ -612,7 +614,7 @@ function animate(now:number) {
   }
   const ms=session?Math.min(BATTLE_END,session.elapsed):countingDown?0:now;
   const cast=session&&!resultShown?session.active:null;
-  // 描いている間の言葉と動きを、確定前から演出へ渡す。防御の回だけ、印を囲めているかも数える。
+  // 描いている間の言葉と動きを、確定前から演出へ渡す。防御の回だけ、輪を囲めているかと、輪に掛かっているかも見る。
   // 言葉の読み直しは重いので、発話と点の数が変わった時だけ計算し、それ以外は前の結果を使う。
   let live=emptyLive;
   if(cast) {
@@ -626,6 +628,7 @@ function animate(now:number) {
   }
   // 囲えた瞬間に音で返す。数が増えるたびに一度だけ鳴らす。
   if(live.rings!==lastRings){if(live.rings>lastRings)sound.ring(live.rings);lastRings=live.rings;}
+  lastCovered=live.covered;
   if(cast)sound.update(ms,cast.recipe??session!.first.recipe,magic.preset,live.amount);
   stage.render(cast?.motion.display??[],ms,cast?.recipe??null,voice?.level??0,cursors,!session&&!countingDown,live,session?.defend.guard??null,session?.inherited??[]);
   // 閃光、ビネット、グレイン、暗転、背景の彩度はHTMLの層で出す。

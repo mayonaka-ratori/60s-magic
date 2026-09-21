@@ -296,7 +296,7 @@ describe('控えめモードは部品にも届く', () => {
     sprites: { draw: () => {} } as unknown as Frame['sprites'], pool,
     preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
     recipe: recipe(), locked: true, origin: { x: 200, y: 500 }, target: { x: 900, y: 360 },
-    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0 }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm,
+    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm,
     once: (_key, run) => run(),
   });
   const impactParticles = (calm: boolean) => {

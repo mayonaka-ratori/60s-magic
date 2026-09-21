@@ -51,6 +51,11 @@ export function reactionPower(recipe:Recipe|null|undefined,amount=0,preset:Effec
   return clamp((.16+many*.42+wide*.22+focus*.26)*gain+fromInput);
 }
 
+/** 待機の息づかいの周期（秒）。剣を上げてから下ろすまでを一回とする。 */
+export const IDLE_BREATH_SECONDS=5.6;
+/** 息づかいで、上げた構え（姿勢9）へどれだけ寄せるか。1にすると上げきったまま止まって見える。 */
+export const IDLE_BREATH_DEPTH=.62;
+
 export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45,calm=false,impactMs=ROUNDS[0].impact) {
   const t=(ms-impactMs)/1000;
   const hit=active?smooth(t/.09)*(1-smooth((t-.62)/.2)):0;
@@ -66,7 +71,12 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
   const collapse=struck?fall*(t<.6?smooth(t/.6):1-smooth((t-.6)/1.2)):0;
   // 白飛びは白、属性色、白の三段で合計0.15秒。
   const step=struck&&t<.15?Math.floor(t/.05):-1;
-  return {weights:pad([1-hit-recover,hit,recover]),lean:reduced?0:hit*force,
+  // 待機の息づかい。構え（0）と、剣をもう少し上げた構え（9）をゆっくり行き来する。
+  // ひるみと構え戻しの間は、その分だけ薄まる。動きを減らす設定では止める。
+  const rest=1-hit-recover;
+  const sway=reduced?0:(.5-.5*Math.cos(ms/1000*Math.PI*2/IDLE_BREATH_SECONDS))*IDLE_BREATH_DEPTH;
+  const weights=pad([rest*(1-sway),hit,recover]);weights[9]=rest*sway;
+  return {weights,lean:reduced?0:hit*force,
     breath:reduced?0:Math.sin(ms*.0016)*.003,flash,
     // shakeは体の細かい震え。立体のほうを揺らすので、押し戻しや回りとは別に持つ。
     shake:reduced?0:flash*.028,
@@ -82,24 +92,28 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
 }
 
 // 姿勢の表。角度だけを並べ、weightsで混ぜる。body と head は、正の値で後ろへ反る。
-// 0〜2 は一回目で使う待機・ひるむ・構えを戻す。3〜7 は防御の回で使う。
-type Pose={body:number;head:number;swordSwing:number;swordOut:number;shieldSwing:number;shieldOut:number;crouch:number};
+// turn は上半身のひねり。正の値で盾の側が手前に出て、剣の側が引ける。脚はひねらない。
+// 0〜2 は一回目で使う待機・ひるむ・構えを戻す。3〜7 は防御の回で使う。9 は待機の息づかい。
+type Pose={body:number;head:number;turn:number;swordSwing:number;swordOut:number;shieldSwing:number;shieldOut:number;crouch:number};
 const POSES:Pose[]=[
-  {body:.04,head:0,swordSwing:.16,swordOut:.1,shieldSwing:-.12,shieldOut:.14,crouch:0},
-  {body:.3,head:.24,swordSwing:-.5,swordOut:.55,shieldSwing:-.8,shieldOut:.5,crouch:-.11},
-  {body:-.1,head:-.04,swordSwing:-.12,swordOut:-.04,shieldSwing:.16,shieldOut:-.2,crouch:-.03},
+  // 待機。剣を肩の後ろへ振りかぶり、盾を前へ出し、膝を沈めて半身に構える。
+  {body:-.06,head:-.05,turn:.22,swordSwing:-2.24,swordOut:.57,shieldSwing:.4,shieldOut:.46,crouch:-.12},
+  {body:.3,head:.24,turn:0,swordSwing:-.5,swordOut:.55,shieldSwing:-.8,shieldOut:.5,crouch:-.11},
+  {body:-.1,head:-.04,turn:0,swordSwing:-.12,swordOut:-.04,shieldSwing:.16,shieldOut:-.2,crouch:-.03},
   // 構え。剣を引き、腰を落とし、盾を前へ出す。
-  {body:-.06,head:-.04,swordSwing:-.55,swordOut:.34,shieldSwing:.55,shieldOut:.5,crouch:-.16},
-  // 溜め。剣を頭上まで上げ、体を反らす。
-  {body:.2,head:.12,swordSwing:-2.3,swordOut:.5,shieldSwing:.25,shieldOut:.28,crouch:-.04},
+  {body:-.06,head:-.04,turn:0,swordSwing:-.55,swordOut:.34,shieldSwing:.55,shieldOut:.5,crouch:-.16},
+  // 溜め。剣を頭上まで上げ、体を反らす。待機の振りかぶりより高く上げ、見分けが付くようにする。
+  {body:.24,head:.14,turn:0,swordSwing:-2.8,swordOut:.42,shieldSwing:.25,shieldOut:.28,crouch:-.04},
   // 振り下ろし。踏み込んで前へ斬る。
-  {body:-.4,head:-.22,swordSwing:.95,swordOut:.12,shieldSwing:-.35,shieldOut:.22,crouch:-.24},
+  {body:-.4,head:-.22,turn:0,swordSwing:.95,swordOut:.12,shieldSwing:-.35,shieldOut:.22,crouch:-.24},
   // 弾かれる。腕ごと押し戻され、上半身が反る。
-  {body:.5,head:.32,swordSwing:-1.15,swordOut:.85,shieldSwing:-.55,shieldOut:.72,crouch:-.02},
+  {body:.5,head:.32,turn:0,swordSwing:-1.15,swordOut:.85,shieldSwing:-.55,shieldOut:.72,crouch:-.02},
   // 前屈。胸当てが割れて弱点が見える姿勢。
-  {body:-.5,head:-.34,swordSwing:-.12,swordOut:.04,shieldSwing:-.2,shieldOut:.08,crouch:-.32},
+  {body:-.5,head:-.34,turn:0,swordSwing:-.12,swordOut:.04,shieldSwing:-.2,shieldOut:.08,crouch:-.32},
   // 崩れ落ちる。膝をつき、体が前へ折れて腕が垂れる。とどめの回の最後だけで使う。
-  {body:-.95,head:-.52,swordSwing:.34,swordOut:.06,shieldSwing:.3,shieldOut:.05,crouch:-.92},
+  {body:-.95,head:-.52,turn:0,swordSwing:.34,swordOut:.06,shieldSwing:.3,shieldOut:.05,crouch:-.92},
+  // 待機の息づかい。剣をもう少し上げ、背を伸ばしたところ。待機（0）との間をゆっくり行き来する。
+  {body:.04,head:-.02,turn:.18,swordSwing:-2.5,swordOut:.68,shieldSwing:.28,shieldOut:.38,crouch:-.03},
 ];
 /** 姿勢の重みを、表の長さにそろえる。足りない分は0。 */
 const pad=(weights:number[])=>{const full=new Array(POSES.length).fill(0);for(let i=0;i<weights.length;i++)full[i]=weights[i];return full;};
@@ -303,7 +317,8 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
     rim:t>=weak?smooth((t-weak)/.5)*(1-smooth((t-weak-.5)/.5))*.5:struck?1-smooth(back/.6):0};
 }
 const POSE_KEYS=Object.keys(POSES[0]) as Array<keyof Pose>;
-const blendPose=(weights:number[]):Pose=>{
+/** 重みから実際の角度を出す。描くときと、試験で姿勢を確かめるときに使う。 */
+export const blendPose=(weights:number[]):Pose=>{
   const result={} as Pose;
   for(const key of POSE_KEYS)result[key]=POSES.reduce((sum,pose,i)=>sum+pose[key]*weights[i],0);
   return result;
@@ -360,7 +375,6 @@ export class Knight {
   private eyes:StandardMaterial;
   private burst:PointLight;
   readonly ready:Promise<void>;
-  private motion=matchMedia('(prefers-reduced-motion: reduce)');
   // 立体の騎士は画面に出さないcanvasへ描き、その絵を表に出すcanvasへ重ねて仕上げる。
   private source=document.createElement('canvas');
   private view:CanvasRenderingContext2D|null;
@@ -376,7 +390,8 @@ export class Knight {
   private down=new Set<DropKey>();
   private cssSize='';
   target={x:.5,y:.32};
-  private calm=false;
+  /** 控えめモード。このPCの「動きを減らす」設定を始めの値にし、あとは setCalm で切り替える。 */
+  private calm=matchMedia('(prefers-reduced-motion: reduce)').matches;
   /** 見た目の設定（控えめ・派手・最大）。演出canvasと同じものを外から渡す。 */
   private preset:EffectPreset=getPreset(null);
   constructor(private canvas:HTMLCanvasElement) {
@@ -897,7 +912,7 @@ export class Knight {
     c.moveTo(x-r*.12,y+r*.42);c.lineTo(x+r*.4,y-r*.24);c.stroke();
     c.restore();
   }
-  /** 控えめモード。白飛びを消し、残像と輪郭の発光を弱める。 */
+  /** 控えめモード。動きを小さくし、白飛びを消し、残像と輪郭の発光を弱める。画面のボタンから切り替える。 */
   setCalm(calm:boolean){this.calm=calm;}
   /** 見た目の設定（控えめ・派手・最大）。演出canvasと同じものを渡す。 */
   setPreset(preset:EffectPreset){this.preset=preset;}
@@ -911,8 +926,8 @@ export class Knight {
     if(size!==this.cssSize)this.resize();
     // 一回目の受け渡しからは防御の回の姿勢へ移る。構え、溜め、振り下ろし、弾かれる、前屈の順。
     const guarding=active&&ms>=GUARD_FROM*1000;
-    const pose=guarding?guardPose(ms,this.motion.matches||this.calm,guardStyle??'block')
-      :knightPose(ms,active,this.motion.matches,recipe?.purpose,power??reactionPower(recipe,amount,this.preset),this.calm);
+    const pose=guarding?guardPose(ms,this.calm,guardStyle??'block')
+      :knightPose(ms,active,this.calm,recipe?.purpose,power??reactionPower(recipe,amount,this.preset),this.calm);
     // 盾に弾かれた勢いで折れる兜の角。止め方によらず、受け止めきった時点で欠ける。
     if(this.horns[0])this.horns[0].setEnabled(!(active&&ms>=HORN_BREAK_MS));
     // 弱点。胸当てが前へ外れ、胸の線が左右へ開き、核が大きくなる。
@@ -926,7 +941,7 @@ export class Knight {
     const p=blendPose(pose.weights);
     // 待機の間もわずかに体と腕を動かし、首をゆっくり振る。動きを減らす設定では止める。
     // 倒れきった後は、この揺れも呼吸も止める。
-    const live=(this.motion.matches?0:1)*pose.still;
+    const live=(this.calm?0:1)*pose.still;
     const shake=pose.shake;
     // 崩れ落ち。足元を軸に手前へ回し、同時に視点へ近づける。控えめモードでも減らさない。
     this.root.rotation.x=-pose.fall*FALL_TURN;
@@ -935,9 +950,12 @@ export class Knight {
     this.root.position.x=Math.sin(t*62)*shake;
     this.root.rotation.z=Math.sin(t*44)*shake;
     this.body.rotation.x=p.body+Math.sin(t*.42+1)*.008*live;
+    // 上半身のひねり。脚は回さないので、半身に構えて見える。
+    this.body.rotation.y=p.turn;
     this.body.rotation.z=Math.sin(t*.55)*.012*live;
     this.head.rotation.x=p.head;
-    this.head.rotation.y=Math.sin(t*.31)*.06*live;
+    // 体をひねっても、兜はこちらを向いたままにする。
+    this.head.rotation.y=-p.turn*.7+Math.sin(t*.31)*.06*live;
     // 腕は最後まで体に残るので、盾と剣を落とした後も姿勢を当て続ける。
     this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live,0,-p.swordOut);
     this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);

@@ -29,7 +29,7 @@ const appTime = async () => parseFloat((await page.evaluate(() => document.getEl
 t = await appTime(); console.log('start offset', t.toFixed(2));
 const tick = async ms => { await page.clock.runFor(ms); t += ms / 1000; await page.evaluate(() => window.__flushRaf()); };
 const until = async s => { while (t < s - 1e-6) { const fine = t >= 51.4 && t < 57.6; const step = Math.min(fine ? 100 : 500, (s - t) * 1000); await tick(step); } };
-const shot = async name => { await page.screenshot({ path: `${out}/${name}.png` }); console.log('shot', name, t.toFixed(2), await page.evaluate(() => ({ instruction: document.getElementById('instruction')?.textContent, health: document.getElementById('health')?.style.width, gone: document.querySelector('.enemy-health')?.dataset.gone, knight: document.getElementById('knight')?.dataset.state, phase: document.getElementById('spell')?.dataset.phase }))); };
+const shot = async name => { await page.screenshot({ path: `${out}/${name}.png` }); console.log('shot', name, t.toFixed(2), await page.evaluate(() => ({ instruction: document.getElementById('instruction')?.textContent, health: document.getElementById('health')?.style.height, gone: document.querySelector('.enemy-health')?.dataset.gone, knight: document.getElementById('knight')?.dataset.state, phase: document.getElementById('spell')?.dataset.phase }))); };
 const draw = async (cx, cy, rx, ry) => { await page.mouse.move(cx + rx, cy); await page.mouse.down(); for (let i = 1; i <= 24; i++) { const a = i / 24 * Math.PI * 2; await page.mouse.move(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry); await page.clock.runFor(60); t += .06; if (i % 4 === 0) await page.evaluate(() => window.__flushRaf()); } await page.mouse.up(); };
 const fill = async text => { await tick(200); try { await page.locator('#chant').fill(text, { timeout: 3000 }); } catch { console.log('fill failed at', t.toFixed(2)); } };
 await until(1); await fill('雷よ、七つに分かれろ');
@@ -37,7 +37,7 @@ await draw(700, 420, 180, 120);
 await until(19.0); await shot('r1-impact');
 await until(25); await fill('氷よ、壁となれ、弾き返せ');
 const box = await page.locator('#magic').boundingBox();
-await draw(box.x + box.width * .5, box.y + box.height * .62, 150, 170);
+await draw(box.x + box.width * .27, box.y + box.height * .5, 150, 170);
 await until(36); await shot('r2-block');
 await until(41); await fill('炎よ、集まれ、貫け');
 await draw(700, 420, 200, 140);

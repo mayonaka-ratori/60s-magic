@@ -57,6 +57,24 @@ test('プレイ中と結果の画面で文字が重ならない（縦長）',asy
   expect(await playThrough(page,'390×844')).toEqual([]);
 });
 
+test.describe('このPCの「動きを減らす」設定',()=>{
+  test.use({reducedMotion:'reduce'});
+  test('控えめから始まるが、演出を派手にするボタンはいつでも押せる',async({page})=>{
+    await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
+    await page.locator('.sound-settings summary').click();
+    const button=page.locator('#calm-option');
+    await expect(button).toHaveText('演出を派手にする');
+    await expect(button).toBeEnabled();
+    await expect(page.locator('body')).toHaveAttribute('data-calm','on');
+    await button.click();
+    await expect(button).toHaveText('演出を控えめにする');
+    await expect(page.locator('body')).toHaveAttribute('data-calm','off');
+    // 選んだほうは覚えていて、開き直しても派手のまま。
+    await page.reload();await expect(page.locator('#loading')).toBeHidden();
+    await expect(page.locator('body')).toHaveAttribute('data-calm','off');
+  });
+});
+
 test('遊ぶ人の画面には確認用の表示を出さない',async({page})=>{
   await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
   for(const target of ['.trial','#settings','.dev-only'])await expect(page.locator(target).first()).toBeHidden();

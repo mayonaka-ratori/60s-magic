@@ -49,7 +49,7 @@ test('当たった瞬間に体力バーが反応し、騎士に魔法の傷あ�
     const いま=await page.evaluate(()=>({
       傷:(document.getElementById('knight') as HTMLElement).dataset.scar,
       反応:document.querySelector<HTMLElement>('.enemy-health')!.dataset.hit==='1',
-      体力:parseFloat((document.getElementById('health') as HTMLElement).style.width||'100'),
+      体力:parseFloat((document.getElementById('health') as HTMLElement).style.height||'100'),
     }));
     if(いま.傷==='1')見たもの.add('傷あと');
     if(いま.反応)見たもの.add('体力バーの反応');

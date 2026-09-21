@@ -50,7 +50,7 @@ let animation = requestAnimationFrame(function frame(now: number) {
 document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(button => button.addEventListener('click', () => {
   pose = button.dataset.pose!;
   document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
-  el('note').textContent = pose === 'idle' ? '待機の姿勢で、ゆっくり上下しています' : pose === 'hit' ? '魔法が届いた瞬間の姿勢（18.5秒）で止めています' : '構えを戻す途中の姿勢（19.9秒）です';
+  el('note').textContent = pose === 'idle' ? '剣を振りかぶった待機の構えで、剣がゆっくり上下します' : pose === 'hit' ? '魔法が届いた瞬間の姿勢（18.5秒）で止めています' : '構えを戻す途中の姿勢（19.9秒）です';
 }));
 
 // 見本用の入力点。描き直した場合は、この線を使わず本人の線だけで完成形を作る。

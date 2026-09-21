@@ -91,8 +91,9 @@ export class HealthBar {
     const { left, trail } = healthAt(ms, this.steps);
     this.show(left, trail);
   }
+  /** 縦の枠なので、残りは高さで見せる。下端を固定して、上から減らす。 */
   private show(left: number, trail: number) {
-    if (Math.abs(left - this.shown) > .05) { this.shown = left; this.bar.style.width = `${Math.max(0, left).toFixed(2)}%`; }
-    if (Math.abs(trail - this.shownTrail) > .05) { this.shownTrail = trail; this.trail.style.width = `${Math.max(0, trail).toFixed(2)}%`; }
+    if (Math.abs(left - this.shown) > .05) { this.shown = left; this.bar.style.height = `${Math.max(0, left).toFixed(2)}%`; }
+    if (Math.abs(trail - this.shownTrail) > .05) { this.shownTrail = trail; this.trail.style.height = `${Math.max(0, trail).toFixed(2)}%`; }
   }
 }

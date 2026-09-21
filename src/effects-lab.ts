@@ -138,7 +138,7 @@ function renderSides(dt = 0) {
     const displayed = points.map(p => ({ ...p, x: ((p.x - .5) * w * pose.scale + pose.dx + w / 2) / w, y: ((p.y - .5) * h * pose.scale + pose.dy + h / 2) / h }));
     s.knight.render(worldMs, true, current);
     // 見比べ画面では入力の量を URL の amount= で仮に与える。言葉は空。
-    const live: LiveInput = { words: liveWordsNow(), amount: Number(params.get('amount') ?? .5), voice: 0, rings: 0 };
+    const live: LiveInput = { words: liveWordsNow(), amount: Number(params.get('amount') ?? .5), voice: 0, rings: 0, covered: false };
     const unlocked = unlockedNow();
     s.magic.renderEffects({ points: displayed, ms, recipe: unlocked ? null : current, voice: 0, cursors: [], ready: false, target: s.knight.target, origin: pose.center, live });
     // 背景と騎士に揺れ、傾き、寄りを当てる。騎士は背景より1.3倍大きく動かす。

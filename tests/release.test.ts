@@ -85,7 +85,7 @@ function scene(c: CanvasRenderingContext2D, over: Partial<Recipe>, accent: Palet
     sprites, pool,
     preset: presets.vivid, palette: presets.vivid.palettes[r.element], intensity: 1.5,
     recipe: r, locked: true, origin, target,
-    accent, live: { words: [], amount: 0, voice: 0, rings: 0 }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm: false,
+    accent, live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm: false,
     once: (_key, run) => run() };
 }
 

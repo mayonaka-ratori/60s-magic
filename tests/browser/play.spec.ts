@@ -3,7 +3,8 @@ import { test,expect } from '@playwright/test';
 /** 狙いの印のまわりを、マウスで大きく一周する。囲えば盾になる。 */
 async function encircleAim(page:import('@playwright/test').Page,radiusX=150,radiusY=170) {
   const box=await page.locator('#magic').boundingBox();
-  const cx=box!.x+box!.width*.5,cy=box!.y+box!.height*.62;
+  // 狙いの輪は画面の左寄り（横27%、高さ50%）に浮かぶ。guard.ts の AIM と同じ場所。
+  const cx=box!.x+box!.width*.27,cy=box!.y+box!.height*.5;
   await page.mouse.move(cx+radiusX,cy);await page.mouse.down();
   for(let i=1;i<=28;i++){const a=i/28*Math.PI*2;await page.mouse.move(cx+Math.cos(a)*radiusX,cy+Math.sin(a)*radiusY);}
   await page.mouse.up();
@@ -35,10 +36,10 @@ test('60秒を最後まで遊び、七つの雷と、印を囲んだ盾と、と
   },null,{timeout:2000}).then(handle=>handle.jsonValue());
   console.log('合成:',composite);
   await page.screenshot({path:'test-results/04b-impact.png'});
-  // 23秒で騎士が構え、24秒から防御の回。赤い印を囲むと盾になる。
+  // 23秒で騎士が構え、24秒から防御の回。左に浮かぶ輪を囲むと盾になる。
   await expect(page.locator('#instruction')).toHaveText('騎士が、剣を構えた',{timeout:8000});
   await expect(page.locator('#act-title')).toBeVisible({timeout:4000});
-  await expect(page.locator('#instruction')).toHaveText('赤い印を囲って、守る形を描け',{timeout:4000});
+  await expect(page.locator('#instruction')).toHaveText('左の輪の中に、守る形を描け',{timeout:4000});
   await page.locator('#chant').fill('氷よ、壁となれ、弾き返せ');
   await encircleAim(page);
   await expect(page.locator('#hint')).toContainText('囲えた',{timeout:4000});await page.screenshot({path:'test-results/06-guard-drawn.png'});

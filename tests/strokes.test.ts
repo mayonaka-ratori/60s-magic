@@ -163,7 +163,7 @@ describe('描く動きへの反応の覚え書き', () => {
     sprites: { draw: () => {} } as unknown as Frame['sprites'], pool,
     preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1,
     recipe: recipe(), locked: false, origin: { x: 640, y: 500 }, target: { x: 900, y: 360 },
-    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0 }, points, cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm: false,
+    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points, cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm: false,
     once: (key, run) => { if (!fired.has(key)) { fired.add(key); run(); } },
   });
   const line = path([[.2, .5], [.3, .5], [.4, .5]]);

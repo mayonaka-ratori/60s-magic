@@ -43,7 +43,7 @@ const frame = (t: number, over: Partial<Frame> = {}, spell: Partial<Recipe> = {}
   sprites: { draw: () => {} } as unknown as Frame['sprites'], pool: new ParticlePool(700),
   preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
   recipe: recipe(spell), locked: true, origin: { x: 320, y: 520 }, target: { x: 900, y: 360 },
-  accent: null, live: { words: [], amount: 0, voice: 0, rings: 0 }, points, cursors: [],
+  accent: null, live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points, cursors: [],
   beat: finishBeat, guard: null, aim: AIM, inherited: [], calm: false,
   once: (_key, run) => run(), ...over,
 });

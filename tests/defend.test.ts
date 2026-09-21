@@ -2,7 +2,7 @@ import { describe,it,expect } from 'vitest';
 import { ROUNDS,BATTLE_END,beatAt,phaseAt,roundAt,speechLimitOf,replyLimitOf } from '../src/game/rounds';
 import { Battle } from '../src/game/battle';
 import { CastSession } from '../src/game/session';
-import { AIM,ENCLOSE_TURN,dropNegated,enclosingStrokes,guardStyleOf,shieldOf,strokeEncloses,strokesOf,windingAround } from '../src/game/guard';
+import { AIM,ENCLOSE_TURN,coversAim,dropNegated,enclosingStrokes,guardStyleOf,shieldOf,strokeEncloses,strokesOf,windingAround } from '../src/game/guard';
 import { GUARD_DAMAGE,GUARD_STEP_MS,healthSteps } from '../src/render/health-bar';
 import { hitDelay } from '../src/render/effects/release';
 import { liveWords } from '../src/game/live-words';
@@ -148,8 +148,8 @@ describe('盾を作る',()=>{
     // カメラの前で手を止めたまま。同じ座標が並ぶので、運んでも輪郭が点になる。
     const still=shieldOf(Array.from({length:400},(_,i)=>({x:.2,y:.3,t:24000+i*16,hand:0,stroke:1})),null);
     expect(still.kind).toBe('orb');expect(still.center).toEqual(AIM);
-    // 二点だけの短い線。
-    const two=shieldOf([{x:.3,y:.4,t:24000,hand:0,stroke:1},{x:.42,y:.46,t:24100,hand:0,stroke:1}],null);
+    // 二点だけの短い線。印から離れた場所に描いたので、印の前へ運ぶ。
+    const two=shieldOf([{x:.62,y:.4,t:24000,hand:0,stroke:1},{x:.74,y:.46,t:24100,hand:0,stroke:1}],null);
     expect(two.outline.length).toBeGreaterThan(1);expect(two.moved).toBe(true);
     for(const shield of [tap,still,two]) {
       expect(Number.isFinite(shield.radius)).toBe(true);
@@ -157,10 +157,25 @@ describe('盾を作る',()=>{
     }
   });
   it('印に近い線を選ぶ。線の真ん中ではなく、線の上の一番近い点で見る',()=>{
-    // 画面を斜めに横切る大きな線（真ん中は印に近い）と、印のすぐ上の短い線。
-    const across=seg({x:.02,y:.05},{x:.98,y:.95},1,24);
-    const near=seg({x:.45,y:.66},{x:.55,y:.66},2,8);
-    expect(shieldOf([...across,...near],null).outline.length).toBe(near.length);
+    // かぎの形の大きな線。囲む四角の真ん中はちょうど印だが、線そのものは印から遠い。
+    const hook=[...seg({x:AIM.x-.25,y:AIM.y-.4},{x:AIM.x+.25,y:AIM.y-.4},1,14),
+      ...seg({x:AIM.x+.25,y:AIM.y-.4},{x:AIM.x+.25,y:AIM.y+.4},1,14)];
+    // 印の下の短い線。印の範囲からは外れているが、かぎの線よりは近い。
+    const near=seg({x:AIM.x-.02,y:AIM.y+.22},{x:AIM.x+.08,y:AIM.y+.22},2,8);
+    expect(shieldOf([...hook,...near],null).outline.length).toBe(near.length);
+  });
+  it('印の範囲に掛かった線は、運ばずにその場所で盾になる',()=>{
+    // 囲めてはいないが、印の輪に掛かる短い線。描いた場所のまま盾になる。
+    const inside=seg({x:AIM.x-.06,y:AIM.y-.04},{x:AIM.x+.06,y:AIM.y+.06},1,10);
+    const shield=shieldOf(inside,null);
+    expect(shield.enclosed).toBe(false);expect(shield.moved).toBe(false);
+    expect(shield.offset).toEqual({x:0,y:0});
+    // 盾の真ん中は、運んだからではなく描いた場所そのものとして、印のそばにある。
+    expect(Math.abs(shield.center.x-AIM.x)).toBeLessThan(.02);expect(Math.abs(shield.center.y-AIM.y)).toBeLessThan(.02);
+    expect(coversAim(inside)).toBe(true);
+    // 印から離れた線は、掛かっていることにしない。
+    expect(coversAim(seg({x:.7,y:.2},{x:.8,y:.3},1,10))).toBe(false);
+    expect(shieldOf(bar(.9),null).moved).toBe(true);
   });
   it('言った数が、囲った数より優先される。層は5枚まで',()=>{
     expect(shieldOf(ring(.1),7).layers).toBe(5);
@@ -227,9 +242,10 @@ describe('防御の回の画面と姿勢',()=>{
       expect(pose.weights.reduce((a,b)=>a+b,0)).toBeCloseTo(1);
       expect(Math.min(...pose.weights)).toBeGreaterThanOrEqual(-.00001);
     }
-    // 一回目と防御で、姿勢の表の長さがそろっている。とどめの「崩れ落ちる」を足して9つ。
-    expect(knightPose(18700,true).weights).toHaveLength(9);
-    expect(guardPose(23500).weights).toHaveLength(9);
+    // 一回目と防御で、姿勢の表の長さがそろっている。
+    // とどめの「崩れ落ちる」と、待機の息づかいを足して10個。
+    expect(knightPose(18700,true).weights).toHaveLength(10);
+    expect(guardPose(23500).weights).toHaveLength(10);
     // 崩れ落ちる姿勢は、防御の回までは一度も混ざらない。
     for(let ms=23000;ms<=41000;ms+=50)expect(guardPose(ms).weights[8]).toBe(0);
   });

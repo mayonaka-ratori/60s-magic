@@ -12,7 +12,7 @@ test('60秒の通しで体力が0になり、騎士が倒れきる',async({page}
   await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
   await expect(page.locator('#hud')).toBeVisible();
   // とどめの一撃（54.5秒）で体力が0になる。
-  await expect.poll(()=>page.locator('#health').evaluate(bar=>(bar as HTMLElement).style.width),{timeout:70000})
+  await expect.poll(()=>page.locator('#health').evaluate(bar=>(bar as HTMLElement).style.height),{timeout:70000})
     .toBe('0.00%');
   await page.screenshot({path:'test-results/finish-01-zero.png'});
   // 体力の枠は名前ごと消す。消したら戻さない。
