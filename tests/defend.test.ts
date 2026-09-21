@@ -233,6 +233,21 @@ describe('防御の回の画面と姿勢',()=>{
     // 崩れ落ちる姿勢は、防御の回までは一度も混ざらない。
     for(let ms=23000;ms<=41000;ms+=50)expect(guardPose(ms).weights[8]).toBe(0);
   });
+  it('刃の赤は溜めの間だけ脈打ち、振り下ろしで消える',()=>{
+    // 構えの間と、弾かれた後は光らない。
+    expect(guardPose(23500).bladeHeat).toBe(0);
+    expect(guardPose(39000).bladeHeat).toBe(0);
+    // 溜めの終わりに近いほど強い。
+    const early=guardPose(26000).bladeHeat,late=guardPose(32000).bladeHeat;
+    expect(early).toBeGreaterThan(0);
+    expect(late).toBeGreaterThan(early);
+    // 毎秒1回脈打つ。山（x.25秒）のほうが、その0.5秒後の谷より強い。
+    expect(guardPose(31250).bladeHeat).toBeGreaterThan(guardPose(31750).bladeHeat);
+    // 控えめモードでは脈打たず、時間とともに強くなるだけ。
+    expect(guardPose(31250,true).bladeHeat).toBeLessThan(guardPose(31750,true).bladeHeat);
+    // 一回目の姿勢では光らない。
+    expect(knightPose(18700,true).bladeHeat).toBe(0);
+  });
   it('弾き返したときだけ、騎士が戻ってきた一撃を受ける',()=>{
     expect(guardPose(36300,false,'reflect').flash).toBeGreaterThan(0);
     expect(guardPose(36300,false,'block').flash).toBe(0);

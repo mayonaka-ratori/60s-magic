@@ -73,6 +73,8 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
     state:hit>.1?'hit':recover>.1?'recover':'idle',
     // 崩れ落ちはとどめの回だけ。一回目はいつも立っている。
     fall:0,still:1,blink:0,
+    // 刃の赤は防御の回の溜めだけ。一回目は光らない。
+    bladeHeat:0,
     strength,push:reduced?0:push,collapse:reduced?0:collapse,
     // 打撃の向きに合わせ、右へのけぞる。単位は度。
     spin:reduced?0:push*(1.4+strength*2.6)+collapse*3.4,
@@ -90,8 +92,11 @@ const POSES:Pose[]=[
   {body:-.1,head:-.04,swordSwing:-.12,swordOut:-.04,shieldSwing:.16,shieldOut:-.2,crouch:-.03},
   // 構え。剣を引き、腰を落とし、盾を前へ出す。
   {body:-.06,head:-.04,swordSwing:-.55,swordOut:.34,shieldSwing:.55,shieldOut:.5,crouch:-.16},
-  // 溜め。剣を頭上まで上げ、体を反らす。
-  {body:.2,head:.12,swordSwing:-2.3,swordOut:.5,shieldSwing:.25,shieldOut:.28,crouch:-.04},
+  // 溜め。剣を頭上まで上げ、体を反らす。腕は前から上へ回し、頭の横で少し後ろへ傾ける（πより大きい角）。
+  // 角の決め方は正面からの見え方で決めた。真上（約2.85）だと刃が画面の上へ切れて柄しか残らず、
+  // 後ろへ倒しすぎる（約3.75）と兜の陰に隠れて見えなくなる。負の角で後ろへ回す元の作りは、
+  // 正面からは腕が縮んで肩の高さに剣が横たわって見え、振り下ろしへの混ぜ合わせも体の後ろを通っていた。
+  {body:.2,head:.12,swordSwing:3.3,swordOut:.35,shieldSwing:.25,shieldOut:.28,crouch:-.04},
   // 振り下ろし。踏み込んで前へ斬る。
   {body:-.4,head:-.22,swordSwing:.95,swordOut:.12,shieldSwing:-.35,shieldOut:.22,crouch:-.24},
   // 弾かれる。腕ごと押し戻され、上半身が反る。
@@ -271,8 +276,14 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
   const u=smooth((t-step.at)/step.ramp);
   const weights=new Array(POSES.length).fill(0);
   weights[previous.pose]+=1-u;weights[step.pose]+=u;
-  // 溜めの間は剣が低く脈打つ。毎秒1回まで。
+  // 溜めの間は剣が低く脈打つ。毎秒1回まで。振り下ろしに入ったら0へ戻す。
   const charging=index===2?smooth((t-GUARD_STEPS[2].at)/2):0;
+  // 刃の赤。溜めの間に毎秒1回脈打ちながら少しずつ強くなり、振り下ろしに入ったら消えていく。
+  // 控えめモードでは脈を止め、弱い赤のまま持ち上げる。
+  const chargeSpan=Math.max(.1,GUARD_STEPS[3].at-GUARD_STEPS[2].at);
+  const heatRise=index===2?clamp((t-GUARD_STEPS[2].at)/chargeSpan):0;
+  const bladeHeat=index===2?heatRise*(reduced?.6:.55+.45*(.5+.5*Math.sin(t*Math.PI*2)))
+    :index===3?Math.max(0,1-(t-GUARD_STEPS[3].at)/GUARD_STEPS[3].ramp)*(reduced?.6:1):0;
   // 弾かれた瞬間だけ押し戻される。
   const hitAt=DEFEND.impact/1000;
   const repel=t>=hitAt?Math.max(0,1-(t-hitAt)/1.2):0;
@@ -287,7 +298,7 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
   const fall=fallAt(t),still=1-fall;
   // とどめの4回の命中と直撃の白飛び。防御の弾き返しとは時刻が離れているが、念のため濃いほうを使う。
   const blast=finishFlashAt(t);
-  return {weights,lean:reduced?0:repel*.35,
+  return {weights,lean:reduced?0:repel*.35,bladeHeat,
     // 0に丸めるときに符号が残らないよう、0を足しておく。
     breath:reduced?0:(Math.sin(ms*.0016)*.003+charging*Math.sin(t*Math.PI*2)*.004)*still+0,
     flash,fall,still,blink:corePulse(t),
@@ -357,6 +368,7 @@ export class Knight {
   private horns:Mesh[]=[];
   private armor:StandardMaterial;
   private coreMaterial:StandardMaterial;
+  private bladeMaterial:StandardMaterial;
   private eyes:StandardMaterial;
   private burst:PointLight;
   readonly ready:Promise<void>;
@@ -598,6 +610,8 @@ export class Knight {
     const trim=worn(metal(material('金の縁',...GOLD),.9));
     const beltTrim=worn(metal(material('帯の飾り',...GOLD),.9),true,braid);
     const steel=worn(metal(material('刃と縁',...STEEL),1.3));
+    // 刃だけは別の材質にして、溜めの間に赤く脈打たせる。
+    this.bladeMaterial=worn(metal(material('刃',...STEEL),1.3));
     const shieldPlate=worn(metal(material('盾の面',...STEEL),1.3),true,emblem,emblemDents);
     this.coreMaterial=material('胸の核','#2a2418',.1);this.coreMaterial.emissiveColor=Color3.FromHexString('#6f542e');
 
@@ -698,8 +712,8 @@ export class Knight {
       const tip=cone('鍔の先',sword,side*.29,-.04,0,.02,.11,.1,6,trim);tip.rotation.set(0,0,side*Math.PI/2);
     }
     // 刃は幅の広い身と先の三角に分ける。細いと画面の中でただの線に見える。
-    const blade=cone('刃',sword,0,-.73,0,.28,.25,1.14,4,steel);blade.scaling.z=.2;
-    const point=cone('切っ先',sword,0,-1.45,0,.25,.02,.31,4,steel);point.scaling.z=.2;
+    const blade=cone('刃',sword,0,-.73,0,.28,.25,1.14,4,this.bladeMaterial);blade.scaling.z=.2;
+    const point=cone('切っ先',sword,0,-1.45,0,.25,.02,.31,4,this.bladeMaterial);point.scaling.z=.2;
     const [shieldShoulder,shieldHand]=arm('盾を持つ腕',1);this.shieldArm=shieldShoulder;
     // 盾は四角柱を平たくし、縦へ伸ばした凧形。金の縁と中央の飾りを重ねる。
     const mount=new TransformNode('盾の取り付け',this.scene);mount.parent=shieldHand;mount.position.set(.3,-.3,-.2);mount.rotation.set(-.24,-.34,.1);
@@ -947,6 +961,9 @@ export class Knight {
     const pulse=active?corePulse(t):idlePulse(t);
     const glow=.22+charge*.5+pose.flash*1.5+open*pulse*.7;
     this.coreMaterial.emissiveColor.set(.42+glow,.32+glow*.86,.17+glow*.7);
+    // 溜めの間だけ刃が赤く脈打つ。
+    const heat=pose.bladeHeat;
+    this.bladeMaterial.emissiveColor.set(.9*heat,.16*heat,.05*heat);
     const blink=.82+Math.sin(t*1.7)*.18*live+pose.flash*.6;
     this.eyes.emissiveColor.set(.52*blink,.23*blink,.07*blink);
     // 色は魔法の属性のままだと鎧まで染まるため、白へ寄せて使う。
