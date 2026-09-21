@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { BLOOM_BASE, BLOOM_CALM_PEAK, BOARD_MAX_PIXELS, FADE_SECONDS, FPS_BACK, FPS_DROP, POST_FROM, POST_TO, RIPPLE_SECONDS,
   SHOW_FROM, WARMUP_FRAMES, giveUpDecision, GIVE_UP_WARMUP, GIVE_UP_FRAMES,
-  SCALE_MAX, SCALE_MIN, bloomDecision, bloomWeightAt, boardPixels, compositeSettings, layerMotion, postFadeAt, postHeavyActive,
-  rippleAt, shouldUploadKnight, showFadeAt } from '../src/render/composite';
+  SCALE_MAX, SCALE_MIN, SLAM_AT, SLAM_RIPPLE_Y, bloomDecision, bloomWeightAt, boardPixels, compositeSettings, layerMotion, postFadeAt, postFromOf, postHeavyActive,
+  postToOf, rippleAt, shockRippleAt, shouldUploadKnight, showFadeAt } from '../src/render/composite';
 import { layerTransform } from '../src/render/cast-scene';
 import { IMPACT_AT, RELEASE_AT } from '../src/render/effects/screen';
+import { BEATS, ENEMY_SLAM_MS } from '../src/game/rounds';
 
 describe('衝撃波の輪', () => {
   it('命中の前は出ない', () => {
@@ -261,5 +262,62 @@ describe('遅すぎるときは合成を諦める', () => {
     // ブルームが切れた後に、あらためて数え始める。
     for (let i = 0; i < GIVE_UP_FRAMES; i++) ({ lowFrames: low, giveUp } = giveUpDecision(10, low, 500, calmTime, false));
     expect(giveUp).toBe(true);
+  });
+});
+
+/**
+ * 防御の回の、敵の一撃が床を打つ33.55秒。衝撃波の歪みは騎士の足元から広がり、
+ * 重い後処理はその0.1秒前から入れる。一回目ととどめの時間帯は変えない。
+ */
+describe('敵の一撃が床を打つ衝撃波', () => {
+  const defend = BEATS[1], first = BEATS[0], finish = BEATS[2];
+  const target = { x: .48, y: .24 };
+  it('床を打つ時刻は回の表から来る', () => {
+    expect(SLAM_AT).toBeCloseTo(ENEMY_SLAM_MS / 1000, 9);
+    expect(SLAM_AT).toBeCloseTo(33.55, 9);
+    // 発動（34秒）より前で、受け止め（35.4秒）の衝撃波と重ならない。
+    expect(SLAM_AT + RIPPLE_SECONDS).toBeLessThan(defend.impact);
+  });
+  it('床を打った瞬間から、騎士の足元を中心に広がる', () => {
+    expect(shockRippleAt(SLAM_AT - .01, defend, target)).toBeNull();
+    const shock = shockRippleAt(SLAM_AT, defend, target)!;
+    expect(shock).not.toBeNull();
+    // 横は命中の位置と同じ、縦は足元。
+    expect(shock.center).toEqual({ x: target.x, y: SLAM_RIPPLE_Y });
+    expect(SLAM_RIPPLE_Y).toBeGreaterThan(.7);
+    expect(SLAM_RIPPLE_Y).toBeLessThan(.75);
+    // 輪そのものは命中の輪と同じ形で、時刻だけ違う。
+    const same = (a: { radius: number; width: number; strength: number }, b: { radius: number; width: number; strength: number }) => {
+      expect(a.radius).toBeCloseTo(b.radius, 9); expect(a.width).toBeCloseTo(b.width, 9); expect(a.strength).toBeCloseTo(b.strength, 9);
+    };
+    same(shock.ripple, rippleAt(IMPACT_AT)!);
+    same(shockRippleAt(SLAM_AT + .2, defend, target)!.ripple, rippleAt(IMPACT_AT + .2)!);
+    expect(shockRippleAt(SLAM_AT + RIPPLE_SECONDS, defend, target)).toBeNull();
+  });
+  it('受け止めの衝撃波は今までどおり命中の位置から', () => {
+    const hit = shockRippleAt(defend.impact + .1, defend, target)!;
+    expect(hit.center).toEqual(target);
+    expect(hit.ripple).toEqual(rippleAt(IMPACT_AT + .1));
+    const firstHit = shockRippleAt(IMPACT_AT, first, target)!;
+    expect(firstHit.center).toEqual(target);
+  });
+  it('防御の回以外では床を打つ輪を出さない', () => {
+    expect(shockRippleAt(SLAM_AT, first, target)).toBeNull();
+    expect(shockRippleAt(SLAM_AT, finish, target)).toBeNull();
+    // 一回目ととどめは、命中の時刻以外に輪を出さない。
+    for (let t = 0; t < 24; t += .05) if (t < IMPACT_AT || t >= IMPACT_AT + RIPPLE_SECONDS) expect(shockRippleAt(t, first, target)).toBeNull();
+  });
+  it('重い後処理は床を打つ0.1秒前から入り、切る時刻は変えない', () => {
+    expect(postFromOf(defend)).toBeCloseTo(SLAM_AT - .1, 9);
+    expect(postFromOf(defend)).toBeCloseTo(33.45, 9);
+    expect(postHeavyActive(33.44, defend)).toBe(false);
+    expect(postHeavyActive(33.45, defend)).toBe(true);
+    // 床を打つ輪が出ている間はずっと有効。
+    for (let t = SLAM_AT; t < SLAM_AT + RIPPLE_SECONDS; t += .05) expect(postHeavyActive(t, defend)).toBe(true);
+    expect(postHeavyActive(defend.release, defend)).toBe(true);
+    expect(postToOf(defend)).toBeCloseTo(37.9, 9);
+    // 一回目ととどめの入る時刻は今までどおり、発動の0.1秒前。
+    expect(postFromOf(first)).toBeCloseTo(POST_FROM, 9);
+    expect(postFromOf(finish)).toBeCloseTo(finish.release - .1, 9);
   });
 });
