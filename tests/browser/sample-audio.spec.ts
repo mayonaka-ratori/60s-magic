@@ -1,8 +1,22 @@
 import { test,expect } from '@playwright/test';
-import { soundCues } from '../../src/audio/cues';
 
-/** 鳴るはずの音の並びと、素材を使うかどうか。素材を置いた合図だけが true になる。 */
-const 鳴る音=soundCues.filter(cue=>cue.name!=='book').map(cue=>[cue.name,cue.name==='complete'||cue.name==='impact']);
+/**
+ * 鳴るはずの音の並び。実装から作らず、ここに直接書く。
+ * 一回目、防御、とどめの順。とどめの並びは tests/finish-audio.test.ts と同じ。
+ * 60秒の魔導書の音（book）は、いま時計と音の担当が直している最中なので、この並びからは外してある。
+ * book は別に確かめる。
+ */
+const 鳴る音=[
+  // 一回目（0〜24秒）
+  'trace','chant','build','complete','release','impact','settle',
+  // 防御（24〜40秒）。命中ではなく、盾で受ける音になる。
+  'chant','build','complete','release','block','settle',
+  // とどめ（40〜60秒）
+  'chant','build','complete','release','impact','finish',
+  'collapse-sword','collapse-knee','collapse-fall','settle',
+];
+/** 素材を使うかどうかも合わせて見る。素材を置いた合図だけが true になる。 */
+const 鳴る音と素材=鳴る音.map(name=>[name,name==='complete'||name==='impact']);
 
 /** 短い正弦波のWAVを作る。外部の素材の代わりに、読み込みと再生の経路だけを確かめる。 */
 function wav(seconds:number,frequency:number,level:number) {
@@ -50,7 +64,7 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばす',asy
   expect(report.audio.samples).toEqual({manifest:true,loaded:['bgm/test.wav','sfx/chime.wav','sfx/hit-1.wav','sfx/hit-2.wav'],missing:['sfx/missing.wav']});
   expect(report.audio.credits).toEqual(['テスト用の曲']);
   expect(report.audio.bgmStartedAtMs).toBeLessThan(1000);expect(report.audio.bgm).toBe('none');expect(report.audio.activeSources).toBe(0);
-  expect(report.audio.events.map((e:{name:string;sample:boolean})=>[e.name,e.sample])).toEqual(鳴る音);
+  expect(report.audio.events.map((e:{name:string;sample:boolean})=>[e.name,e.sample])).toEqual(鳴る音と素材);
   await page.locator('#sheet-close').click();
   // 曲は終了後に止まる。
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.rms),{timeout:2000,intervals:[50]}).toBeLessThan(.00001);

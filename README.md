@@ -53,7 +53,8 @@ URLに付けられる切り替えです。
 | `npm run build` | 型の検査と配布用の生成 | 数秒 |
 | `npm run test:speech` | 合成音声でこのPCの音声認識を確認。4種類×3回。結果は `.local-speech/test-report.json` | 1分 |
 | `node scripts/prepare-browser-audio.mjs` | 上の音から、ブラウザー試験用の音を作る | 数秒 |
-| `npm run test:browser` | ブラウザーの試験（16件）。うち1件が実際の音声認識を使い、上の音がなければ飛ばす | 15分 |
+| `npm run test:browser` | ブラウザーの試験（26件）。うち1件が実際の音声認識を使い、上の音がなければ飛ばす | 15分以上（60秒になってからは未計測） |
+| `node scripts/capture-60s.mjs` | 仮の時計で60秒を進めながら画面写真を撮る確認。先に `npm run dev` を起動しておく。写真は `test-results/capture/` に出る | 数分 |
 | `npm run test:chants` | 合成音声を認識させ、詠唱辞書の読み方と変換を確認（先に `setup:speech`） | 数分 |
 | `npm run benchmark:speech` | 認識モデルの速さを比べる（先に `npm run make:speech-fixtures`） | 数分 |
 

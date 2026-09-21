@@ -139,7 +139,8 @@ body:not([data-dev]) .dev-only{display:none!important}
 /* 最終術式。枠の外は暗く沈め、線だけを見せる。 */
 .grimoire .spell-frame{position:relative;min-height:0;border:1px solid #83abc13b;overflow:hidden;background:radial-gradient(62% 62% at 50% 50%,#0a1a2a,#03070c 78%)}
 .grimoire #result-spell{position:absolute;inset:0;float:none;display:block;width:100%;height:100%;margin:0;border:0;background:transparent}
-.grimoire .spell-side{display:flex;flex-direction:column;min-height:0;min-width:0}
+/* 右の列。横長で高さの低い画面（1280×720など）でも確認番号が切れないよう、はみ出したら縦に送れるようにする。 */
+.grimoire .spell-side{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden auto}
 /* 魔法名だけ明朝。1920×1080で72〜96px相当。 */
 .grimoire h2{font-family:'Noto Serif JP',serif;font-weight:400;font-size:clamp(26px,7.2vh,96px);line-height:1.25;letter-spacing:.1em;color:#f4e9cf;margin:clamp(4px,1vh,14px) 0}
 .grimoire h2 rt{font-size:.3em;letter-spacing:.06em;color:#cfd9e0;font-family:'Noto Sans JP','Yu Gothic',sans-serif}
