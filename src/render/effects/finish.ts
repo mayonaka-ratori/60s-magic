@@ -1,7 +1,7 @@
 import { clamp } from '../../game/motion';
 import { FINISH_HIT_OFFSETS_MS, type Beat } from '../../game/rounds';
 import { increase } from './presets';
-import { edged, few, glow, noise, ease, smooth, type Frame, type XY } from './frame';
+import { edged, few, glow, line, noise, ease, smooth, type Frame, type XY } from './frame';
 
 /**
  * とどめの回だけの見せ方。設計「とどめと結果_詳細設計」の4章にあたる。
@@ -92,6 +92,49 @@ export const FINISH_INHERITED = { max: 6, gather: 4, reach: .22 };
 export const FINISH_HIT_OFFSETS = FINISH_HIT_OFFSETS_MS.map(ms => ms / 1000);
 /** その回の、当たる4回の時刻（秒）。 */
 export const finishHitTimes = (beat: Beat) => FINISH_HIT_OFFSETS.map(offset => beat.impact + offset);
+
+/**
+ * 4回の命中へ四方向から走り込む光の筋（4.3に足したもの）。
+ * 命中が騎士の胸の一点だけで起きると画面の左右が空くので、左、右、上、正面（中央下）の順に、画面の外から筋を走らせる。
+ * 筋は命中の時刻にちょうど届くよう、その0.12秒前から走り、届いた瞬間に来た方向へ火花を返す。
+ */
+export const FINISH_STREAK = {
+  /** 届くまでの長さ（秒）。命中の時刻に届くよう、この秒数だけ前から走らせる */ seconds: .12,
+  /** 筋の長さ（道のりに対する割合） */ tail: .22,
+  /** 届いたあと、筋の名残が騎士へ吸い込まれて消えるまで（秒） */ linger: .1,
+  /** 画面の外から出る位置の、画面の幅と高さに対するはみ出し */ outside: .05,
+  /** 届いた瞬間に返す火花の数（派手さで増える） */ sparks: 14,
+};
+/** 筋の来る方向。命中の順に使う。 */
+export const FINISH_STREAK_SIDES = ['left', 'right', 'top', 'front'] as const;
+export type StreakSide = typeof FINISH_STREAK_SIDES[number];
+/** j 回目の筋の来る方向。 */
+export const streakSide = (j: number): StreakSide => FINISH_STREAK_SIDES[j % FINISH_STREAK_SIDES.length];
+
+/** j 回目の筋が出てくる位置（画素）。左右は騎士の高さの少し上、上は騎士の真上、正面は画面の中央下。どれも画面の外から。 */
+export function streakStart(j: number, w: number, h: number, target: XY): XY {
+  const side = streakSide(j), out = FINISH_STREAK.outside;
+  if (side === 'left') return { x: -w * out, y: target.y - h * .06 };
+  if (side === 'right') return { x: w * (1 + out), y: target.y - h * .06 };
+  if (side === 'top') return { x: target.x, y: -h * out };
+  return { x: w / 2, y: h * (1 + out) };
+}
+
+/**
+ * j 回目の筋の、その時刻の頭と尾と濃さ。since は命中からの秒（届く前は負）。
+ * 走っている間（-0.12〜0秒）は頭が騎士へ向かって進み、後半ほど速い。届いたあとは名残が0.1秒で騎士へ吸い込まれる。範囲の外は null。
+ */
+export function streakAt(j: number, since: number, w: number, h: number, target: XY) {
+  if (since < -FINISH_STREAK.seconds || since >= FINISH_STREAK.linger) return null;
+  const from = streakStart(j, w, h, target);
+  const at = (p: number): XY => ({ x: from.x + (target.x - from.x) * p, y: from.y + (target.y - from.y) * p });
+  if (since < 0) {
+    const u = 1 + since / FINISH_STREAK.seconds, head = u * (.6 + .4 * u);
+    return { head: at(head), tail: at(Math.max(0, head - FINISH_STREAK.tail)), alpha: .9, arrived: false };
+  }
+  const left = 1 - since / FINISH_STREAK.linger;
+  return { head: at(1), tail: at(1 - FINISH_STREAK.tail * left), alpha: .9 * left, arrived: true };
+}
 
 /**
  * 術式が通り抜けるときの拡大と濃さ。time は発動からの秒。
@@ -347,6 +390,31 @@ function drawHits(f: Frame) {
   }
 }
 
+/**
+ * 4.3に足した、四方向から走り込む光の筋。命中の時刻に届き、届いた瞬間に来た方向へ火花を返す。
+ * 筋は属性の色の縁と白い芯の二重。既存の輪、通り抜け、直撃の見せ方と時刻には触らない。
+ */
+function drawStreaks(f: Frame) {
+  const times = finishHitTimes(f.beat), g = f.target;
+  for (let j = 0; j < times.length; j++) {
+    const streak = streakAt(j, f.t - times[j], f.w, f.h, g);
+    if (!streak) continue;
+    const width = 3 + f.intensity * .8;
+    line(f, streak.tail, streak.head, width, streak.alpha, f.palette.main, width * .35, f.palette.core);
+    glow(f, streak.head.x, streak.head.y, 4 + f.intensity * 1.5, streak.alpha * .8);
+    if (streak.arrived) f.once('finish-streak-' + j, () => {
+      // 来た方向へ火花を返す。筋の出どころへ向かう角度を中心に、少し散らす。
+      const from = streakStart(j, f.w, f.h, g), back = Math.atan2(from.y - g.y, from.x - g.x);
+      const n = Math.round(few(f, increase(FINISH_STREAK.sparks, f.intensity, .5)));
+      for (let i = 0; i < n; i++) {
+        const a = back + (f.pool.random() - .5) * .9, speed = 260 + f.pool.random() * 520;
+        f.pool.spawn({ x: g.x, y: g.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life: .35 + f.pool.random() * .45,
+          size: 1 + f.pool.random() * 1.6, gravity: 220, drag: .3, color: f.palette.spark, core: f.palette.core, kind: 1 });
+      }
+    });
+  }
+}
+
 /** 4.4 とどめの一撃。騎士の上だけの三段の光と、手前へ広がる衝撃波の輪。 */
 function drawBlow(f: Frame) {
   const blow = f.beat.finalBlow;
@@ -416,6 +484,7 @@ export function drawFinish(f: Frame) {
   if (f.t < f.beat.release) return;
   drawPassThrough(f);
   drawRings(f);
+  drawStreaks(f);
   drawHits(f);
   drawBlow(f);
   drawSettle(f);
