@@ -40,7 +40,7 @@ export const ROUNDS: Round[] = [
 
 /**
  * 一回目の受付中に、騎士が自分から動く時刻（ms）。足を踏み替える（step）、盾を打ち鳴らす（clang）。
- * 画面の揺れ、騎士の動き、効果音がこの一つの表を見る。案内の音（6秒、11秒）と重ねない。
+ * 画面の揺れ、騎士の動き、効果音がこの一つの表を見る。案内の音（7秒、14秒）と重ねない。
  */
 export const ENEMY_MOVES: ReadonlyArray<{ at: number; kind: 'step' | 'clang' }> = [{ at: 3500, kind: 'step' }, { at: 9500, kind: 'clang' }];
 /** 防御の回で、騎士が溜めの姿勢に入る時刻（ms）。ここから振り下ろしまで、画面が低く震え続ける。 */
