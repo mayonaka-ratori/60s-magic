@@ -2,6 +2,7 @@ import { test,expect,chromium } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { writeFile } from 'node:fs/promises';
+import { ROUNDS } from '../../src/game/rounds';
 
 test('PC内の実際の認識処理で最後の声を取り込み、描いた線と一緒に発動する',async()=>{
   test.skip(!existsSync('.local-speech/test-audio/browser-seven.wav'),'npm run test:speech と node scripts/prepare-browser-audio.mjs で確認用の音を用意');
@@ -23,8 +24,14 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     await page.mouse.move(500,420);await page.mouse.down();
     for(let i=0;i<18;i++){await page.mouse.move(620+Math.sin(i/4)*140,420+Math.cos(i/4)*120);await page.waitForTimeout(30);}
     await page.mouse.up();await expect(page.locator('#instruction')).toHaveText('描きながら、詠唱せよ',{timeout:17000});
-    await page.mouse.move(540,480);await page.mouse.down();await page.mouse.move(610,320,{steps:12});await page.mouse.up();
-    await expect(page.locator('#result')).toBeVisible({timeout:64000});
+    // 声は受付の17.3秒まで続く。線も同じところまで描き、締め切りの手前まで両方を受け付けているか見る。
+    // コマ数ではなく時計で測る。遅いPCでコマ送りが重くなっても、締め切りを大きく過ぎない。
+    const 描き終わり=Date.now()+(ROUNDS[0].inputEnd-ROUNDS[0].chant);
+    await page.mouse.move(540,480);await page.mouse.down();
+    for(let i=0;Date.now()<描き終わり;i++){await page.mouse.move(540+Math.sin(i/7)*120,400+Math.cos(i/7)*110);await page.waitForTimeout(100);}
+    await page.mouse.up();
+    // ここまでで本編は約18秒（締め切りまで描いたあと）。結果は本編90秒で出るので、残り72秒に余裕を足して待つ。
+    await expect(page.locator('#result')).toBeVisible({timeout:85000});
     // 落ちたときに何を聞き取ったかが分かるよう、魔法を確かめる前に記録を開いて一回目の聞き取りを出す。
     await page.locator('#record').click();
     const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
@@ -33,12 +40,14 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     await expect(page.locator('#spell-list')).toContainText('7つの雷の連弾');
     await expect(page.locator('#transcript')).not.toContainText('文字で入力');
     expect(first.state.speech.status).toBe('recognized');expect(first.state.speech.provider).toBe('local');
-    expect(first.speechEntries[0].final).toBe(true);expect(first.speechEntries[0].endMs).toBeGreaterThan(12000);
-    expect(first.rawPoints.at(-1).t).toBeGreaterThan(11000);expect(first.recipe.count).toBe(7);
+    // 合成した声は受付の17.3秒（締め切りの0.7秒前）に終わる。scripts/prepare-browser-audio.mjs の END_MS と合わせてある。
+    expect(first.speechEntries[0].final).toBe(true);expect(first.speechEntries[0].endMs).toBeGreaterThan(ROUNDS[0].inputEnd-2000);
+    expect(first.rawPoints.at(-1).t).toBeGreaterThan(ROUNDS[0].inputEnd-1000);expect(first.recipe.count).toBe(7);
     expect(report.audio.recordingQuiet).toBe(true);
-    expect(report.audio.events.every((e:{atMs:number})=>e.atMs>=14750)).toBe(true);
+    // 750は src/audio/cues.ts の QUIET_TAIL（録音を止めてから鳴らし始めるまでの余裕）。書き出していないので同じ値をここに置く。
+    expect(report.audio.events.every((e:{atMs:number})=>e.atMs>=ROUNDS[0].inputEnd+750)).toBe(true);
     expect(report.audio.events.some((e:{name:string})=>e.name==='impact')).toBe(true);
-    expect(first.events.find((e:{name:string})=>e.name==='release').observedMs).toBeLessThan(17250);
+    expect(first.events.find((e:{name:string})=>e.name==='release').observedMs).toBeLessThan(ROUNDS[0].release+250);
     expect(errors).toEqual([]);expect(outsideAudio).toEqual([]);
     await writeFile('.local-speech/browser-test-report.json',JSON.stringify(report,null,2));
     await page.locator('#sheet-close').click();await page.screenshot({path:'test-results/local-voice-result.png'});

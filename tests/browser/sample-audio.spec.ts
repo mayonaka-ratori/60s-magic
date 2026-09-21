@@ -55,7 +55,7 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばす',asy
   await page.goto('/?dev=1');await page.locator('.sound-settings summary').click();await page.locator('#test-sound').click();
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.peak)).toBeGreaterThan(.001);
   await page.locator('#start').click();await page.locator('#chant').fill('雷よ、七つに分かれろ');
-  // 6秒より前は合図が無いので、ここで音が出ていれば曲が鳴っている。
+  // 最初の合図は7秒なので、それより前にここで音が出ていれば曲が鳴っている。
   await page.waitForTimeout(1500);
   expect(await page.evaluate(()=>(window as any).__soundProbe.rms)).toBeGreaterThan(.001);
   await expect(page.locator('#result')).toBeVisible({timeout:100000});

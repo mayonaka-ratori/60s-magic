@@ -1,7 +1,7 @@
 import { test,expect,type Page } from '@playwright/test';
 
 // 画面に出る文字の四角形を集め、親子でない組み合わせが重なっていないか確かめる。
-const watched='#timer,.trial,.brand-name,.eyebrow,.chapter,.intro,.privacy,#notice,.mode-options,.voice-option,.sound-options,#start,.welcome-actions,.enemy-health,#cancel,#sound-toggle,#service-notice,#demo-tag,#voice-label,#input-panel,.bottom-hud,#recognized,#result,#result-spell,.feedback,.report-actions';
+const watched='#timer,.trial,.brand-name,.eyebrow,.chapter,.intro,.privacy,#notice,.mode-options,.voice-option,.sound-options,#start,.welcome-actions,.enemy-health,#cancel,#sound-toggle,#calm-toggle,#service-notice,#demo-tag,#voice-label,#input-panel,.bottom-hud,#recognized,#result,#result-spell,.feedback,.report-actions';
 const overlaps=(page:Page,where:string)=>page.evaluate(([sel,label])=>{
   const name=(n:Element)=>(n.id?'#'+n.id:'.'+String(n.className).split(' ')[0]);
   const shown=[...document.querySelectorAll(sel)].filter(n=>{
@@ -31,7 +31,8 @@ async function playThrough(page:Page,where:string) {
     found.push(...await overlaps(page,`${where}・${await page.locator('#timer').innerText()}`));
     await page.waitForTimeout(1000);
   }
-  await expect(page.locator('#result')).toBeVisible({timeout:20000});
+  // 上の繰り返しは最短でも74秒見張る。本編90秒の残りを待ちきれるよう、ここは余裕を持たせる。
+  await expect(page.locator('#result')).toBeVisible({timeout:30000});
   found.push(...await overlaps(page,`${where}・結果`));
   return [...new Set(found)];
 }
@@ -79,7 +80,8 @@ test('遊ぶ人の画面には確認用の表示を出さない',async({page})=>
   await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
   for(const target of ['.trial','#settings','.dev-only'])await expect(page.locator(target).first()).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#timer')).toContainText('のこり');
-  await expect(page.locator('#result')).toBeVisible({timeout:80000});
+  // 時計は合図が消えてから出るので、ここは本編の0秒ごろ。本編90秒ぶんに余裕を足して待つ。
+  await expect(page.locator('#result')).toBeVisible({timeout:96000});
   await expect(page.locator('.report-actions')).toBeHidden();await expect(page.locator('#feedback')).toBeHidden();
   await page.goto('/?dev=1');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
 });

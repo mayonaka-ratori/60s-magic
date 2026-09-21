@@ -18,13 +18,16 @@ function wave(audio) {
 }
 const ice=pcm(await readFile('.local-speech/test-audio/ice.wav'));
 const seven=pcm(await readFile('.local-speech/test-audio/seven.wav'));
-// マイクは開始ボタンの直後に開き、そのあと音声認識のつなぎ込み（約0.4秒）と3秒の合図を経て24秒が始まる。
-// 24秒の中の13.3秒ごろに声が終わるように、そのぶん後ろへ置く。
-const LEAD_MS=3400,END_MS=13300;
+// マイクは開始ボタンの直後に開き、そのあと音声認識のつなぎ込み（約0.4秒）と3秒の合図を経て、一回目の受付（18秒）が始まる。
+// 受付の17.3秒ごろ、つまり締め切りの0.7秒前に声が終わるように、そのぶん後ろへ置く。
+// 締め切りまで声を拾い続けられるかを、ブラウザーの試験でそのまま確かめるための置き方。
+// 数字の出どころ：3000は src/game/rounds.ts の COUNTDOWN_MS、18000は同じ表の ROUNDS[0].inputEnd。
+// このファイルは .mjs なので rounds.ts を読み込めない。表の秒数を変えたら、ここも直すこと。
+const LEAD_MS=3400,END_MS=17300;
 for (const [name,voice] of [['ice',ice],['seven',seven]]) {
   const audio=Buffer.alloc(32000*30);
   const startMs=LEAD_MS+END_MS-voice.length/32;
   voice.copy(audio,Math.round(startMs*32));
   await writeFile(`.local-speech/test-audio/browser-${name}.wav`,wave(audio));
-  console.log(`${name}: 音の先頭から${startMs.toFixed(0)}〜${LEAD_MS+END_MS}ms に合成した声を配置（24秒の中では約${END_MS-voice.length/32|0}〜${END_MS}ms）`);
+  console.log(`${name}: 音の先頭から${startMs.toFixed(0)}〜${LEAD_MS+END_MS}ms に合成した声を配置（一回目の受付の中では約${END_MS-voice.length/32|0}〜${END_MS}ms）`);
 }

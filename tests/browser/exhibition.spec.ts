@@ -16,7 +16,8 @@ test('結果のまま誰も触らなければ、タイトルへ戻って自動�
   await page.goto('/?attract=5&resultIdle=6');
   await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();
-  await expect(page.locator('#result')).toBeVisible({timeout:72000});
+  // ここは開始ボタンの直後から待つ。3秒の合図と本編90秒で93秒かかるので、余裕を足して100秒待つ。
+  await expect(page.locator('#result')).toBeVisible({timeout:100000});
   await expect(page.locator('#welcome')).toBeVisible({timeout:16000});
   await expect(page.locator('#demo-tag')).toBeVisible({timeout:16000});
 });
@@ -87,7 +88,8 @@ test('入力から描き終わるまでの時間を記録に残す',async({page}
     await page.mouse.move(500+i*40,420+i*20);await page.mouse.down();
     await page.mouse.move(560+i*40,470+i*20,{steps:3});await page.mouse.up();
   }
-  await expect(page.locator('#result')).toBeVisible({timeout:72000});
+  // ここは合図が消えたあと（本編の0秒ごろ）から待つので、本編90秒ぶんに余裕を足す。
+  await expect(page.locator('#result')).toBeVisible({timeout:96000});
   await page.locator('#record').click();
   const 記録=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(記録.measurement.inputToDrawMs.samples).toBeGreaterThan(0);

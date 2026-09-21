@@ -48,8 +48,8 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
   await page.screenshot({path:'test-results/knight-hit.png'});
   await expect(page.locator('#knight')).toHaveAttribute('data-state','recover');
   await page.screenshot({path:'test-results/knight-recover.png'});
-  // とどめの回まで進むので、結果画面は90秒すぎに出る。
-  await expect(page.locator('#result')).toBeVisible({timeout:75000});
+  // とどめの回まで進むので、結果画面は本編90秒で出る。ここは命中して構えを戻した約25秒から待つので、残り65秒に余裕を足す。
+  await expect(page.locator('#result')).toBeVisible({timeout:85000});
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.activeSources).toBe(0);
   expect(report.audio.events.map((e:{name:string})=>e.name)).toEqual(鳴る音);
