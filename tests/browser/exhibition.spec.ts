@@ -46,7 +46,9 @@ test('当たった瞬間に体力バーが反応し、騎士に魔法の傷あ�
   await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   const 見たもの=new Set<string>();
-  for(let i=0;i<210&&await page.locator('#result').isHidden();i++) {
+  // 三つとも一回目の命中（23.5秒）までに出る。出そろったら90秒の最後までは待たない。
+  // 出そろわないときだけ、今までどおり最後まで見張って落とす。
+  for(let i=0;i<210&&見たもの.size<3&&await page.locator('#result').isHidden();i++) {
     const いま=await page.evaluate(()=>({
       傷:(document.getElementById('knight') as HTMLElement).dataset.scar,
       反応:document.querySelector<HTMLElement>('.enemy-health')!.dataset.hit==='1',
@@ -77,21 +79,4 @@ test('画面で読む文字はゴシック体、明朝は題字と魔法名だ�
   expect(書体.敵の名前,'敵の名前はゴシック').toContain('Noto Sans JP');
   expect(書体.魔法名,'魔法名は明朝のまま').toContain('Noto Serif JP');
   expect(書体.題字,'題字は明朝のまま').toContain('Noto Serif JP');
-});
-
-test('入力から描き終わるまでの時間を記録に残す',async({page})=>{
-  await page.goto('/?dev=1');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
-  await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
-  // 3秒の合図の間に描いた線は本編の入力に数えないので、合図が消えてから描く。
-  await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
-  for(let i=0;i<5;i++){
-    await page.mouse.move(500+i*40,420+i*20);await page.mouse.down();
-    await page.mouse.move(560+i*40,470+i*20,{steps:3});await page.mouse.up();
-  }
-  // ここは合図が消えたあと（本編の0秒ごろ）から待つので、本編90秒ぶんに余裕を足す。
-  await expect(page.locator('#result')).toBeVisible({timeout:96000});
-  await page.locator('#record').click();
-  const 記録=JSON.parse(await page.locator('#sheet-body pre').innerText());
-  expect(記録.measurement.inputToDrawMs.samples).toBeGreaterThan(0);
-  expect(記録.measurement.inputToDrawMs.median).toBeGreaterThan(0);
 });

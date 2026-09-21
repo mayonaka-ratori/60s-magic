@@ -92,7 +92,12 @@ test('90秒を最後まで遊び、七つの雷と、印を囲んだ盾と、と
   expect(record.confirmCode).toMatch(/^\d{6}$/);
   expect(finish.rawPoints.filter((p:{t:number})=>p.t>=ROUNDS[2].start&&p.t<ROUNDS[2].inputEnd).length).toBeGreaterThan(20);
   expect(finish.events.find((e:{name:string})=>e.name==='recipe-locked').observedMs).toBeLessThan(ROUNDS[2].lock+250);
-  expect(record.feedback).toBe('yes');expect(errors).toEqual([]);
+  expect(record.feedback).toBe('yes');
+  // 入力から描き終わるまでの時間も、この通しの記録から見る。
+  // 合図が消えたあとに描いているので、測った回数は必ず1回以上になる。
+  expect(record.measurement.inputToDrawMs.samples).toBeGreaterThan(0);
+  expect(record.measurement.inputToDrawMs.median).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
 });
 
 test('遅いJevの回答は使わず、本人の氷の壁で時刻どおり発動する',async({page})=>{

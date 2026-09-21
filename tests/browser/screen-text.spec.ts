@@ -26,6 +26,8 @@ async function playThrough(page:Page,where:string) {
   await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   await page.mouse.move(420,400);await page.mouse.down();await page.mouse.move(700,520,{steps:20});await page.mouse.up();
+  // 始めたら時計が出る。合図が消えてから出るので、合図の3秒ぶんを待てる長さにする。
+  await expect(page.locator('#timer')).toContainText('のこり',{timeout:15000});
   // 描いている間から余韻まで、1秒ごとに見る。描画が遅い環境でも取りこぼさない。
   for(let i=0;i<74&&await page.locator('#result').isHidden();i++) {
     found.push(...await overlaps(page,`${where}・${await page.locator('#timer').innerText()}`));
@@ -49,8 +51,12 @@ test('開始前の画面は、どの大きさでも文字が重ならない',asy
   expect(found).toEqual([]);
 });
 
-test('プレイ中と結果の画面で文字が重ならない（横長）',async({page})=>{
+test('プレイ中と結果の画面で文字が重ならず、確認用の表示も出ない（横長）',async({page})=>{
   expect(await playThrough(page,'1440×900')).toEqual([]);
+  // 遊ぶ人の画面では、結果になっても確認用の表示を出さない。
+  // ここは `/` を最後まで通したあとなので、専用の通しを別に持たなくてよい。
+  await expect(page.locator('.report-actions')).toBeHidden();
+  await expect(page.locator('#feedback')).toBeHidden();
 });
 
 test('プレイ中と結果の画面で文字が重ならない（縦長）',async({page})=>{
@@ -76,13 +82,10 @@ test.describe('このPCの「動きを減らす」設定',()=>{
   });
 });
 
-test('遊ぶ人の画面には確認用の表示を出さない',async({page})=>{
+test('確認用の表示は、遊ぶ人には出さず ?dev=1 でだけ出す',async({page})=>{
+  // 始めたときの時計と、結果の画面での確認は、上の横長の通しで見ている。ここは90秒を通さない。
   await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
   for(const target of ['.trial','#settings','.dev-only'])await expect(page.locator(target).first()).toBeHidden();
-  await page.locator('#start').click();await expect(page.locator('#timer')).toContainText('のこり');
-  // 時計は合図が消えてから出るので、ここは本編の0秒ごろ。本編90秒ぶんに余裕を足して待つ。
-  await expect(page.locator('#result')).toBeVisible({timeout:96000});
-  await expect(page.locator('.report-actions')).toBeHidden();await expect(page.locator('#feedback')).toBeHidden();
   await page.goto('/?dev=1');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
 });
 

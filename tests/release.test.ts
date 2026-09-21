@@ -1,5 +1,4 @@
 import { BEATS } from '../src/game/rounds';
-import { AIM } from '../src/game/guard';
 import { describe, it, expect } from 'vitest';
 import { ARRIVAL, bodyPoint, drawBody, drawRelease, drawTravel, hitDelay } from '../src/render/effects/release';
 import { IMPACT_AT, RELEASE_AT } from '../src/render/effects/screen';
@@ -8,8 +7,8 @@ import { ParticlePool } from '../src/render/effects/particles';
 import type { Frame } from '../src/render/effects/frame';
 import type { Recipe } from '../src/game/types';
 
-const recipe = (over: Partial<Recipe> = {}): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null, ...over });
+// 仮のcanvasと試験用の魔法は tests/helpers.ts にまとめてある。
+import { callRecorder as recorder, noSprites as noGlow, testFrame, testRecipe as recipe } from './helpers';
 
 const origin = { x: 100, y: 500 }, target = { x: 700, y: 300 };
 /** bodyPoint が見るぶんだけの仮の Frame。 */
@@ -55,38 +54,17 @@ describe('連弾の到達', () => {
   });
 });
 
-type Call = { name: string; args: number[]; strokeStyle: string };
-/** 描く命令を控えておく仮のcanvas。使った色と線の位置を後から確かめられる。 */
-function recorder() {
-  const calls: Call[] = [];
-  const held: Record<string, unknown> = { strokeStyle: '', fillStyle: '', lineWidth: 0, globalAlpha: 1, globalCompositeOperation: 'lighter' };
-  const fake: unknown = new Proxy(held, {
-    get: (target, key: string) => key in target ? target[key] : (...args: number[]) => {
-      calls.push({ name: key, args, strokeStyle: String(target.strokeStyle) });
-      return fake;
-    },
-    set: (target, key: string, value) => { target[key] = value; return true; },
-  });
-  return { c: fake as CanvasRenderingContext2D, calls };
-}
-
 /** 光の粒の描画を控えておく仮の絵。置かれた場所と大きさだけを見る。 */
 function glowRecorder() {
   const glows: { x: number; y: number; r: number }[] = [];
   const sprites = { draw: (_c: CanvasRenderingContext2D, x: number, y: number, r: number) => { glows.push({ x, y, r }); } } as unknown as Frame['sprites'];
   return { sprites, glows };
 }
-const noGlow = { draw: () => {} } as unknown as Frame['sprites'];
 
 /** 放出と本体の部品を呼ぶための仮の Frame。光の絵は描かず、線の色と位置だけを見る。 */
 function scene(c: CanvasRenderingContext2D, over: Partial<Recipe>, accent: Palette | null, t: number, sprites: Frame['sprites'] = noGlow): Frame {
   const r = recipe(over), pool = new ParticlePool(600); pool.reseed(7);
-  return { c, w: 1280, h: 720, t, dt: .016,
-    sprites, pool,
-    preset: presets.vivid, palette: presets.vivid.palettes[r.element], intensity: 1.5,
-    recipe: r, locked: true, origin, target,
-    accent, live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm: false,
-    once: (_key, run) => run() };
+  return testFrame({ c, t, sprites, pool, palette: presets.vivid.palettes[r.element], recipe: r, origin, target, accent });
 }
 
 describe('二属性の色', () => {

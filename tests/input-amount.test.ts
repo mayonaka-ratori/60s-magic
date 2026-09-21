@@ -3,14 +3,14 @@ import { inputAmount, resetInputAmount } from '../src/game/input-amount';
 import { BEATS, ROUNDS } from '../src/game/rounds';
 import { intensityOf, presets } from '../src/render/effects/presets';
 import { screenState } from '../src/render/effects/screen';
-import type { Point, Recipe, SpeechEntry } from '../src/game/types';
+import type { Point, SpeechEntry } from '../src/game/types';
 
 /** まっすぐな一筆。長さ len の線を stroke 番の筆として作る。 */
 const stroke = (n: number, len: number, id: number): Point[] =>
   Array.from({ length: n }, (_, i) => ({ x: .1 + len * i / (n - 1), y: .5, t: i * 16, hand: 0, stroke: id }));
 const say = (text: string, id: number): SpeechEntry => ({ id, revision: 1, startMs: 0, endMs: 1000, text, final: true, stability: 1, source: 'typed' });
-const recipe = (): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null });
+// 試験用の魔法は tests/helpers.ts にまとめてある。
+import { testRecipe as recipe } from './helpers';
 
 describe('入力の量', () => {
   // 覚え書きは一戦ごとに消すので、試験も一つずつ消してから始める。

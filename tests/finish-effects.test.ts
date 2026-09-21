@@ -1,6 +1,5 @@
 import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest';
 import { BEATS, beatOf, ROUNDS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS } from '../src/game/rounds';
-import { AIM } from '../src/game/guard';
 import { presets } from '../src/render/effects/presets';
 import { ParticlePool } from '../src/render/effects/particles';
 import { drawTravel, arrivalOf, bodyPoint, hitDelay } from '../src/render/effects/release';
@@ -16,36 +15,17 @@ import {
 } from '../src/render/effects/finish';
 
 const finishBeat = beatOf(ROUNDS[2]);
-const recipe = (over: Partial<Recipe> = {}): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null, ...over });
-
-/** 描く命令を受け流すだけの仮の canvas。数の指定だけを記録できる。 */
-const digits = (v: number) => Math.round(v * 1000) / 1000;
-const stubContext = (log?: string[]) => {
-  const held: Record<string, unknown> = {};
-  const fake: unknown = new Proxy(held, {
-    get: (target, key: string) => (key in target ? target[key] : (...args: unknown[]) => {
-      log?.push(key + ':' + args.filter(a => typeof a === 'number').map(a => digits(a as number)).join(','));
-      return fake;
-    }),
-    set: (target, key: string, value) => { if (typeof value === 'number') log?.push(key + '=' + digits(value)); target[key] = value; return true; },
-  });
-  return fake as CanvasRenderingContext2D;
-};
+// 仮のcanvasと試験用の魔法は tests/helpers.ts にまとめてある。
+import { stubContext, testFrame, testRecipe as recipe } from './helpers';
 /** 線を数本持つ、仮の術式の点列。 */
 const points: Point[] = [];
 for (let stroke = 0; stroke < 3; stroke++) for (let i = 0; i < 12; i++)
   points.push({ x: .4 + Math.cos(i / 12 * Math.PI * 2) * (.05 + stroke * .03), y: .6 + Math.sin(i / 12 * Math.PI * 2) * .05, t: i * 20, hand: 0, stroke });
 
-/** finish.ts の部品だけを呼ぶための仮の Frame。 */
-const frame = (t: number, over: Partial<Frame> = {}, spell: Partial<Recipe> = {}): Frame => ({
-  c: stubContext(), w: 1280, h: 720, t, dt: .016,
-  sprites: { draw: () => {} } as unknown as Frame['sprites'], pool: new ParticlePool(700),
-  preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
-  recipe: recipe(spell), locked: true, origin: { x: 320, y: 520 }, target: { x: 900, y: 360 },
-  accent: null, live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points, cursors: [],
-  beat: finishBeat, guard: null, aim: AIM, inherited: [], calm: false,
-  once: (_key, run) => run(), ...over,
+/** finish.ts の部品だけを呼ぶための仮の Frame。共通の土台から、この回のぶんだけ変える。 */
+const frame = (t: number, over: Partial<Frame> = {}, spell: Partial<Recipe> = {}): Frame => testFrame({
+  t, pool: new ParticlePool(700), recipe: recipe(spell), origin: { x: 320, y: 520 },
+  points, beat: finishBeat, ...over,
 });
 
 describe('術式が視界を通り抜ける', () => {

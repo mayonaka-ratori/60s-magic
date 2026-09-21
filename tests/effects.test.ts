@@ -1,5 +1,4 @@
 import { BEATS } from '../src/game/rounds';
-import { AIM } from '../src/game/guard';
 import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest';
 import { presets, getPreset, intensityOf, increase, mixHue, lighten } from '../src/render/effects/presets';
 import { hitDelay } from '../src/render/effects/release';
@@ -11,30 +10,10 @@ const 発動 = RELEASE_AT, 命中 = IMPACT_AT;
 import { drawImpact } from '../src/render/effects/impact';
 import { type Frame } from '../src/render/effects/frame';
 import { MagicCanvas } from '../src/render/magic';
-import { ELEMENTS, type Recipe } from '../src/game/types';
+import { ELEMENTS } from '../src/game/types';
 
-/**
- * 描く命令を受け流すだけの仮のcanvas。どの命令も自分を返すので、gradient も使える。
- * 記録用の配列を渡すと、描いた命令と数の指定を書き出す。node には本物のcanvasがないため。
- */
-const digits = (v: number) => Math.round(v * 1000) / 1000;
-const stubContext = (log?: string[]) => {
-  const held: Record<string, unknown> = {};
-  const fake: unknown = new Proxy(held, {
-    get: (target, key: string) => (key in target ? target[key] : (...args: unknown[]) => {
-      log?.push(key + ':' + args.filter(a => typeof a === 'number').map(a => digits(a as number)).join(','));
-      return fake;
-    }),
-    set: (target, key: string, value) => {
-      if (typeof value === 'number') log?.push(key + '=' + digits(value));
-      target[key] = value; return true;
-    },
-  });
-  return fake as CanvasRenderingContext2D;
-};
-
-const recipe = (over: Partial<Recipe> = {}): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null, ...over });
+// 仮のcanvasと試験用の魔法は tests/helpers.ts にまとめてある。
+import { stubContext, testFrame, testRecipe as recipe } from './helpers';
 
 describe('見た目の設定', () => {
   it('全属性に4色があり、未知の名前は既定の設定になる', () => {
@@ -296,14 +275,7 @@ describe('属性ごとの消え方', () => {
 
 describe('控えめモードは部品にも届く', () => {
   /** 命中の部品だけを呼ぶための仮の Frame。光の絵は描かず、粒の数だけを見る。 */
-  const frame = (calm: boolean, pool: ParticlePool): Frame => ({
-    c: stubContext(), w: 1280, h: 720, t: IMPACT_AT + .01, dt: .016,
-    sprites: { draw: () => {} } as unknown as Frame['sprites'], pool,
-    preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
-    recipe: recipe(), locked: true, origin: { x: 200, y: 500 }, target: { x: 900, y: 360 },
-    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm,
-    once: (_key, run) => run(),
-  });
+  const frame = (calm: boolean, pool: ParticlePool): Frame => testFrame({ t: IMPACT_AT + .01, pool, calm });
   const impactParticles = (calm: boolean) => {
     const pool = new ParticlePool(2000); pool.reseed(7);
     drawImpact(frame(calm, pool));
