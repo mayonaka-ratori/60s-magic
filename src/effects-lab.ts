@@ -1,5 +1,5 @@
 import './effects-lab.css';
-import { MagicCanvas } from './render/magic';
+import { MagicCanvas, stopAtOf } from './render/magic';
 import { layerTransform } from './render/cast-scene';
 import { Knight } from './render/knight';
 import { ScreenOverlay } from './render/overlay';
@@ -7,10 +7,21 @@ import { presets, defaultPresetName } from './render/effects/presets';
 import { spellPose } from './render/spell-layout';
 import type { LiveInput } from './game/live-input';
 import { liveWords } from './game/live-words';
+import { BEATS, ROUNDS } from './game/rounds';
 import { ELEMENTS, FORMS, PURPOSES, TRAJECTORIES, ELEMENT_LABELS, FORM_LABELS, PURPOSE_LABELS, type Recipe, type Point } from './game/types';
 
 /** 演出だけを見比べる画面。本編を遊ばずに、放出から命中までを繰り返し見られる。カメラ、マイク、通信は使わない。 */
 const params = new URLSearchParams(location.search);
+/** 見比べるのは一回目の回。時刻はすべてこの行から作り、この画面に秒数を書かない。 */
+const FIRST = ROUNDS[0];
+/** 見せ始める時刻（ms）。締め切りの0.5秒前から、粒が中心へ吸い込まれるところを見せる。17.5秒。 */
+const LAB_FROM = FIRST.inputEnd - 500;
+/** 見せ終わる時刻（ms）。本編で余韻を描くのをやめる時刻と同じ。29.5秒。ここまで来たら先頭へ戻す。 */
+const LAB_TO = Math.round(stopAtOf(BEATS[0]) * 1000);
+/** 「放出だけ繰り返す」ときの先頭（ms）。発動の0.2秒前。21.8秒。 */
+const LAB_RELEASE_FROM = FIRST.release - 200;
+/** つまみに出す秒の書き方。17500なら「17.5」。 */
+const labSeconds = (ms: number) => (ms / 1000).toFixed(1);
 const trajectoryLabels: Record<string, string> = { straight: '直進', spiral: '螺旋', radial: '放射', orbit: '周回', homing: '追尾' };
 const options = (list: readonly string[], labels: Record<string, string>, selected: string) => list.map(v => `<option value="${v}"${v === selected ? ' selected' : ''}>${labels[v] ?? v}</option>`).join('');
 const presetOptions = (selected: string) => Object.values(presets).map(p => `<option value="${p.name}"${p.name === selected ? ' selected' : ''}>${p.label}</option>`).join('');
@@ -32,7 +43,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </section>`).join('')}
     </div>
     <footer class="lab-footer">
-      <label>時刻 <input id="time" type="range" min="13.5" max="23.5" step="0.01" value="13.5"><output id="time-value">13.5秒</output></label>
+      <label>時刻 <input id="time" type="range" min="${labSeconds(LAB_FROM)}" max="${labSeconds(LAB_TO)}" step="0.01" value="${labSeconds(LAB_FROM)}"><output id="time-value">${labSeconds(LAB_FROM)}秒</output></label>
       <label>属性 <select id="element">${options(ELEMENTS, ELEMENT_LABELS, params.get('element') ?? 'fire')}</select></label>
       <label>形 <select id="form">${options(FORMS, FORM_LABELS, params.get('form') ?? 'orb')}</select></label>
       <label>用途 <select id="purpose">${options(PURPOSES, PURPOSE_LABELS, params.get('purpose') ?? 'attack')}</select></label>
@@ -73,28 +84,30 @@ const sides: Side[] = ['a', 'b'].map(side => {
   const magic = new MagicCanvas(el<HTMLCanvasElement>(`magic-${side}`), value(`preset-${side}`));
   magic.setCalm(calmMode);
   const knight = new Knight(el<HTMLCanvasElement>(`knight-${side}`));
-  // 騎士の反応の強さも演出canvasと同じ設定で決める。
+  // 騎士の反応の強さも演出canvasと同じ設定で決める。控えめモードも同じ値を渡す
+  // （渡さないと騎士だけがこのPCの「動きを減らす」設定に従い、左右の見え方と食い違う）。
   knight.setPreset(magic.preset);
+  knight.setCalm(calmMode);
   const backdrop = frame.querySelector<HTMLElement>('.lab-backdrop')!;
   // 閃光、ビネット、グレイン、暗転、背景の彩度は本編と同じHTMLの層で出す。左右それぞれに一組ずつ持つ。
   const overlay = new ScreenOverlay(frame, { world: backdrop });
-  el(`preset-${side}`).addEventListener('change', () => { magic.setPreset(value(`preset-${side}`)); knight.setPreset(magic.preset); ms = Math.min(ms, 13500); });
+  el(`preset-${side}`).addEventListener('change', () => { magic.setPreset(value(`preset-${side}`)); knight.setPreset(magic.preset); ms = Math.min(ms, LAB_FROM); });
   return { magic, knight, overlay, layers: [backdrop, el(`knight-${side}`)], meter: el<HTMLOutputElement>(`meter-${side}`), frames: [], lastShake: ['', ''] };
 });
 // ページを離れるときに騎士の立体の描画を片付ける（WebGLの文脈を残さない）。層も一緒に外す。
 addEventListener('pagehide', () => { for (const s of sides) { s.knight.dispose(); s.overlay.dispose(); } }, { once: true });
 
-let ms = 13500, playing = true, loopStart = 13500, last = performance.now();
+let ms = LAB_FROM, playing = true, loopStart = LAB_FROM, last = performance.now();
 const clock = el<HTMLInputElement>('time');
 function setPlaying(next: boolean) { playing = next; el('play').textContent = next ? '止める' : '動かす'; el('play').setAttribute('aria-pressed', String(next)); }
 el('play').addEventListener('click', () => setPlaying(!playing));
-el('loop-release').addEventListener('click', () => { loopStart = loopStart === 13500 ? 16800 : 13500; el('loop-release').textContent = loopStart === 13500 ? '放出だけ繰り返す' : '蓄積から繰り返す'; ms = loopStart; setPlaying(true); });
+el('loop-release').addEventListener('click', () => { loopStart = loopStart === LAB_FROM ? LAB_RELEASE_FROM : LAB_FROM; el('loop-release').textContent = loopStart === LAB_FROM ? '放出だけ繰り返す' : '蓄積から繰り返す'; ms = loopStart; setPlaying(true); });
 el('single').addEventListener('click', () => { const single = el('layout').classList.toggle('single'); el('single').setAttribute('aria-pressed', String(single)); el('single').textContent = single ? '二画面にする' : '一画面にする'; resize(); });
 /** つまみを動かしたときに描き直すコマ数の上限。これを超える分は一コマを長くして粗く飛ばす。 */
 const CATCH_UP_FRAMES = 120;
 // つまみで先へ飛ばすときは、途中のコマを速く描いて粒の動きを追いつかせる。戻すときは最初から。
 function seek(target: number) {
-  if (target < ms) { ms = 13500; for (const s of sides) s.magic.renderEffects({ points: [], ms: 24000, recipe: null, voice: 0, cursors: [], ready: true, target: { x: .5, y: .3 }, origin: { x: 0, y: 0 } }); }
+  if (target < ms) { ms = LAB_FROM; for (const s of sides) s.magic.renderEffects({ points: [], ms: LAB_TO, recipe: null, voice: 0, cursors: [], ready: true, target: { x: .5, y: .3 }, origin: { x: 0, y: 0 } }); }
   // 10秒ぶん戻すと600コマ×2画面になって固まるので、描き直すのは120コマまでにする。
   const frames = Math.min(CATCH_UP_FRAMES, Math.floor((target - ms) / (1000 / 60)));
   const step = frames > 0 ? (target - ms) / frames : 0;
@@ -102,7 +115,7 @@ function seek(target: number) {
   ms = target;
 }
 clock.addEventListener('input', () => { setPlaying(false); seek(Number(clock.value) * 1000); });
-for (const id of ['element', 'form', 'purpose', 'trajectory', 'count', 'area', 'concentration']) el(id).addEventListener('change', () => { ms = Math.min(ms, Math.max(loopStart, 13500)); });
+for (const id of ['element', 'form', 'purpose', 'trajectory', 'count', 'area', 'concentration']) el(id).addEventListener('change', () => { ms = Math.min(ms, Math.max(loopStart, LAB_FROM)); });
 
 // 入力した言葉は、入れ直した瞬間に唱えたものとして扱う。
 let spokenAt = 0;
@@ -119,7 +132,7 @@ new ResizeObserver(resize).observe(el('layout'));
 function animate(now: number) {
   requestAnimationFrame(animate);
   const dt = Math.min(50, now - last); last = now;
-  if (playing) { ms += dt; if (ms >= 23500) ms = loopStart; clock.value = (ms / 1000).toFixed(2); }
+  if (playing) { ms += dt; if (ms >= LAB_TO) ms = loopStart; clock.value = (ms / 1000).toFixed(2); }
   el('time-value').textContent = `${(ms / 1000).toFixed(1)}秒`;
   renderSides(dt);
   if (Math.floor(now / 250) !== Math.floor((now - dt) / 250)) for (const s of sides) {
@@ -138,7 +151,7 @@ function renderSides(dt = 0) {
     const displayed = points.map(p => ({ ...p, x: ((p.x - .5) * w * pose.scale + pose.dx + w / 2) / w, y: ((p.y - .5) * h * pose.scale + pose.dy + h / 2) / h }));
     s.knight.render(worldMs, true, current);
     // 見比べ画面では入力の量を URL の amount= で仮に与える。言葉は空。
-    const live: LiveInput = { words: liveWordsNow(), amount: Number(params.get('amount') ?? .5), voice: 0, rings: 0 };
+    const live: LiveInput = { words: liveWordsNow(), amount: Number(params.get('amount') ?? .5), voice: 0, rings: 0, covered: false };
     const unlocked = unlockedNow();
     s.magic.renderEffects({ points: displayed, ms, recipe: unlocked ? null : current, voice: 0, cursors: [], ready: false, target: s.knight.target, origin: pose.center, live });
     // 背景と騎士に揺れ、傾き、寄りを当てる。騎士は背景より1.3倍大きく動かす。

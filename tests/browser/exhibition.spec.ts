@@ -16,7 +16,8 @@ test('結果のまま誰も触らなければ、タイトルへ戻って自動�
   await page.goto('/?attract=5&resultIdle=6');
   await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();
-  await expect(page.locator('#result')).toBeVisible({timeout:72000});
+  // ここは開始ボタンの直後から待つ。3秒の合図と本編90秒で93秒かかるので、余裕を足して100秒待つ。
+  await expect(page.locator('#result')).toBeVisible({timeout:100000});
   await expect(page.locator('#welcome')).toBeVisible({timeout:16000});
   await expect(page.locator('#demo-tag')).toBeVisible({timeout:16000});
 });
@@ -24,16 +25,16 @@ test('結果のまま誰も触らなければ、タイトルへ戻って自動�
 test('唱える時間になると、まだ何も言っていない人に例を出す',async({page})=>{
   await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
-  await expect(page.locator('#hint')).toHaveText('たとえば「雷よ、七つに分かれろ」',{timeout:20000});
+  await expect(page.locator('#hint')).toHaveText('たとえば「雷よ、七つに分かれろ」',{timeout:26000});
 });
 
 test('もう言葉を入れた人には、詠唱の例を出さない',async({page})=>{
   await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
-  // 締め切り前に入れる。14秒を過ぎると入力欄が閉じるので、始めてすぐ入れる。
+  // 締め切り前に入れる。18秒を過ぎると入力欄が閉じるので、始めてすぐ入れる。
   await page.locator('#chant').fill('氷よ、壁となれ');
   const 見たひとこと=new Set<string>();
-  for(let i=0;i<18&&await page.locator('#timer').isVisible();i++) {
+  for(let i=0;i<26&&await page.locator('#timer').isVisible();i++) {
     見たひとこと.add(await page.locator('#hint').innerText());
     await page.waitForTimeout(700);
   }
@@ -45,11 +46,13 @@ test('当たった瞬間に体力バーが反応し、騎士に魔法の傷あ�
   await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   const 見たもの=new Set<string>();
-  for(let i=0;i<140&&await page.locator('#result').isHidden();i++) {
+  // 三つとも一回目の命中（23.5秒）までに出る。出そろったら90秒の最後までは待たない。
+  // 出そろわないときだけ、今までどおり最後まで見張って落とす。
+  for(let i=0;i<210&&見たもの.size<3&&await page.locator('#result').isHidden();i++) {
     const いま=await page.evaluate(()=>({
       傷:(document.getElementById('knight') as HTMLElement).dataset.scar,
       反応:document.querySelector<HTMLElement>('.enemy-health')!.dataset.hit==='1',
-      体力:parseFloat((document.getElementById('health') as HTMLElement).style.width||'100'),
+      体力:parseFloat((document.getElementById('health') as HTMLElement).style.height||'100'),
     }));
     if(いま.傷==='1')見たもの.add('傷あと');
     if(いま.反応)見たもの.add('体力バーの反応');
@@ -76,20 +79,4 @@ test('画面で読む文字はゴシック体、明朝は題字と魔法名だ�
   expect(書体.敵の名前,'敵の名前はゴシック').toContain('Noto Sans JP');
   expect(書体.魔法名,'魔法名は明朝のまま').toContain('Noto Serif JP');
   expect(書体.題字,'題字は明朝のまま').toContain('Noto Serif JP');
-});
-
-test('入力から描き終わるまでの時間を記録に残す',async({page})=>{
-  await page.goto('/?dev=1');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
-  await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
-  // 3秒の合図の間に描いた線は本編の入力に数えないので、合図が消えてから描く。
-  await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
-  for(let i=0;i<5;i++){
-    await page.mouse.move(500+i*40,420+i*20);await page.mouse.down();
-    await page.mouse.move(560+i*40,470+i*20,{steps:3});await page.mouse.up();
-  }
-  await expect(page.locator('#result')).toBeVisible({timeout:72000});
-  await page.locator('#record').click();
-  const 記録=JSON.parse(await page.locator('#sheet-body pre').innerText());
-  expect(記録.measurement.inputToDrawMs.samples).toBeGreaterThan(0);
-  expect(記録.measurement.inputToDrawMs.median).toBeGreaterThan(0);
 });

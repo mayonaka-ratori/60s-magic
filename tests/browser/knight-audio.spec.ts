@@ -1,20 +1,7 @@
 import { test,expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
-/**
- * 鳴るはずの音の並び。実装から作らず、ここに直接書く。
- * 一回目、防御、とどめの順。とどめの並びは tests/finish-audio.test.ts と同じ。
- * 魔導書の音（book）は、魔導書の枠が浮かび始める59.4秒に戦いの中で鳴るので、とどめの最後に入る。
- */
-const 鳴る音=[
-  // 一回目（0〜24秒）。マウスで遊ぶので、騎士の足踏み（3.5秒）と盾打ち（9.5秒）も鳴る。
-  'step','trace','clang','chant','build','complete','release','impact','settle',
-  // 防御（24〜40秒）。命中ではなく、盾で受ける音になる。33秒の完成と同時に剣の風切り、0.55秒後に床を打つ。
-  'chant','build','complete','swing','slam','release','block','settle',
-  // とどめ（40〜60秒）
-  'chant','build','complete','release','impact','finish',
-  'collapse-sword','collapse-knee','collapse-fall','settle','book',
-];
+import { 鳴る音 } from './sound-order';
 
 test('騎士が被弾して構えを戻し、効果音を鳴らして消音できる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
@@ -44,12 +31,12 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
   await page.locator('#use-sound').check();await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
   await expect(page.locator('#knight')).toHaveAttribute('data-state','idle');
-  await expect(page.locator('#knight')).toHaveAttribute('data-state','hit',{timeout:21000});
+  await expect(page.locator('#knight')).toHaveAttribute('data-state','hit',{timeout:27000});
   await page.screenshot({path:'test-results/knight-hit.png'});
   await expect(page.locator('#knight')).toHaveAttribute('data-state','recover');
   await page.screenshot({path:'test-results/knight-recover.png'});
-  // とどめの回まで進むので、結果画面は60秒すぎに出る。
-  await expect(page.locator('#result')).toBeVisible({timeout:45000});
+  // とどめの回まで進むので、結果画面は本編90秒で出る。ここは命中して構えを戻した約25秒から待つので、残り65秒に余裕を足す。
+  await expect(page.locator('#result')).toBeVisible({timeout:85000});
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.activeSources).toBe(0);
   expect(report.audio.events.map((e:{name:string})=>e.name)).toEqual(鳴る音);

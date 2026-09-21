@@ -1,8 +1,9 @@
 import type { SpeechEntry } from './types';
+import { ROUNDS, windowMsOf } from './rounds';
 
 export class SpeechBook {
-  /** 受け付ける長さ（ms）。声は回ごとに0から数え直す（一回目は14秒、防御は7秒）。 */
-  constructor(private windowMs=14000) {}
+  /** 受け付ける長さ（ms）。声は回ごとに0から数え直す（一回目は18秒、防御は15秒）。 */
+  constructor(private windowMs=windowMsOf(ROUNDS[0])) {}
   private entries=new Map<number,SpeechEntry>();
   private locked=false;
   private latestEntry:SpeechEntry|null=null;
@@ -23,7 +24,7 @@ export class SpeechBook {
     if(!this.locked) {
       this.locked=true;
       // PC内の認識は毎回それまでの音を全部聞き直すので、途中結果でも一続きの文になっている。
-      // CPUで遅く、確定が14.7秒に間に合わなかったときは、最後の途中結果を採用する。
+      // CPUで遅く、確定が20秒に間に合わなかったときは、最後の途中結果を採用する。
       if(!this.snapshot().length) {
         const candidate=[...this.entries.values()].filter(e=>e.source==='local'&&e.text.trim()&&!e.final).sort((a,b)=>b.revision-a.revision)[0];
         if(candidate){this.entries.set(candidate.id,{...candidate,stability:Math.max(candidate.stability,0.8)});this.usedFallback=true;}

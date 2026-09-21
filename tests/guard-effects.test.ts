@@ -29,7 +29,7 @@ function frame(t: number, over: Partial<Frame> = {}) {
     sprites: { draw: () => {} } as unknown as Frame['sprites'], pool: new ParticlePool(700),
     preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
     recipe, locked: true, origin: { x: 320, y: 520 }, target: { x: 900, y: 360 },
-    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0 }, points: [], cursors: [],
+    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points: [], cursors: [],
     beat: defendBeat, guard: null, aim: AIM, inherited: [], calm: false,
     once: (key, run) => { if (!fired.has(key)) { fired.add(key); run(); } }, ...over,
   };
@@ -49,14 +49,14 @@ describe('床の一撃', () => {
     expect(floorCrackAt(slam + FLOOR_CRACK.grow, defendBeat)!.grow).toBe(1);
     // 冷めても消えない。縁の赤熱は4分の1まで下がって止まる。
     expect(floorCrackAt(slam + FLOOR_CRACK.cool, defendBeat)!.heat).toBeCloseTo(.25, 9);
-    expect(floorCrackAt(38, defendBeat)!.heat).toBeCloseTo(.25, 9);
-    // 盾に当たった後（35.4秒）も、39秒でもまだ濃いまま。
+    expect(floorCrackAt(slam + FLOOR_CRACK.cool + 2, defendBeat)!.heat).toBeCloseTo(.25, 9);
+    // 盾に当たった後も、薄れ始める直前でもまだ濃いまま。
     expect(floorCrackAt(defendBeat.impact + 1, defendBeat)!.alpha).toBe(1);
     expect(floorCrackAt(defendBeat.end - FLOOR_CRACK.fade, defendBeat)!.alpha).toBe(1);
     expect(floorCrackAt(defendBeat.end - .5, defendBeat)!.alpha).toBeCloseTo(.5, 9);
     expect(floorCrackAt(defendBeat.end - .001, defendBeat)!.alpha).toBeCloseTo(0, 2);
     expect(floorCrackAt(defendBeat.end, defendBeat)).toBeNull();
-    expect(floorCrackAt(45, defendBeat)).toBeNull();
+    expect(floorCrackAt(defendBeat.end + 1, defendBeat)).toBeNull();
   });
   it('亀裂は足元から、暗い線と敵の色の縁で描く', () => {
     const before = frame(slam - .1); drawGuard(before.f);

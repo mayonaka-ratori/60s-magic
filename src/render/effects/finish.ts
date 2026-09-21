@@ -1,5 +1,5 @@
 import { clamp } from '../../game/motion';
-import { FINISH_HIT_OFFSETS_MS, type Beat } from '../../game/rounds';
+import { FINAL_BLOW_MS, FINISH_FALL_FROM_MS, FINISH_HIT_OFFSETS_MS, ROUNDS, type Beat } from '../../game/rounds';
 import { increase } from './presets';
 import { edged, few, glow, line, noise, ease, smooth, type Frame, type XY } from './frame';
 
@@ -79,10 +79,17 @@ export const FINISH_BLOW = {
   /** 輪が広がりきるまで（秒） */ ringSeconds: .7,
 };
 
-/** 余韻（5）。とどめの一撃と余韻の始まりからの秒で使う。 */
+/** とどめの回の一行。余韻の長さも塵の時刻も、この行から作る。 */
+const FINISH_ROUND = ROUNDS[2];
+/** 余韻（5）。とどめの一撃と余韻の始まりからの秒で使う。どちらも回の表から作る。 */
 export const FINISH_SETTLE = {
-  /** 術式の光が抜けきるまで（秒）。世界の時刻で59.25秒に終わる長さ */ seconds: 2.25,
-  /** 倒れた衝撃で床の塵が立つ、一撃からの秒 */ dustFrom: 1.7,
+  /** 術式の光が抜けきるまで（秒）。余韻の始まりから回の終わりまでの長さ。 */
+  seconds: (FINISH_ROUND.end - FINISH_ROUND.handoff) / 1000,
+  /**
+   * 倒れた衝撃で床の塵が立つ、一撃からの秒。騎士が手前へ倒れ始める時刻と同じにする。
+   * 崩れる音（collapse-fall）も同じ時刻を見るので、音と塵がそろう。
+   */
+  dustFrom: (FINISH_FALL_FROM_MS - FINAL_BLOW_MS) / 1000,
 };
 
 /** 引き継いだ光点（6章）。 */

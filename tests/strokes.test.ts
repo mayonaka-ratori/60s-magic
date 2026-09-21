@@ -1,12 +1,12 @@
-import { BEATS } from '../src/game/rounds';
-import { AIM } from '../src/game/guard';
 import { describe, it, expect } from 'vitest';
 import { along, lastStrokes, ringClosure, spawnCount, speedRatio, tipSpeed, unit } from '../src/render/effects/strokes-math';
 import { drawStrokeReactions, newStrokeMemory, type StrokeMemory } from '../src/render/effects/strokes';
 import { ParticlePool } from '../src/render/effects/particles';
 import { presets } from '../src/render/effects/presets';
 import type { Frame } from '../src/render/effects/frame';
-import type { Point, Recipe } from '../src/game/types';
+import type { Point } from '../src/game/types';
+// 仮のcanvasと試験用の魔法は tests/helpers.ts にまとめてある。
+import { testFrame } from './helpers';
 
 /** 試験用の点列を作る。位置を並べ、一定の間隔で時刻を進める。 */
 const path = (xy: [number, number][], from = 0, step = 16, stroke = 1, hand = 0): Point[] =>
@@ -145,25 +145,9 @@ describe('一コマに出す粒の数', () => {
 });
 
 describe('描く動きへの反応の覚え書き', () => {
-  const recipe = (): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null,
-    defense: .3, area: .5, duration: .5, concentration: .5, enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null,
-    noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null });
-  /** 描く命令を受け流すだけの仮のcanvas。どの命令も自分を返す。 */
-  const stubContext = () => {
-    const held: Record<string, unknown> = {};
-    const fake: unknown = new Proxy(held, {
-      get: (target, key: string) => (key in target ? target[key] : () => fake),
-      set: (target, key: string, value) => { target[key] = value; return true; },
-    });
-    return fake as CanvasRenderingContext2D;
-  };
   /** 一枚の画面の一コマぶん。粒の置き場と一度きりの覚えは画面ごとに持つ。 */
-  const frame = (points: Point[], t: number, pool: ParticlePool, fired: Set<string>): Frame => ({
-    c: stubContext(), w: 1280, h: 720, t, dt: 1 / 60,
-    sprites: { draw: () => {} } as unknown as Frame['sprites'], pool,
-    preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1,
-    recipe: recipe(), locked: false, origin: { x: 640, y: 500 }, target: { x: 900, y: 360 },
-    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0 }, points, cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm: false,
+  const frame = (points: Point[], t: number, pool: ParticlePool, fired: Set<string>): Frame => testFrame({
+    t, dt: 1 / 60, pool, intensity: 1, locked: false, origin: { x: 640, y: 500 }, points,
     once: (key, run) => { if (!fired.has(key)) { fired.add(key); run(); } },
   });
   const line = path([[.2, .5], [.3, .5], [.4, .5]]);

@@ -1,17 +1,16 @@
 import { BEATS } from '../src/game/rounds';
-import { AIM } from '../src/game/guard';
 import { describe, it, expect } from 'vitest';
 import {
   ARRIVAL, BEAM_MOUTH, SWELL, alongOf, beamProfile, bodyPoint, bulletPalette, drawBody, drawRelease, drawTravel, hitDelay, launchOf, launchesOf, swellOf, swellProfile,
 } from '../src/render/effects/release';
-import { RELEASE_AT } from '../src/render/effects/screen';
+import { IMPACT_AT, RELEASE_AT } from '../src/render/effects/screen';
 import { presets, mixHue, type Palette } from '../src/render/effects/presets';
 import { ParticlePool } from '../src/render/effects/particles';
 import type { Frame, XY } from '../src/render/effects/frame';
 import type { Point, Recipe } from '../src/game/types';
 
-const recipe = (over: Partial<Recipe> = {}): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null, ...over });
+// 仮のcanvasと試験用の魔法は tests/helpers.ts にまとめてある。
+import { callRecorder as recorder, noSprites as noGlow, testFrame, testRecipe as recipe, type DrawCall as Call } from './helpers';
 
 const origin = { x: 100, y: 500 }, target = { x: 700, y: 300 };
 /** bodyPoint が見るぶんだけの仮の Frame。画面は1280×720。 */
@@ -37,10 +36,10 @@ describe('連弾の到達', () => {
       const p = bodyPoint(f, i, travelAt(time), time);
       expect(distanceToTarget(p)).toBeLessThan(.001);
     }
-    // 最後の1発は19.18秒（18.5 + 0.08×6 + 0.2）に届く。
-    expect(RELEASE_AT + ARRIVAL + hitDelay(6, 7)).toBeCloseTo(19.18);
+    // 最後の1発は命中の0.68秒後（0.08×6 + 0.2）に届く。
+    expect(RELEASE_AT + ARRIVAL + hitDelay(6, 7)).toBeCloseTo(IMPACT_AT + .68);
   });
-  it('1発目も18.5秒ちょうどに騎士の位置へ届く', () => {
+  it('1発目も命中の時刻ちょうどに騎士の位置へ届く', () => {
     const single = frame(), time = ARRIVAL;
     expect(distanceToTarget(bodyPoint(single, 0, travelAt(time), time))).toBeLessThan(.001);
     const many = frame({ count: 7 });
@@ -49,7 +48,7 @@ describe('連弾の到達', () => {
   it('遅れて届く弾は、自分の命中の時刻まで進み続ける', () => {
     const f = frame({ count: 7 });
     const at = (time: number) => bodyPoint(f, 6, travelAt(time), time);
-    // 1発目が届く18.5秒の時点では、最後の弾はまだ途中にいる。
+    // 1発目が届く時点では、最後の弾はまだ途中にいる。
     expect(distanceToTarget(at(ARRIVAL))).toBeGreaterThan(1);
     // 膨らみの折り返し（道のりの6割）を過ぎたら、騎士までの長さはひたすら縮む。
     const delay = hitDelay(6, 7) / ARRIVAL;
@@ -221,38 +220,18 @@ describe('光線の幅', () => {
   });
 });
 
-type Call = { name: string; args: number[]; strokeStyle: string; fillStyle: string };
-/** 描く命令を控えておく仮のcanvas。使った色と線の位置を後から確かめられる。 */
-function recorder() {
-  const calls: Call[] = [];
-  const held: Record<string, unknown> = { strokeStyle: '', fillStyle: '', lineWidth: 0, globalAlpha: 1, globalCompositeOperation: 'lighter' };
-  const fake: unknown = new Proxy(held, {
-    get: (target, key: string) => key in target ? target[key] : (...args: number[]) => {
-      calls.push({ name: key, args, strokeStyle: String(target.strokeStyle), fillStyle: String(target.fillStyle) });
-      return fake;
-    },
-    set: (target, key: string, value) => { target[key] = value; return true; },
-  });
-  return { c: fake as CanvasRenderingContext2D, calls };
-}
-
 /** 光の粒の描画を控えておく仮の絵。置かれた場所と大きさと色を見る。 */
 function glowRecorder() {
   const glows: { x: number; y: number; r: number; main: string }[] = [];
   const sprites = { draw: (_c: CanvasRenderingContext2D, x: number, y: number, r: number, _core: string, main: string) => { glows.push({ x, y, r, main }); } } as unknown as Frame['sprites'];
   return { sprites, glows };
 }
-const noGlow = { draw: () => {} } as unknown as Frame['sprites'];
 
 /** 放出と本体の部品を呼ぶための仮の Frame。光の絵は描かず、線の色と位置だけを見る。 */
 function scene(c: CanvasRenderingContext2D, over: Partial<Recipe>, accent: Palette | null, t: number, sprites: Frame['sprites'] = noGlow, more: Partial<Frame> = {}): Frame {
   const r = recipe(over), pool = new ParticlePool(600); pool.reseed(7);
-  return { c, w: 1280, h: 720, t, dt: .016,
-    sprites, pool,
-    preset: presets.vivid, palette: presets.vivid.palettes[r.element], intensity: 1.5,
-    recipe: r, locked: true, origin, target,
-    accent, live: { words: [], amount: 0, voice: 0, rings: 0 }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm: false,
-    once: (_key, run) => run(), ...more };
+  // 画面は1280×720、一回目の拍（BEATS[0]）。光点や範囲、点列など試験ごとの違いは more で上書きする。
+  return testFrame({ c, t, sprites, pool, palette: presets.vivid.palettes[r.element], recipe: r, origin, target, accent, w: 1280, h: 720, beat: BEATS[0], ...more });
 }
 /** 光点つきの、画面の真ん中の術式を持つ仮の Frame。 */
 const spreadScene = (c: CanvasRenderingContext2D, over: Partial<Recipe>, accent: Palette | null, t: number, sprites: Frame['sprites'] = noGlow) =>

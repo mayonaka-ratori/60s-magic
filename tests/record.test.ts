@@ -213,11 +213,12 @@ describe('このPCの中への保存',()=>{
     const play=playOf({id:'重い戦い',inherited:busy(0,2000),
       casts:[cast(ROUNDS[0],'炎の球'),cast(ROUNDS[1],'氷の壁'),cast(ROUNDS[2],'光の結界')]},'123456','2026-09-20T00:00:00.000Z');
     const bytes=new TextEncoder().encode(JSON.stringify(play)).length;
-    // 間引きのおかげで生の点は1秒30点までに収まる。
-    expect(play.rounds.reduce((sum,round)=>sum+round.rawPoints.length,0)).toBeLessThanOrEqual(30*30+10);
-    // 今のところ片手で約110KB。設計仕様4.2の目安（圧縮後100KB程度）は超えている。
+    // 間引きのおかげで生の点は1秒30点までに収まる。上限は三回の受付の長さから作る。
+    const 入力秒=ROUNDS.reduce((sum,round)=>sum+(round.inputEnd-round.start)/1000,0);
+    expect(play.rounds.reduce((sum,round)=>sum+round.rawPoints.length,0)).toBeLessThanOrEqual(入力秒*30+10);
+    // 90秒にして受付が長くなったぶん、今のところ片手で約143KB。設計仕様4.2の目安（圧縮後100KB程度）は超えている。
     // 数字は docs/実装と確認の記録.md に書いてある。ここは、これ以上ふくらんだら気づくための線。
-    expect(bytes).toBeLessThan(130*1024);
+    expect(bytes).toBeLessThan(170*1024);
   });});
 
 describe('生の点列の間引き',()=>{

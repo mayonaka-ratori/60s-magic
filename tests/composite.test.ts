@@ -41,7 +41,7 @@ describe('後処理を有効にする時間帯', () => {
     expect(postHeavyActive(POST_TO)).toBe(false);
   });
   it('線を描いている間は無効', () => {
-    for (const t of [0, 5, 13.9, 16]) expect(postHeavyActive(t)).toBe(false);
+    for (const t of [0, 5, BEATS[0].inputEnd, POST_FROM - .1]) expect(postHeavyActive(t)).toBe(false);
   });
   it('衝撃波が出ている間は必ず有効', () => {
     for (let t = IMPACT_AT; t < IMPACT_AT + RIPPLE_SECONDS; t += .05) expect(postHeavyActive(t)).toBe(true);
@@ -50,7 +50,7 @@ describe('後処理を有効にする時間帯', () => {
 
 describe('ブルームの強さ', () => {
   it('放出と命中で3〜5倍になる', () => {
-    expect(bloomWeightAt(17.5)).toBeCloseTo(BLOOM_BASE, 5);
+    expect(bloomWeightAt(BEATS[0].release - .5)).toBeCloseTo(BLOOM_BASE, 5);
     expect(bloomWeightAt(RELEASE_AT) / BLOOM_BASE).toBeCloseTo(3, 5);
     expect(bloomWeightAt(IMPACT_AT) / BLOOM_BASE).toBeCloseTo(5, 5);
   });
@@ -58,7 +58,7 @@ describe('ブルームの強さ', () => {
     expect(bloomWeightAt(IMPACT_AT, true) / BLOOM_BASE).toBeCloseTo(BLOOM_CALM_PEAK, 5);
     expect(bloomWeightAt(RELEASE_AT, true) / BLOOM_BASE).toBeCloseTo(BLOOM_CALM_PEAK, 5);
     expect(bloomWeightAt(IMPACT_AT, true)).toBeLessThan(bloomWeightAt(IMPACT_AT));
-    expect(bloomWeightAt(17.5, true)).toBeCloseTo(BLOOM_BASE, 5);
+    expect(bloomWeightAt(BEATS[0].release - .5, true)).toBeCloseTo(BLOOM_BASE, 5);
     // 控えめでないときの値は変わらない。
     expect(bloomWeightAt(IMPACT_AT) / BLOOM_BASE).toBeCloseTo(5, 5);
   });
@@ -67,7 +67,7 @@ describe('ブルームの強さ', () => {
     expect(bloomWeightAt(IMPACT_AT + .2)).toBeGreaterThan(BLOOM_BASE * 2);
   });
   it('後処理を切る手前0.3秒で、少しずつ0へ落ちる', () => {
-    // 21秒ちょうどで一気に切れると、余韻の途中で明るさが1コマで変わってしまう。
+    // 切り際ちょうどで一気に切れると、余韻の途中で明るさが1コマで変わってしまう。
     expect(bloomWeightAt(POST_TO - FADE_SECONDS - .01)).toBeCloseTo(BLOOM_BASE, 5);
     let previous = Infinity;
     for (let t = POST_TO - FADE_SECONDS; t <= POST_TO + 1e-9; t += .02) {
@@ -94,16 +94,19 @@ describe('見せ始めと切り際の重なり', () => {
     expect(showFadeAt(SHOW_FROM, SHOW_FROM)).toBe(0);
     expect(showFadeAt(SHOW_FROM + FADE_SECONDS / 3, SHOW_FROM)).toBeCloseTo(1 / 3, 5);
     expect(showFadeAt(SHOW_FROM + FADE_SECONDS, SHOW_FROM)).toBe(1);
-    expect(showFadeAt(20, SHOW_FROM)).toBe(1);
+    expect(showFadeAt(SHOW_FROM + 3, SHOW_FROM)).toBe(1);
   });
-  it('切り際は0.3秒前から下がり、21秒で0', () => {
+  it('切り際は0.3秒前から下がり、終わりで0', () => {
     expect(postFadeAt(POST_TO - FADE_SECONDS)).toBe(1);
     expect(postFadeAt(POST_TO - FADE_SECONDS / 4)).toBeCloseTo(.25, 5);
     expect(postFadeAt(POST_TO)).toBe(0);
     expect(postFadeAt(POST_TO + 1)).toBe(0);
   });
   it('重なりは重い後処理が始まる前に終わる', () => {
-    expect(SHOW_FROM).toBe(16.5);
+    // 見せ始めは21.5秒。一回目の確定（21秒）より後で、発動（22秒）より前。
+    expect(SHOW_FROM).toBe(21.5);
+    expect(SHOW_FROM).toBeGreaterThan(BEATS[0].lock);
+    expect(SHOW_FROM).toBeLessThan(BEATS[0].release);
     expect(SHOW_FROM).toBeLessThan(POST_FROM);
     expect(SHOW_FROM + FADE_SECONDS).toBeLessThanOrEqual(POST_FROM);
   });
@@ -189,7 +192,7 @@ describe('層の動き', () => {
 });
 
 describe('URLの指定', () => {
-  it('指定がなければ合成を使い、16.5秒から見せる', () => {
+  it('指定がなければ合成を使い、一回目の確定の手前から見せる', () => {
     expect(compositeSettings('')).toEqual({ enabled: true, scale: null, keepBloom: false, showFrom: SHOW_FROM });
   });
   it('?composite=0 で切れる', () => {
@@ -198,7 +201,7 @@ describe('URLの指定', () => {
   });
   it('?composite=always なら0秒から見せる（見比べ用）', () => {
     expect(compositeSettings('?composite=always')).toEqual({ enabled: true, scale: null, keepBloom: false, showFrom: 0 });
-    // それ以外の指定は今まで通り16.5秒から。
+    // それ以外の指定は今まで通り、確定の手前から。
     expect(compositeSettings('?composite=1').showFrom).toBe(SHOW_FROM);
     expect(compositeSettings('?scale=2').showFrom).toBe(SHOW_FROM);
   });
@@ -236,7 +239,7 @@ describe('遅すぎるときは合成を諦める', () => {
     expect(giveUpDecision(NaN, 30, 500, calmTime, bloomOff)).toEqual({ lowFrames: 0, giveUp: false });
   });
   it('山場の間は判定を止め、数も減らさない', () => {
-    for (const t of [POST_FROM, 17.5, IMPACT_AT, POST_TO - .01]) {
+    for (const t of [POST_FROM, (POST_FROM + IMPACT_AT) / 2, IMPACT_AT, POST_TO - .01]) {
       expect(giveUpDecision(10, GIVE_UP_FRAMES - 1, 500, t, bloomOff)).toEqual({ lowFrames: GIVE_UP_FRAMES - 1, giveUp: false });
     }
     // 山場の外では今まで通り働く。
@@ -266,7 +269,7 @@ describe('遅すぎるときは合成を諦める', () => {
 });
 
 /**
- * 防御の回の、敵の一撃が床を打つ33.55秒。衝撃波の歪みは騎士の足元から広がり、
+ * 防御の回の、敵の一撃が床を打つ時刻（振り下ろしの0.55秒後）。衝撃波の歪みは騎士の足元から広がり、
  * 重い後処理はその0.1秒前から入れる。一回目ととどめの時間帯は変えない。
  */
 describe('敵の一撃が床を打つ衝撃波', () => {
@@ -274,8 +277,10 @@ describe('敵の一撃が床を打つ衝撃波', () => {
   const target = { x: .48, y: .24 };
   it('床を打つ時刻は回の表から来る', () => {
     expect(SLAM_AT).toBeCloseTo(ENEMY_SLAM_MS / 1000, 9);
-    expect(SLAM_AT).toBeCloseTo(33.55, 9);
-    // 発動（34秒）より前で、受け止め（35.4秒）の衝撃波と重ならない。
+    // 振り下ろし（lock）の0.55秒後。
+    expect(SLAM_AT).toBeCloseTo(defend.lock + .55, 9);
+    // 発動より前で、受け止めの衝撃波と重ならない。
+    expect(SLAM_AT).toBeLessThan(defend.release);
     expect(SLAM_AT + RIPPLE_SECONDS).toBeLessThan(defend.impact);
   });
   it('床を打った瞬間から、騎士の足元を中心に広がる', () => {
@@ -309,13 +314,14 @@ describe('敵の一撃が床を打つ衝撃波', () => {
   });
   it('重い後処理は床を打つ0.1秒前から入り、切る時刻は変えない', () => {
     expect(postFromOf(defend)).toBeCloseTo(SLAM_AT - .1, 9);
-    expect(postFromOf(defend)).toBeCloseTo(33.45, 9);
-    expect(postHeavyActive(33.44, defend)).toBe(false);
-    expect(postHeavyActive(33.45, defend)).toBe(true);
+    expect(postFromOf(defend)).toBeCloseTo(defend.lock + .45, 9);
+    expect(postHeavyActive(SLAM_AT - .11, defend)).toBe(false);
+    expect(postHeavyActive(SLAM_AT - .1, defend)).toBe(true);
     // 床を打つ輪が出ている間はずっと有効。
     for (let t = SLAM_AT; t < SLAM_AT + RIPPLE_SECONDS; t += .05) expect(postHeavyActive(t, defend)).toBe(true);
     expect(postHeavyActive(defend.release, defend)).toBe(true);
-    expect(postToOf(defend)).toBeCloseTo(37.9, 9);
+    // 切る時刻は受け止めの2.5秒後のまま。
+    expect(postToOf(defend)).toBeCloseTo(defend.impact + 2.5, 9);
     // 一回目ととどめの入る時刻は今までどおり、発動の0.1秒前。
     expect(postFromOf(first)).toBeCloseTo(POST_FROM, 9);
     expect(postFromOf(finish)).toBeCloseTo(finish.release - .1, 9);

@@ -2,18 +2,18 @@ import { test,expect } from '@playwright/test';
 
 /**
  * とどめの回の体力と崩れ落ちだけを見る通し。
- * 遊び方は見本の自動再生に任せ、60秒の終わりに体力が0になり、騎士が倒れきっているかを確かめる。
+ * 遊び方は見本の自動再生に任せ、90秒の終わりに体力が0になり、騎士が倒れきっているかを確かめる。
  * この環境のブラウザーは1秒に1コマしか描けないので、見た目の細かさは見ない。
  */
-test('60秒の通しで体力が0になり、騎士が倒れきる',async({page})=>{
+test('90秒の通しで体力が0になり、騎士が倒れきる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/?dev=1');await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#demo').click();
   await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
   await expect(page.locator('#hud')).toBeVisible();
-  // とどめの一撃（54.5秒）で体力が0になる。
+  // とどめの一撃（78.5秒）で体力が0になる。
   // Chromeは '0.00%' と書いても読み返すと '0%' にそろえるので、数として0かどうかを見る。
-  await expect.poll(()=>page.locator('#health').evaluate(bar=>parseFloat((bar as HTMLElement).style.width)),{timeout:70000})
+  await expect.poll(()=>page.locator('#health').evaluate(bar=>parseFloat((bar as HTMLElement).style.height)),{timeout:105000})
     .toBe(0);
   await page.screenshot({path:'test-results/finish-01-zero.png'});
   // 体力の枠は名前ごと消す。消したら戻さない。

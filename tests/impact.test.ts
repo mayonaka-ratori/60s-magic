@@ -44,7 +44,7 @@ function scene(over: Partial<Frame> = {}, spell: Partial<Recipe> = {}) {
     sprites: { draw: (_c: unknown, x: number, y: number, r: number, core: string, main: string, alpha: number) => glows.push({ x, y, r, core, main, alpha }) } as unknown as Frame['sprites'],
     pool, preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
     recipe: recipe(spell), locked: true, origin: { x: 200, y: 500 }, target, accent: null,
-    live: { words: [], amount: 0, voice: 0, rings: 0 }, points: [], cursors: [], beat: first, guard: null, aim: AIM, inherited: [], calm: false,
+    live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points: [], cursors: [], beat: first, guard: null, aim: AIM, inherited: [], calm: false,
     once: (key, run) => { if (!fired.has(key)) { fired.add(key); run(); } }, ...over,
   };
   /** 命中から since 秒のコマを一つ描く。記録は描く前に空にする。 */

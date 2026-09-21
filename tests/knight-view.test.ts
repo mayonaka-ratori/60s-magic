@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { KNIGHT_VIEW, knightView, projectView, viewKick, VIEW_KICKS, hitScarAt, HIT_SCARS, SCAR_FADE, scarCurve,
-  knightPose, guardPose, stepAt, clangAt, chargeTremorAt, TREMOR_MAX, STEP_LIFT, STEP_SINK, CLANG_IN, CLANG_OUT, CLANG_FLASH,
+  knightPose, guardPose, idleSway, stepAt, clangAt, chargeTremorAt, TREMOR_MAX, STEP_LIFT, STEP_SINK, CLANG_IN, CLANG_OUT, CLANG_FLASH,
   HEIGHT, FOOT, CROWN, EYE, DIST, FINAL_BLOW_AT, REFLECT_BACK_AT, FALL_TURN, FALL_NEAR } from '../src/render/knight';
 import { ENEMY_CHARGE_FROM_MS, ENEMY_MOVES, ENEMY_SLAM_MS, ROUNDS } from '../src/game/rounds';
 
@@ -91,7 +91,7 @@ describe('視点の動き', () => {
       previous = now;
     }
   });
-  it('敵の一撃が床を打つ33.55秒で下へ沈み、0.3秒で戻る', () => {
+  it('敵の一撃が床を打つ時刻で下へ沈み、0.3秒で戻る', () => {
     const at = viewKick(ENEMY_SLAM_MS, true);
     expect(at.down).toBeGreaterThan(0);
     expect(at.back).toBe(0);
@@ -112,8 +112,8 @@ describe('視点の動き', () => {
     }
   });
   it('動く時刻は回の表から来て、それ以外の時刻では動かない', () => {
-    expect(VIEW_KICKS.map(kick => kick.at)).toEqual([18.5, slam, FINAL_BLOW_AT]);
-    for (let t = 0; t <= 60; t += .05) {
+    expect(VIEW_KICKS.map(kick => kick.at)).toEqual([first, slam, FINAL_BLOW_AT]);
+    for (let t = 0; t <= ROUNDS[ROUNDS.length - 1].end / 1000; t += .05) {
       const inside = VIEW_KICKS.some(kick => t >= kick.at - 1e-9 && t < kick.at + kick.seconds);
       const kick = viewKick(t * 1000, true);
       if (!inside) expect(kick).toEqual({ back: 0, up: 0, down: 0 });
@@ -134,22 +134,24 @@ describe('命中の跡', () => {
     expect(hitScarAt(end, true)).toBe(0);
     expect(hitScarAt(end + 1000, true)).toBe(0);
     expect(SCAR_FADE).toBe(1);
-    expect(HIT_SCARS[0]).toEqual({ at: 18.5, end: 24, reflectOnly: false });
+    expect(HIT_SCARS[0]).toEqual({ at: impact / 1000, end: end / 1000, reflectOnly: false });
   });
-  it('防御の回は弾き返したときだけ36.2秒から40秒まで残る', () => {
-    expect(REFLECT_BACK_AT).toBeCloseTo(36.2, 9);
-    expect(HIT_SCARS[1]).toEqual({ at: REFLECT_BACK_AT, end: 40, reflectOnly: true });
-    expect(hitScarAt(36100, true, 'reflect')).toBe(0);
-    expect(hitScarAt(36200, true, 'reflect')).toBeGreaterThan(1);
-    expect(hitScarAt(38000, true, 'reflect')).toBeCloseTo(.38, 6);
-    expect(hitScarAt(39500, true, 'reflect')).toBeCloseTo(.19, 6);
-    expect(hitScarAt(40000, true, 'reflect')).toBe(0);
+  it('防御の回は弾き返したときだけ、一撃が盾に当たった0.8秒後から回の終わりまで残る', () => {
+    // 戻ってきた一撃が胸に当たる時刻（ms）。防御の回の受け止めの0.8秒後。
+    const back = ROUNDS[1].impact + 800, defendEnd = ROUNDS[1].end;
+    expect(REFLECT_BACK_AT).toBeCloseTo(back / 1000, 9);
+    expect(HIT_SCARS[1]).toEqual({ at: REFLECT_BACK_AT, end: defendEnd / 1000, reflectOnly: true });
+    expect(hitScarAt(back - 100, true, 'reflect')).toBe(0);
+    expect(hitScarAt(back, true, 'reflect')).toBeGreaterThan(1);
+    expect(hitScarAt(back + 1800, true, 'reflect')).toBeCloseTo(.38, 6);
+    expect(hitScarAt(defendEnd - 500, true, 'reflect')).toBeCloseTo(.19, 6);
+    expect(hitScarAt(defendEnd, true, 'reflect')).toBe(0);
     // 受け止めとかき消しでは跡が付かない。
-    for (const style of ['block', 'erase', null] as const) expect(hitScarAt(37000, true, style)).toBe(0);
+    for (const style of ['block', 'erase', null] as const) expect(hitScarAt(back + 800, true, style)).toBe(0);
   });
   it('遊んでいない間は出さない', () => {
     expect(hitScarAt(impact + 100, false)).toBe(0);
-    expect(hitScarAt(37000, false, 'reflect')).toBe(0);
+    expect(hitScarAt(ROUNDS[1].impact + 1600, false, 'reflect')).toBe(0);
   });
   it('濃さの曲線はとどめの傷あとと同じ', () => {
     expect(scarCurve(0)).toBeCloseTo(1.15, 6);
@@ -184,7 +186,8 @@ describe('自分から動く騎士', () => {
     expect(clangAt(clang + CLANG_OUT)).toEqual({ swing: 0, flash: 0 });
   });
   it('姿勢の計算では、指定の時刻のまわりだけ動く', () => {
-    for (let ms = 0; ms <= 23000; ms += 10) {
+    // 一回目の命中の手前まで見る。
+    for (let ms = 0; ms < ROUNDS[0].impact - 100; ms += 10) {
       const p = knightPose(ms, true);
       const t = ms / 1000;
       const stepping = t >= step - STEP_LIFT && t < step + STEP_SINK, clanging = t >= clang - CLANG_IN && t < clang + CLANG_OUT;
@@ -204,16 +207,26 @@ describe('自分から動く騎士', () => {
       for (const p of [quiet, idle]) { expect(p.stepLift).toBe(0); expect(p.stepSink).toBe(0); expect(p.clang).toBe(0); expect(p.clangFlash).toBe(0); }
     }
   });
-  it('足踏みと盾打ちは、8つの姿勢の混ぜ方を変えない', () => {
+  it('足踏みと盾打ちは、姿勢の混ぜ方を変えない（待機の息づかいだけが混ざる）', () => {
     for (const ms of [3400, 3700, 9500, 9600]) {
-      expect(knightPose(ms, true).weights).toEqual(knightPose(ms, true, true).weights);
-      expect(knightPose(ms, true).state).toBe('idle');
+      const moving = knightPose(ms, true), quiet = knightPose(ms, true, true);
+      // 姿勢の数は表の長さに合わせる。待機（0）と息づかい（最後）以外は混ざらない。
+      const count = moving.weights.length;
+      expect(quiet.weights.length).toBe(count);
+      const expected = new Array(count).fill(0);
+      expected[0] = 1 - idleSway(ms); expected[count - 1] = idleSway(ms);
+      moving.weights.forEach((w, i) => expect(w, `${ms}ms の姿勢${i}`).toBeCloseTo(expected[i], 9));
+      // 動きを減らす設定では息づかいも止まり、待機だけになる。
+      quiet.weights.forEach((w, i) => expect(w).toBeCloseTo(i === 0 ? 1 : 0, 9));
+      expect(moving.state).toBe('idle');
     }
   });
-  it('溜めの震えは24.2秒から33秒まで、溜まるほど強くなる', () => {
+  it('溜めの震えは防御の回が始まった0.2秒後から振り下ろしまで、溜まるほど強くなる', () => {
     const from = ENEMY_CHARGE_FROM_MS / 1000, lock = ROUNDS[1].lock / 1000;
-    expect(from).toBeCloseTo(24.2, 9);
-    expect(lock).toBe(33);
+    expect(from).toBeCloseTo(ROUNDS[1].start / 1000 + .2, 9);
+    expect(lock).toBeGreaterThan(from + 1);
+    // 溜めの途中の時刻（ms）。
+    const midMs = Math.round((ENEMY_CHARGE_FROM_MS + ROUNDS[1].lock) / 2);
     expect(chargeTremorAt(from - .01)).toBe(0);
     expect(chargeTremorAt(from)).toBe(0);
     expect(chargeTremorAt(lock)).toBe(0);
@@ -228,12 +241,12 @@ describe('自分から動く騎士', () => {
     // 終わり際は最大に近い。初めはほとんど震えない。
     expect(chargeTremorAt(lock - .01)).toBeGreaterThan(TREMOR_MAX * .95);
     expect(chargeTremorAt(from + 1)).toBeLessThan(TREMOR_MAX * .02);
-    expect(guardPose(30000).tremor).toBeCloseTo(chargeTremorAt(30), 9);
-    expect(guardPose(30000).tremor).toBeGreaterThan(0);
+    expect(guardPose(midMs).tremor).toBeCloseTo(chargeTremorAt(midMs / 1000), 9);
+    expect(guardPose(midMs).tremor).toBeGreaterThan(0);
     // 動きを減らす設定では震えない。
-    expect(guardPose(30000, true).tremor).toBe(0);
+    expect(guardPose(midMs, true).tremor).toBe(0);
     // 防御の回に足踏みと盾打ちは無い。
-    expect(guardPose(30000).stepLift).toBe(0);
-    expect(guardPose(30000).clang).toBe(0);
+    expect(guardPose(midMs).stepLift).toBe(0);
+    expect(guardPose(midMs).clang).toBe(0);
   });
 });

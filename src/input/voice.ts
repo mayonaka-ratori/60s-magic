@@ -1,4 +1,5 @@
 import type { SpeechEntry } from '../game/types';
+import { MAX_INPUT_MS } from '../game/rounds';
 export class VoiceInput {
   private context:AudioContext|null=null;
   private stream:MediaStream|null=null;
@@ -6,6 +7,8 @@ export class VoiceInput {
   private ws:WebSocket|null=null;
   private runId='';
   private waitMs=650;
+  /** その回の受付の長さ（ms）。connect で受け取り、録音の打ち切りにも使う。 */
+  private windowMs=MAX_INPUT_MS;
   level=0;
   /** 最後の結果が届いた、または届かないと決まった。画面側はこれを見て次へ進む。 */
   settled=false;
@@ -34,9 +37,12 @@ export class VoiceInput {
       };
     } catch(error) {this.dispose();throw error;}
   }
-  /** windowMs はその回の受付の長さ。サーバーが、終わりの直前に無駄な認識を始めないために使う。 */
-  async connect(sessionId:string,windowMs=14000) {
-    this.runId=sessionId;this.settled=false;
+  /**
+   * windowMs はその回の受付の長さ。サーバーが終わりの直前に無駄な認識を始めないために使い、
+   * マイク側も同じ値でちょうど受付の終わりまで録る。値は rounds.ts の表から来る。
+   */
+  async connect(sessionId:string,windowMs=MAX_INPUT_MS) {
+    this.runId=sessionId;this.settled=false;this.windowMs=windowMs;
     const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/speech`);this.ws=ws;
     await new Promise<void>((resolve,reject)=>{
       let ready=false;
@@ -54,7 +60,7 @@ export class VoiceInput {
       ws.onclose=event=>{clearTimeout(timer);if(this.runId!==sessionId)return;this.settled=true;this.note('音声認識との接続が閉じた',{code:event.code});if(!ready)reject(new Error('音声認識との接続が切れました'));else this.onStatus('音声認識との接続が切れました。描いた線で続けます。');};
     });
   }
-  start(offset=0){this.note('録音を始めた',{offsetMs:Math.round(offset),sampleRate:this.context?.sampleRate??null});this.node?.port.postMessage({type:'start',offset});}
+  start(offset=0){this.note('録音を始めた',{offsetMs:Math.round(offset),windowMs:this.windowMs,sampleRate:this.context?.sampleRate??null});this.node?.port.postMessage({type:'start',offset,windowMs:this.windowMs});}
   /** waitMs は、最後の文字を待てる時間。サーバーはこの時間で認識を打ち切る。 */
   stop(waitMs=650){this.waitMs=Math.max(0,Math.round(waitMs));this.note('録音の停止を指示',{waitMs:this.waitMs});this.node?.port.postMessage({type:'stop'});this.level=0;}
   disconnect(){this.ws?.close();this.ws=null;this.runId='';}

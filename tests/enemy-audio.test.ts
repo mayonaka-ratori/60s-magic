@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { ENEMY_CHARGE_FROM_MS, ENEMY_MOVES, ENEMY_SLAM_MS, ROUNDS } from '../src/game/rounds';
+import { BATTLE_END, ENEMY_CHARGE_FROM_MS, ENEMY_MOVES, ENEMY_SLAM_MS, ROUNDS } from '../src/game/rounds';
 import { ENEMY_CUES, calmSoundCues, dueSounds, shouldDuck, soundCues } from '../src/audio/cues';
 import { CastAudio, HUM, enemyHum, enemyHumLevel } from '../src/audio/cast-audio';
 import { dbToGain } from '../src/audio/sample-bank';
 
 const defend = ROUNDS[1];
+const step = ENEMY_MOVES[0].at, clang = ENEMY_MOVES[1].at;
+/** 防御の回で、録音を止めてから音を鳴らし始めてよい時刻（ms）。合図の表が持つ値をそのまま使う。 */
+const defendQuietUntil = soundCues.find(cue => cue.round === 'defend' && cue.name === 'build')!.quietUntil;
+/** うなりの長さのうち、どこまで進んだか（0〜1）を時刻（ms）に直す。 */
+const humAt = (u: number) => HUM.from + (HUM.to - HUM.from) * u;
 const names = (from: number, to: number, microphone: boolean) => dueSounds(from, to, microphone).map(cue => cue.name);
 /** その並びの中で、その音が鳴る時刻（ms）。 */
 const 至 = (cues: typeof soundCues, name: string) => cues.find(cue => cue.name === name)!.at;
@@ -15,18 +20,17 @@ describe('敵の側の音の合図', () => {
     expect(至(soundCues, 'clang')).toBe(ENEMY_MOVES[1].at);
     expect(至(soundCues, 'swing')).toBe(defend.lock);
     expect(至(soundCues, 'slam')).toBe(ENEMY_SLAM_MS);
-    // 表の値そのもの。ここが変わったら回の表が変わっている。
-    expect(至(soundCues, 'step')).toBe(3500); expect(至(soundCues, 'clang')).toBe(9500);
-    expect(至(soundCues, 'swing')).toBe(33000); expect(至(soundCues, 'slam')).toBe(33550);
-    // 既存の音の時刻は動いていない。
-    expect(至(soundCues, 'trace')).toBe(6000); expect(至(soundCues, 'release')).toBe(17000);
-    expect(至(soundCues, 'block')).toBe(35400);
+    // 床の一撃は確定の0.55秒後。溜めは防御の回の始まりの0.2秒後。
+    expect(ENEMY_SLAM_MS).toBe(defend.lock + 550); expect(ENEMY_CHARGE_FROM_MS).toBe(defend.start + 200);
+    // 既存の音の時刻も回の表と同じ。
+    expect(至(soundCues, 'trace')).toBe(ROUNDS[0].build); expect(至(soundCues, 'release')).toBe(ROUNDS[0].release);
+    expect(至(soundCues, 'block')).toBe(defend.impact);
   });
   it('一回目と防御の並びの全体', () => {
     const first = soundCues.filter(cue => cue.round === 'first').map(cue => cue.name);
     expect(first).toEqual(['step', 'trace', 'clang', 'chant', 'build', 'complete', 'release', 'impact', 'settle']);
     const defendCues = soundCues.filter(cue => cue.round === 'defend').map(cue => cue.name);
-    // 確定の33秒は完成の音と振り下ろしが同時。完成の音を先に置く。
+    // 確定の時刻は完成の音と振り下ろしが同時。完成の音を先に置く。
     expect(defendCues).toEqual(['chant', 'build', 'complete', 'swing', 'slam', 'release', 'block', 'settle']);
     // とどめの回には敵の音が混ざらない（とどめの並びは finish-audio の試験が見る）。
     const finish = soundCues.filter(cue => cue.round === 'finish').map(cue => cue.name);
@@ -37,46 +41,47 @@ describe('敵の側の音の合図', () => {
     for (const name of ENEMY_CUES) expect(至(calmSoundCues, name)).toBe(至(soundCues, name));
   });
   it('マイクを使う回では足音と盾の音は鳴らず、マウスなら鳴る', () => {
-    expect(names(3490, 3510, true)).toEqual([]);
-    expect(names(9490, 9510, true)).toEqual([]);
-    expect(names(3490, 3510, false)).toEqual(['step']);
-    expect(names(9490, 9510, false)).toEqual(['clang']);
+    expect(names(step - 10, step + 10, true)).toEqual([]);
+    expect(names(clang - 10, clang + 10, true)).toEqual([]);
+    expect(names(step - 10, step + 10, false)).toEqual(['step']);
+    expect(names(clang - 10, clang + 10, false)).toEqual(['clang']);
   });
   it('振り下ろしと床の一撃は録音の後なので、マイクを使っても鳴る', () => {
-    expect(names(32990, 33010, true)).toEqual(['complete', 'swing']);
-    expect(names(33540, 33560, true)).toEqual(['slam']);
-    expect(names(33540, 33560, false)).toEqual(['slam']);
-    // 遅れた音をまとめて鳴らさない決まりは、敵の音にも同じに効く。
-    expect(names(33000, 34000, false)).toEqual(['release']);
+    expect(names(defend.lock - 10, defend.lock + 10, true)).toEqual(['complete', 'swing']);
+    expect(names(ENEMY_SLAM_MS - 10, ENEMY_SLAM_MS + 10, true)).toEqual(['slam']);
+    expect(names(ENEMY_SLAM_MS - 10, ENEMY_SLAM_MS + 10, false)).toEqual(['slam']);
+    // 遅れた音をまとめて鳴らさない決まりは、敵の音にも同じに効く。確定から発動まで一気に進めると、発動の音だけが鳴る。
+    expect(names(defend.lock, defend.release, false)).toEqual(['release']);
   });
 });
 
 describe('溜めのうなり', () => {
-  it('溜めの始まりで0から上がり、振り下ろしの33秒ちょうどで0になる', () => {
+  it('溜めの始まりで0から上がり、振り下ろしの時刻ちょうどで0になる', () => {
     expect(HUM.from).toBe(ENEMY_CHARGE_FROM_MS); expect(HUM.to).toBe(defend.lock);
-    expect(enemyHumLevel(24000)).toBe(0);
+    expect(enemyHumLevel(HUM.from - 200)).toBe(0);
     expect(enemyHumLevel(ENEMY_CHARGE_FROM_MS)).toBe(0);
-    expect(enemyHumLevel(25000)).toBeGreaterThan(0);
-    expect(enemyHumLevel(32999)).toBeGreaterThan(.99);
-    expect(enemyHumLevel(33000)).toBe(0);
-    expect(enemyHumLevel(35000)).toBe(0);
-    // 一回目ととどめでは鳴らない。
-    for (let ms = 0; ms < 24000; ms += 100) expect(enemyHumLevel(ms)).toBe(0);
-    for (let ms = 40000; ms < 60000; ms += 100) expect(enemyHumLevel(ms)).toBe(0);
+    expect(enemyHumLevel(HUM.from + 800)).toBeGreaterThan(0);
+    expect(enemyHumLevel(HUM.to - 1)).toBeGreaterThan(.99);
+    expect(enemyHumLevel(HUM.to)).toBe(0);
+    expect(enemyHumLevel(HUM.to + 2000)).toBe(0);
+    // 一回目と、振り下ろしのあと（とどめの回を含む）では鳴らない。
+    for (let ms = 0; ms < HUM.from; ms += 100) expect(enemyHumLevel(ms)).toBe(0);
+    for (let ms = HUM.to; ms < BATTLE_END; ms += 100) expect(enemyHumLevel(ms)).toBe(0);
   });
   it('上がる一方で下がらず、前半は控えめ', () => {
     let before = 0;
     for (let ms = ENEMY_CHARGE_FROM_MS; ms < defend.lock; ms += 50) { const now = enemyHumLevel(ms); expect(now).toBeGreaterThanOrEqual(before); before = now; }
-    expect(enemyHumLevel(28000)).toBeLessThan(.25);
-    expect(enemyHumLevel(31000)).toBeGreaterThan(.5);
+    expect(enemyHumLevel(humAt(.4))).toBeLessThan(.25);
+    expect(enemyHumLevel(humAt(.8))).toBeGreaterThan(.5);
   });
   it('録音中の下げは曲と同じ範囲に掛かり、録音の終わりを待ってから戻る', () => {
-    expect(enemyHum(30000, true).ducked).toBe(true);
-    expect(enemyHum(31740, true).ducked).toBe(true);
-    expect(enemyHum(31750, true).ducked).toBe(false);
-    expect(enemyHum(30000, false).ducked).toBe(false);
-    expect(enemyHum(30000, true).ducked).toBe(shouldDuck(30000));
-    expect(enemyHum(33000, true)).toEqual({ level: 0, ducked: false });
+    const recording = defend.start + 2000;
+    expect(enemyHum(recording, true).ducked).toBe(true);
+    expect(enemyHum(defendQuietUntil - 10, true).ducked).toBe(true);
+    expect(enemyHum(defendQuietUntil, true).ducked).toBe(false);
+    expect(enemyHum(recording, false).ducked).toBe(false);
+    expect(enemyHum(recording, true).ducked).toBe(shouldDuck(recording));
+    expect(enemyHum(HUM.to, true)).toEqual({ level: 0, ducked: false });
   });
 });
 
@@ -147,10 +152,10 @@ describe('うなりの経路と止め方', () => {
   /** 録音中の下げの段。開始でマイクありなら 8dB 下げる指示を受けている。 */
   const duckNode = () => ctx.gains.find(g => g.gain.events.some(([kind, v]) => kind === 'target' && Math.abs(v - dbToGain(-8)) < 1e-6))!;
 
-  it('溜めの間だけ鳴り、曲と同じ下げの段を通り、33秒で切れる', async () => {
+  it('溜めの間だけ鳴り、曲と同じ下げの段を通り、振り下ろしで切れる', async () => {
     const audio = await begin(true);
-    audio.update(24000, null); expect(audio.snapshot.enemyHum.playing).toBe(false); expect(humOscillators()).toHaveLength(0);
-    audio.update(25000, null);
+    audio.update(HUM.from - 200, null); expect(audio.snapshot.enemyHum.playing).toBe(false); expect(humOscillators()).toHaveLength(0);
+    audio.update(HUM.from + 800, null);
     expect(audio.snapshot.enemyHum.playing).toBe(true);
     // うなりは効果音の数に入れない（終了後に 0 であることを見るブラウザーの試験がある）。
     expect(audio.snapshot.activeSources).toBe(0);
@@ -160,15 +165,16 @@ describe('うなりの経路と止め方', () => {
     const duck = duckNode(); expect(duck).toBeDefined();
     expect(chain(lows[0]).has(duck)).toBe(true);
     expect(chain(lows[0]).has(ctx.destination)).toBe(true);
-    // 録音中（30秒）は下げたまま、録音の終わりを待ってから（32秒）戻す。
-    audio.update(30000, null); expect(audio.snapshot.ducked).toBe(true); expect(duck.gain.target).toBeCloseTo(dbToGain(-8), 6);
-    expect(audio.snapshot.enemyHum.level).toBeCloseTo(enemyHumLevel(30000), 9);
+    // 録音中は下げたまま、録音の終わりを待ってから戻す。
+    const recording = defend.start + 2000, afterQuiet = defendQuietUntil + 250;
+    audio.update(recording, null); expect(audio.snapshot.ducked).toBe(true); expect(duck.gain.target).toBeCloseTo(dbToGain(-8), 6);
+    expect(audio.snapshot.enemyHum.level).toBeCloseTo(enemyHumLevel(recording), 9);
     expect(audio.snapshot.enemyHum.gain).toBeGreaterThan(0);
     expect(audio.snapshot.enemyHum.gain).toBeLessThanOrEqual(HUM.ratio * dbToGain(HUM.musicDbWithoutBgm) + 1e-9);
-    audio.update(32000, null); expect(audio.snapshot.ducked).toBe(false); expect(duck.gain.target).toBe(1);
+    audio.update(afterQuiet, null); expect(audio.snapshot.ducked).toBe(false); expect(duck.gain.target).toBe(1);
     expect(audio.snapshot.enemyHum.gain).toBeGreaterThan(0);
-    // 33秒で切る。発振器は止まり、音量の段は0へ。
-    audio.update(33000, null);
+    // 振り下ろしで切る。発振器は止まり、音量の段は0へ。
+    audio.update(HUM.to, null);
     expect(audio.snapshot.enemyHum).toEqual({ playing: false, level: 0, gain: 0 });
     expect(lows.every(o => o.stoppedAt !== null)).toBe(true);
     // 停止すれば効果音も空になる。
@@ -176,34 +182,34 @@ describe('うなりの経路と止め方', () => {
   });
   it('うなりの音量は上がる一方で、上限は曲の3割', async () => {
     const audio = await begin(false);
-    let before = 0;
-    for (let ms = 24000; ms < 33000; ms += 200) { audio.update(ms, null); const gain = audio.snapshot.enemyHum.gain; expect(gain).toBeGreaterThanOrEqual(before); before = gain; }
-    expect(before).toBeCloseTo(HUM.ratio * dbToGain(HUM.musicDbWithoutBgm) * enemyHumLevel(32800), 6);
+    let before = 0, last = 0;
+    for (let ms = HUM.from - 200; ms < HUM.to; ms += 200) { audio.update(ms, null); const gain = audio.snapshot.enemyHum.gain; expect(gain).toBeGreaterThanOrEqual(before); before = gain; last = ms; }
+    expect(before).toBeCloseTo(HUM.ratio * dbToGain(HUM.musicDbWithoutBgm) * enemyHumLevel(last), 6);
     audio.stop();
   });
   it('停止と消音で必ず止まる', async () => {
     const audio = await begin(false);
-    audio.update(28000, null); expect(audio.snapshot.enemyHum.playing).toBe(true);
+    audio.update(humAt(.5), null); expect(audio.snapshot.enemyHum.playing).toBe(true);
     audio.stop();
     expect(audio.snapshot.enemyHum.playing).toBe(false);
     expect(humOscillators().every(o => o.stoppedAt !== null)).toBe(true);
     // 消音でも同じ。
     const again = await begin(false);
-    again.update(28000, null); expect(again.snapshot.enemyHum.playing).toBe(true);
+    again.update(humAt(.5), null); expect(again.snapshot.enemyHum.playing).toBe(true);
     again.setEnabled(false);
     expect(again.snapshot.enemyHum.playing).toBe(false);
     expect(humOscillators().every(o => o.stoppedAt !== null)).toBe(true);
     // 消音のまま時刻が進んでも始まらない。
-    again.update(30000, null); expect(again.snapshot.enemyHum.playing).toBe(false);
+    again.update(humAt(.7), null); expect(again.snapshot.enemyHum.playing).toBe(false);
     again.stop();
   });
   it('マイクを使う回では足音と盾の音を合成せず、マウスなら合成する', async () => {
     const withMic = await begin(true);
-    withMic.update(3400, null); withMic.update(3510, null); withMic.update(9400, null); withMic.update(9510, null);
+    withMic.update(step - 100, null); withMic.update(step + 10, null); withMic.update(clang - 100, null); withMic.update(clang + 10, null);
     expect(withMic.snapshot.events).toEqual([]);
     withMic.stop();
     const mouse = await begin(false);
-    mouse.update(3400, null); mouse.update(3510, null); mouse.update(9400, null); mouse.update(9510, null);
+    mouse.update(step - 100, null); mouse.update(step + 10, null); mouse.update(clang - 100, null); mouse.update(clang + 10, null);
     expect(mouse.snapshot.events.map(e => e.name)).toEqual(['step', 'clang']);
     // 足音は低い三角波（60Hz）、盾の音は倍音の関係にない二つの高い音。
     expect(hasTone(60, 'triangle')).toBe(true);
@@ -213,7 +219,7 @@ describe('うなりの経路と止め方', () => {
   });
   it('振り下ろしと床の一撃は、マイクを使っても合成する', async () => {
     const audio = await begin(true);
-    audio.update(32990, null); audio.update(33010, null); audio.update(33540, null); audio.update(33560, null);
+    audio.update(defend.lock - 10, null); audio.update(defend.lock + 10, null); audio.update(ENEMY_SLAM_MS - 10, null); audio.update(ENEMY_SLAM_MS + 10, null);
     expect(audio.snapshot.events.map(e => e.name)).toEqual(['complete', 'swing', 'slam']);
     // 床の一撃は重い低音（70Hz）を持つ。
     expect(hasTone(70, 'triangle')).toBe(true);

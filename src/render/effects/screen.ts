@@ -192,7 +192,7 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   const rotate = wobble(t * SHAKE_HZ * .7, seed + 3) * SHAKE_TILT * drive;
   const shakeZoom = 1 + (wobble(t * SHAKE_HZ * .8, seed + 4) * .5 + .5) * .03 * drive;
 
-  // とどめの一撃の時刻。t は実際の時刻なので、世界の時刻で置いた54.5秒を実際の時刻（54.6秒）へ直してから比べる。
+  // とどめの一撃の時刻。t は実際の時刻なので、世界の時刻で置いた78.5秒を実際の時刻（78.6秒）へ直してから比べる。
   // ほかの回は null なので、ここから下の足し算は何も起こらない（値は今までと同じまま）。
   const finalBlow = beat.finish && beat.finalBlow !== null ? warpReal(beat.finalBlow, warp) : null;
   // 一撃からの強さ。0.3秒で0へ戻る。傾きと寄りに使う。

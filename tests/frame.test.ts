@@ -1,39 +1,13 @@
-import { BEATS } from '../src/game/rounds';
-import { AIM } from '../src/game/guard';
 import { describe, it, expect } from 'vitest';
 import { drawParticles, line, noise, SPARK_MAX_LENGTH, type Frame } from '../src/render/effects/frame';
 import { ParticlePool } from '../src/render/effects/particles';
 import { presets } from '../src/render/effects/presets';
-import { RELEASE_AT } from '../src/render/effects/screen';
-import type { Recipe } from '../src/game/types';
 
-const recipe = (over: Partial<Recipe> = {}): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null, ...over });
-
-type Call = { name: string; args: number[]; strokeStyle: string; lineWidth: number };
-/** 描く命令をそのまま控えておく仮のcanvas。線の位置、太さ、色を後から確かめられる。 */
-function recorder() {
-  const calls: Call[] = [];
-  const held: Record<string, unknown> = { strokeStyle: '', fillStyle: '', lineWidth: 0, globalAlpha: 1, globalCompositeOperation: 'lighter' };
-  const fake: unknown = new Proxy(held, {
-    get: (target, key: string) => key in target ? target[key] : (...args: number[]) => {
-      calls.push({ name: key, args, strokeStyle: String(target.strokeStyle), lineWidth: Number(target.lineWidth) });
-      return fake;
-    },
-    set: (target, key: string, value) => { target[key] = value; return true; },
-  });
-  return { c: fake as CanvasRenderingContext2D, calls };
-}
+// 仮のcanvasと試験用の魔法は tests/helpers.ts にまとめてある。
+import { callRecorder as recorder, testFrame } from './helpers';
 
 /** 部品が見るぶんだけの仮の Frame。光の絵は描かず、線だけを控える。 */
-const frame = (c: CanvasRenderingContext2D, pool = new ParticlePool(4)): Frame => ({
-  c, w: 1280, h: 720, t: RELEASE_AT, dt: .016,
-  sprites: { draw: () => {} } as unknown as Frame['sprites'], pool,
-  preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
-  recipe: recipe(), locked: true, origin: { x: 200, y: 500 }, target: { x: 900, y: 360 },
-  accent: null, live: { words: [], amount: 0, voice: 0, rings: 0 }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm: false,
-  once: (_key, run) => run(),
-});
+const frame = (c: CanvasRenderingContext2D, pool = new ParticlePool(4)): Frame => testFrame({ c, pool });
 
 /** 火花の粒を1個だけ出し、描かれた線の端と端を返す。 */
 function spark(vx: number, vy: number) {

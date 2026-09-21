@@ -88,7 +88,11 @@ export function smoothStroke<T extends { x: number; y: number }>(points: readonl
 export function completedSpellFrame(width: number, height: number, beat: Beat = BEATS[0], points: readonly Point[] = []): SpellFrame {
   const bounds = spellBounds(width, height), minWidth = width * SPELL_MIN.width, minHeight = height * SPELL_MIN.height;
   const box = boxOf(points, width, height);
-  if (!hasSize(box)) return { x: width * .5, y: height * (beat.defend ? AIM.y : .66), width: minWidth, height: minHeight };
+  // 防御の回は狙いの印の場所（画面の左寄り）に置く。画面が狭くて置ける範囲からはみ出すぶんは中へ寄せる。
+  if (!hasSize(box)) {
+    const x = clamp(width * (beat.defend ? AIM.x : .5), bounds.x - bounds.width / 2 + minWidth / 2, bounds.x + bounds.width / 2 - minWidth / 2);
+    return { x, y: height * (beat.defend ? AIM.y : .66), width: minWidth, height: minHeight };
+  }
   // 幅も高さも下限より小さいときだけ広げる。どちらかが下限に届いたところで止めるので、境目で倍率が跳ねない。
   const grow = clamp(Math.min(minWidth / Math.max(1, box.width), minHeight / Math.max(1, box.height)), 1, SPELL_MIN.scale);
   // 置ける範囲より大きい形だけ、範囲に収まるぶんだけ縮める。それ以外は描いた大きさのまま。

@@ -1,37 +1,19 @@
 import { BEATS } from '../src/game/rounds';
-import { AIM } from '../src/game/guard';
 import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest';
 import { presets, getPreset, intensityOf, increase, mixHue, lighten } from '../src/render/effects/presets';
 import { hitDelay } from '../src/render/effects/release';
 import { screenState, effectTime, hitStopOf, shockAt, wobble, HIT_STOPS, HIT_ZOOM, IMPACT_AT, RELEASE_AT, SHAKE_TILT } from '../src/render/effects/screen';
 import { ParticlePool } from '../src/render/effects/particles';
+
+/** 一回目の発動と命中の時刻（秒）。画面の効果の試験は、ここからの差で書く。 */
+const 発動 = RELEASE_AT, 命中 = IMPACT_AT;
 import { drawImpact } from '../src/render/effects/impact';
 import { type Frame } from '../src/render/effects/frame';
 import { MagicCanvas } from '../src/render/magic';
-import { ELEMENTS, type Recipe } from '../src/game/types';
+import { ELEMENTS } from '../src/game/types';
 
-/**
- * 描く命令を受け流すだけの仮のcanvas。どの命令も自分を返すので、gradient も使える。
- * 記録用の配列を渡すと、描いた命令と数の指定を書き出す。node には本物のcanvasがないため。
- */
-const digits = (v: number) => Math.round(v * 1000) / 1000;
-const stubContext = (log?: string[]) => {
-  const held: Record<string, unknown> = {};
-  const fake: unknown = new Proxy(held, {
-    get: (target, key: string) => (key in target ? target[key] : (...args: unknown[]) => {
-      log?.push(key + ':' + args.filter(a => typeof a === 'number').map(a => digits(a as number)).join(','));
-      return fake;
-    }),
-    set: (target, key: string, value) => {
-      if (typeof value === 'number') log?.push(key + '=' + digits(value));
-      target[key] = value; return true;
-    },
-  });
-  return fake as CanvasRenderingContext2D;
-};
-
-const recipe = (over: Partial<Recipe> = {}): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null, ...over });
+// 仮のcanvasと試験用の魔法は tests/helpers.ts にまとめてある。
+import { stubContext, testFrame, testRecipe as recipe } from './helpers';
 
 describe('見た目の設定', () => {
   it('全属性に4色があり、未知の名前は既定の設定になる', () => {
@@ -75,28 +57,28 @@ describe('見た目の設定', () => {
 
 describe('画面全体の効果', () => {
   it('放出前は揺れも閃光もなく、命中で最大になり、その後収まる', () => {
-    const before = screenState(16.9, 2, presets.vivid, 'attack');
+    const before = screenState(発動 - .1, 2, presets.vivid, 'attack');
     expect(before.shakeX).toBe(0); expect(before.flash).toBe(0);
-    const hit = screenState(18.51, 2, presets.vivid, 'attack'), later = screenState(19.4, 2, presets.vivid, 'attack');
+    const hit = screenState(命中 + .01, 2, presets.vivid, 'attack'), later = screenState(命中 + .9, 2, presets.vivid, 'attack');
     expect(hit.flash).toBeGreaterThan(.3); expect(Math.abs(hit.shakeX) + Math.abs(hit.shakeY)).toBeGreaterThan(0);
     expect(later.flash).toBe(0); expect(later.shakeX).toBe(0); expect(later.shakeY).toBe(0);
   });
   it('防御と強化は揺らさず、控えめの設定は閃光が弱い', () => {
-    expect(screenState(18.52, 3, presets.max, 'enhance').shakeX).toBe(0);
-    expect(screenState(18.52, 3, presets.max, 'bind').shakeY).toBe(0);
-    expect(screenState(18.52, 1, presets.calm, 'attack').flash).toBeLessThan(screenState(18.52, 1, presets.max, 'attack').flash);
-    expect(screenState(18.52, 1, presets.calm, 'attack').hitStop).toBe(0);
+    expect(screenState(命中 + .02, 3, presets.max, 'enhance').shakeX).toBe(0);
+    expect(screenState(命中 + .02, 3, presets.max, 'bind').shakeY).toBe(0);
+    expect(screenState(命中 + .02, 1, presets.calm, 'attack').flash).toBeLessThan(screenState(命中 + .02, 1, presets.max, 'attack').flash);
+    expect(screenState(命中 + .02, 1, presets.calm, 'attack').hitStop).toBe(0);
   });
   it('背景は蓄積で暗くなり、放出で一度抜け、余韻の後に戻る', () => {
     const s = (t: number) => screenState(t, 1, presets.vivid, 'attack').darken;
-    expect(s(13.9)).toBe(0); expect(s(16.5)).toBeGreaterThan(.2); expect(s(17.1)).toBeLessThan(s(16.5)); expect(s(23)).toBeLessThan(.01);
+    expect(s(BEATS[0].inputEnd - .1)).toBe(0); expect(s(発動 - .5)).toBeGreaterThan(.2); expect(s(発動 + .1)).toBeLessThan(s(発動 - .5)); expect(s(命中 + 4.5)).toBeLessThan(.01);
   });
   it('命中の停止は演出の時計だけを止める', () => {
-    expect(effectTime(18.4, .1)).toBe(18.4);
-    expect(effectTime(18.55, .1)).toBe(18.5);
+    expect(effectTime(命中 - .1, .1)).toBe(命中 - .1);
+    expect(effectTime(命中 + .05, .1)).toBe(命中);
     // 止めが終わればその分だけ遅れて進む。止め直し（命中+0.08秒と+0.2秒）の細かい時刻は tests/screen.test.ts で見る。
-    expect(effectTime(18.65, .1)).toBeCloseTo(18.55);
-    expect(effectTime(18.7, 0)).toBe(18.7);
+    expect(effectTime(命中 + .15, .1)).toBeCloseTo(命中 + .05);
+    expect(effectTime(命中 + .2, 0)).toBe(命中 + .2);
   });
 });
 
@@ -173,58 +155,60 @@ describe('揺れ、寄り、暗転', () => {
   const vivid = (t: number, calm = false) => screenState(t, 2, presets.vivid, 'attack', 0, .5, calm);
   it('揺れは命中の直後が一番強く、時間とともに減って止まる', () => {
     const size = (t: number) => Math.hypot(vivid(t).shakeX, vivid(t).shakeY);
-    expect(size(18.52)).toBeGreaterThan(size(18.8));
-    expect(size(18.8)).toBeGreaterThan(size(19.05));
-    expect(size(19.3)).toBe(0);
+    // ゆれの向きは時刻ごとに変わるので、一点ではなく少し幅を持たせて一番強いところで比べる。
+    const peak = (from: number, to: number) => { let most = 0; for (let t = from; t < to; t += .005) most = Math.max(most, size(t)); return most; };
+    expect(peak(命中, 命中 + .08)).toBeGreaterThan(peak(命中 + .16, 命中 + .24));
+    expect(peak(命中 + .16, 命中 + .24)).toBeGreaterThan(peak(命中 + .5, 命中 + .8));
+    expect(peak(命中 + .8, 命中 + 1.4)).toBe(0);
     // 衝撃の強さは減り続け、同じ時刻なら何度でも同じ値になる。
-    expect(shockAt(18.6, .5, 1)).toBeGreaterThan(shockAt(18.9, .5, 1));
-    expect(vivid(18.6).shakeX).toBe(vivid(18.6).shakeX);
+    expect(shockAt(命中 + .1, .5, 1)).toBeGreaterThan(shockAt(命中 + .4, .5, 1));
+    expect(vivid(命中 + .1).shakeX).toBe(vivid(命中 + .1).shakeX);
     expect(wobble(3.42, 1)).toBe(wobble(3.42, 1));
     expect(Math.abs(wobble(7.77, 2))).toBeLessThanOrEqual(1);
   });
   it('傾きは2度までで、寄りは等倍から約2割の間に収まり、命中が一番強い', () => {
     const zoomOf = (t: number) => screenState(t, 3, presets.max, 'attack').zoom;
-    for (let t = 17; t < 19.5; t += .01) {
+    for (let t = 発動; t < 命中 + 1; t += .01) {
       const s = screenState(t, 3, presets.max, 'attack');
       expect(Math.abs(s.rotate)).toBeLessThanOrEqual(SHAKE_TILT);
       // 引くことはなく、寄りすぎて絵が破綻することもない。命中の1.18倍に揺れの拡大（最大1.03倍）が乗る分まで。
       expect(s.zoom).toBeGreaterThanOrEqual(1);
       expect(s.zoom).toBeLessThan(HIT_ZOOM * 1.03 + .001);
     }
-    expect(zoomOf(IMPACT_AT)).toBeGreaterThan(zoomOf(17.6));
-    expect(zoomOf(IMPACT_AT)).toBeGreaterThan(zoomOf(19.2));
+    expect(zoomOf(IMPACT_AT)).toBeGreaterThan(zoomOf(発動 + .6));
+    expect(zoomOf(IMPACT_AT)).toBeGreaterThan(zoomOf(命中 + .7));
   });
   it('控えめモードでは揺れも傾きも寄りも停止もなく、閃光は3分の1', () => {
-    const calm = vivid(18.52, true);
+    const calm = vivid(命中 + .02, true);
     expect(calm.shakeX).toBe(0); expect(calm.shakeY).toBe(0);
     expect(calm.rotate).toBe(0); expect(calm.zoom).toBe(1); expect(calm.hitStop).toBe(0);
     expect(calm.chromatic).toBe(0);
-    expect(calm.flash).toBeCloseTo(vivid(18.52).flash / 3, 5);
+    expect(calm.flash).toBeCloseTo(vivid(命中 + .02).flash / 3, 5);
   });
   it('寄りは溜めの後半で1.03倍まで進み、命中で1.18倍から0.3秒で戻る', () => {
     const zoomOf = (t: number) => screenState(t, 1, presets.vivid, 'attack').zoom;
-    expect(zoomOf(15.4)).toBeCloseTo(1, 3);
-    expect(zoomOf(16.3)).toBeGreaterThan(zoomOf(15.8));
-    expect(zoomOf(16.99)).toBeCloseTo(1.03, 3);
+    expect(zoomOf(発動 - 1.6)).toBeCloseTo(1, 3);
+    expect(zoomOf(発動 - .7)).toBeGreaterThan(zoomOf(発動 - 1.2));
+    expect(zoomOf(発動 - .01)).toBeCloseTo(1.03, 3);
     // 命中の瞬間は寄り1.18倍に揺れの拡大が少し乗る。
-    expect(zoomOf(18.5)).toBeGreaterThan(HIT_ZOOM - .01); expect(zoomOf(18.5)).toBeLessThan(HIT_ZOOM * 1.03 + .001);
-    expect(zoomOf(18.7)).toBeLessThan(zoomOf(18.55));
-    expect(zoomOf(18.81)).toBeLessThan(1.03);
+    expect(zoomOf(命中)).toBeGreaterThan(HIT_ZOOM - .01); expect(zoomOf(命中)).toBeLessThan(HIT_ZOOM * 1.03 + .001);
+    expect(zoomOf(命中 + .2)).toBeLessThan(zoomOf(命中 + .05));
+    expect(zoomOf(命中 + .31)).toBeLessThan(1.03);
   });
-  it('放出の直前だけ完全に暗転し、17秒で抜ける', () => {
+  it('放出の直前だけ完全に暗転し、発動で抜ける', () => {
     const black = (t: number) => screenState(t, 1, presets.vivid, 'attack').blackout;
-    expect(black(16.9)).toBe(0);
-    expect(black(16.95)).toBeGreaterThan(.5);
-    expect(black(16.99)).toBe(1);
-    expect(black(17)).toBe(0);
+    expect(black(発動 - .1)).toBe(0);
+    expect(black(発動 - .05)).toBeGreaterThan(.5);
+    expect(black(発動 - .01)).toBe(1);
+    expect(black(発動)).toBe(0);
   });
   it('背景の彩度は溜めの後半で0.6まで落ち、命中の後に戻る', () => {
     const sat = (t: number) => screenState(t, 1, presets.vivid, 'attack').saturate;
-    expect(sat(15.4)).toBe(1);
-    expect(sat(16.2)).toBeLessThan(1);
-    expect(sat(17)).toBeCloseTo(.6, 3);
-    expect(sat(19.2)).toBeGreaterThan(sat(18.6));
-    expect(sat(20.5)).toBeCloseTo(1, 3);
+    expect(sat(発動 - 1.6)).toBe(1);
+    expect(sat(発動 - .8)).toBeLessThan(1);
+    expect(sat(発動)).toBeCloseTo(.6, 3);
+    expect(sat(命中 + .7)).toBeGreaterThan(sat(命中 + .1));
+    expect(sat(命中 + 2)).toBeCloseTo(1, 3);
   });
   it('命中の停止は弱100ms、強140ms、とどめ200msの三段で、とどめは派手さが3のときだけ', () => {
     expect(hitStopOf(presets.vivid, .5)).toBeCloseTo(.10);
@@ -241,11 +225,11 @@ describe('揺れ、寄り、暗転', () => {
     expect(full).toBeLessThan(3);
     expect(hitStopOf(presets.vivid, full)).toBeLessThan(HIT_STOPS.finish);
     // screenState の6番目の引数（昔の入力の量）は、もう何にも効かない。
-    const withAmount = screenState(16.5, 1, presets.vivid, 'attack', 0, 1);
-    const without = screenState(16.5, 1, presets.vivid, 'attack', 0, 0);
+    const withAmount = screenState(発動 - .5, 1, presets.vivid, 'attack', 0, 1);
+    const without = screenState(発動 - .5, 1, presets.vivid, 'attack', 0, 0);
     expect(withAmount.darken).toBe(without.darken);
     expect(withAmount.hitStop).toBe(without.hitStop);
-    const swing = (amount: number) => { const s = screenState(17.05, 1, presets.vivid, 'attack', 0, amount); return Math.abs(s.shakeX) + Math.abs(s.shakeY); };
+    const swing = (amount: number) => { const s = screenState(発動 + .05, 1, presets.vivid, 'attack', 0, amount); return Math.abs(s.shakeX) + Math.abs(s.shakeY); };
     expect(swing(1)).toBe(swing(0));
     // 量は派手さを通して停止に効く。派手さが3に届いたときだけとどめになる。
     const biggest = recipe({ count: 8, area: 1, concentration: 1 });
@@ -274,8 +258,8 @@ describe('連弾のリズム', () => {
     expect(hitDelay(0, 7)).toBe(0);
     expect(hitDelay(1, 7)).toBeCloseTo(.08);
     expect(hitDelay(5, 7)).toBeCloseTo(.4);
-    // 最後は18.5 + 0.08×(7-1) + 0.2 = 19.18秒に届く。
-    expect(18.5 + hitDelay(6, 7)).toBeCloseTo(19.18);
+    // 最後は命中 + 0.08×(7-1) + 0.2 = 命中の0.68秒後に届く。
+    expect(IMPACT_AT + hitDelay(6, 7)).toBeCloseTo(IMPACT_AT + .68);
     for (let i = 1; i < 7; i++) expect(hitDelay(i, 7)).toBeGreaterThan(hitDelay(i - 1, 7));
   });
 });
@@ -292,14 +276,7 @@ describe('属性ごとの消え方', () => {
 
 describe('控えめモードは部品にも届く', () => {
   /** 命中の部品だけを呼ぶための仮の Frame。光の絵は描かず、粒の数だけを見る。単発の攻撃は破裂を命中の0.08秒後に出すので、その直後で数える。 */
-  const frame = (calm: boolean, pool: ParticlePool): Frame => ({
-    c: stubContext(), w: 1280, h: 720, t: IMPACT_AT + .09, dt: .016,
-    sprites: { draw: () => {} } as unknown as Frame['sprites'], pool,
-    preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
-    recipe: recipe(), locked: true, origin: { x: 200, y: 500 }, target: { x: 900, y: 360 },
-    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0 }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm,
-    once: (_key, run) => run(),
-  });
+  const frame = (calm: boolean, pool: ParticlePool): Frame => testFrame({ t: IMPACT_AT + .09, pool, calm });
   const impactParticles = (calm: boolean) => {
     const pool = new ParticlePool(2000); pool.reseed(7);
     drawImpact(frame(calm, pool));
@@ -323,14 +300,14 @@ describe('コマ落ちしても同じ火花', () => {
     return new MagicCanvas(canvas as unknown as HTMLCanvasElement, presets.max);
   };
   /**
-   * 蓄積（14〜17秒）を step 秒の刻みで進め、放出から命中までは同じ刻みで進める。
+   * 蓄積（締め切りから発動まで）を step 秒の刻みで進め、放出から命中までは同じ刻みで進める。
    * 蓄積の粒は毎コマ乱数を使うので、刻みが違うと乱数の消費順が変わる。
    * 返すのは命中のコマで描いた命令だけ。
    */
   const untilImpact = (step: number) => {
     const log: string[] = [], magic = screen(log), spell = recipe({ count: 3 });
     const at = (t: number) => magic.renderEffects({ points: [], ms: t * 1000, recipe: spell, voice: 0, cursors: [], ready: false, target: { x: .72, y: .45 }, origin: { x: 320, y: 520 } });
-    for (let t = 14; t < RELEASE_AT; t += step) at(t);
+    for (let t = BEATS[0].inputEnd; t < RELEASE_AT; t += step) at(t);
     for (let t = RELEASE_AT; t < IMPACT_AT; t += 1 / 60) at(t);
     log.length = 0;
     at(IMPACT_AT);

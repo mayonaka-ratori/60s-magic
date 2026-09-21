@@ -12,7 +12,7 @@ import { drawImpact } from './effects/impact';
 import { drawWordReactions } from './effects/words';
 import { drawStrokeReactions, newStrokeMemory, type StrokeMemory } from './effects/strokes';
 import { drawGuard } from './effects/guard';
-import { drawFinish, finishBoost, holdTime } from './effects/finish';
+import { drawFinish, finishBoost, holdTime, FINISH_SETTLE } from './effects/finish';
 import { emptyLive, type LiveInput } from '../game/live-input';
 import { AIM, type GuardPlan } from '../game/guard';
 import { BEATS, beatAt, type Beat } from '../game/rounds';
@@ -21,9 +21,13 @@ import { BEATS, beatAt, type Beat } from '../game/rounds';
 export const colors: Record<Element, string> = Object.fromEntries(Object.entries(getPreset(null).palettes).map(([k, v]) => [k, v.main])) as Record<Element, string>;
 /** canvas内の色ずれを出す長さ（秒）。命中からこの時間だけ。 */
 const CHROMATIC_WINDOW = .2;
-/** とどめの余韻で粒と術式が消えきる時刻を、余韻の始まりから何秒後にするか（秒）。世界の59.25秒。 */
-const FINISH_FADE_TAIL = 2.25;
-/** 余韻の濃さが0へ落ちきる時刻（秒）。一回目と防御は命中の4.5秒後（実際）、とどめは余韻の終わり（世界）。 */
+/**
+ * とどめの余韻で粒と術式が消えきる時刻を、余韻の始まりから何秒後にするか（秒）。
+ * 回の表の「余韻の始まり」から「回の終わり」までの長さで、世界の時刻で90.0秒に0になる。
+ * 術式の光が抜けきる長さ（FINISH_SETTLE）と同じ値を使う。二か所で別々に書かない。
+ */
+const FINISH_FADE_TAIL = FINISH_SETTLE.seconds;
+/** 余韻の濃さが0へ落ちきる時刻（秒）。一回目と防御は命中の4.5秒後（実際）、とどめは回の終わり（世界）。 */
 export const afterglowEnd = (beat: Beat) => beat.finish ? beat.handoff + FINISH_FADE_TAIL : beat.impact + 4.5;
 /**
  * 粒と術式の消え際の濃さ（0〜1）。落ちきる2秒前から下がる。
@@ -35,7 +39,9 @@ export function afterglowFade(t: number, te: number, beat: Beat) {
 }
 /**
  * 演出を描くのをやめる実際の時刻（秒）。ここを過ぎたら粒も術式も消す。
- * とどめだけは、余韻を回の終わり（60.0秒）まで残して、結果画面へそのまま渡す。
+ * とどめだけは、余韻を回の終わり（実際の90.0秒）まで残して、結果画面へそのまま渡す。
+ * 世界の時計は命中のゆがみのぶんだけ遅れているので、切り替わる瞬間もまだ光がわずかに残る。
+ * 動かない絵のまま結果画面を待つ間を作らないため、ここは短くしない。
  */
 export const stopAtOf = (beat: Beat) => beat.finish ? beat.end : Math.max(beat.end - .5, beat.impact + 4.5);
 /**
@@ -134,7 +140,7 @@ export class MagicCanvas {
     const c = this.ctx, w = this.width, h = this.height, t = ms / 1000;
     const beat = input.beat ?? beatAt(t);
     c.clearRect(0, 0, w, h);
-    // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前（23.5秒）で変わらない。
+    // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前（29.5秒）で変わらない。
     const stopAt = stopAtOf(beat);
     if (ready || t >= stopAt) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
     // 時刻が戻ったら（確認画面のつまみなど）粒と一度きりの発生をやり直す。

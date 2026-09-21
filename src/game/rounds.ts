@@ -1,8 +1,9 @@
 import type { Phase } from './types';
 
 /**
- * 一回分の時刻（ms）。60秒を三回に分けた表の一行にあたる。
+ * 一回分の時刻（ms）。90秒を三回に分けた表の一行にあたる。
  * 秒数は設計仕様の1.3の値をそのまま置いている。勝手に動かさない。
+ * 一回目30秒、防御26秒、とどめ34秒。とどめを一番長くして、最後の魔法に余裕を持たせている。
  */
 export type Round = {
   id: 'first' | 'defend' | 'finish';
@@ -32,14 +33,14 @@ export type Round = {
 };
 
 export const ROUNDS: Round[] = [
-  { id: 'first', index: 1, castId: 'cast-01', start: 0, build: 6000, chant: 11000, inputEnd: 14000, lock: 16000, release: 17000, impact: 18500, finalBlow: null, handoff: 23000, end: 24000 },
-  { id: 'defend', index: 2, castId: 'cast-02', start: 24000, build: null, chant: 28000, inputEnd: 31000, lock: 33000, release: 34000, impact: 35400, finalBlow: null, handoff: 39000, end: 40000 },
-  { id: 'finish', index: 3, castId: 'cast-03', start: 40000, build: null, chant: 44000, inputEnd: 49000, lock: 51000, release: 52000, impact: 53600, finalBlow: 54500, handoff: 57000, end: 60000 },
+  { id: 'first', index: 1, castId: 'cast-01', start: 0, build: 7000, chant: 14000, inputEnd: 18000, lock: 21000, release: 22000, impact: 23500, finalBlow: null, handoff: 29000, end: 30000 },
+  { id: 'defend', index: 2, castId: 'cast-02', start: 30000, build: null, chant: 40000, inputEnd: 45000, lock: 48000, release: 49000, impact: 50400, finalBlow: null, handoff: 55000, end: 56000 },
+  { id: 'finish', index: 3, castId: 'cast-03', start: 56000, build: null, chant: 64000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
 ];
 
 /**
  * 一回目の受付中に、騎士が自分から動く時刻（ms）。足を踏み替える（step）、盾を打ち鳴らす（clang）。
- * 画面の揺れ、騎士の動き、効果音がこの一つの表を見る。案内の音（6秒、11秒）と重ねない。
+ * 画面の揺れ、騎士の動き、効果音がこの一つの表を見る。案内の音（7秒、14秒）と重ねない。
  */
 export const ENEMY_MOVES: ReadonlyArray<{ at: number; kind: 'step' | 'clang' }> = [{ at: 3500, kind: 'step' }, { at: 9500, kind: 'clang' }];
 /** 防御の回で、騎士が溜めの姿勢に入る時刻（ms）。ここから振り下ろしまで、画面が低く震え続ける。 */
@@ -51,11 +52,11 @@ export const ENEMY_SLAM_MS = ROUNDS[1].lock + 550;
 export const BATTLE_END = ROUNDS[ROUNDS.length - 1].end;
 /**
  * とどめの多段命中が当たる時刻。最初の到達（impact）からのずれ（ms）。
- * 53.60、53.76、53.92、54.10秒にあたる。弾の数や属性では変えない。
+ * 77.60、77.76、77.92、78.10秒にあたる。弾の数や属性では変えない。
  * 体力の段、部品の脱落、傷あと、演出がすべてこの一つの表を見る。
  */
 export const FINISH_HIT_OFFSETS_MS = [0, 160, 320, 500];
-/** とどめの多段命中の時刻（ms）。53600、53760、53920、54100。 */
+/** とどめの多段命中の時刻（ms）。77600、77760、77920、78100。 */
 export const FINISH_HIT_MS = FINISH_HIT_OFFSETS_MS.map(offset => ROUNDS[2].impact + offset);
 /**
  * とどめの一撃の時刻（ms）。表に無ければ起動した時点で止める。
@@ -68,16 +69,56 @@ function finalBlowMs() {
 }
 export const FINAL_BLOW_MS = finalBlowMs();
 /**
- * 騎士が膝をつき始め、体力の枠が消え始める時刻（ms）。とどめの一撃の0.9秒後。
+ * 騎士が膝をつき始め、体力の枠が消え始める時刻（ms）。とどめの一撃の1.3秒後。
  * 崩れ落ちと枠の消え方をそろえるため、二か所で別々に書かない。
  */
-export const FINISH_COLLAPSE_MS = FINAL_BLOW_MS + 900;
-/** 締め切りのあと、声の最後の文字を待てる時間。MacのGPUでの認識一回分が入る長さ。 */
-export const SPEECH_WAIT_MS = 1400;
+export const FINISH_COLLAPSE_MS = FINAL_BLOW_MS + 1300;
+/** 剣を手放して床へ落とす時刻（ms、世界の時刻）。とどめの一撃の0.6秒後。 */
+export const FINISH_SWORD_DROP_MS = FINAL_BLOW_MS + 600;
+/** 膝をつききるまでの長さ（ms）。ここまで来たら、そのまま倒れ始める。 */
+export const FINISH_KNEEL_MS = 1100;
+/** 手前へ倒れ始める時刻と、倒れきる時刻（ms、世界の時刻）。崩れ落ちの音も騎士もここを見る。 */
+export const FINISH_FALL_FROM_MS = FINISH_COLLAPSE_MS + FINISH_KNEEL_MS;
+export const FINISH_FALL_TO_MS = FINISH_FALL_FROM_MS + 1100;
+/**
+ * 締め切りのあと、声の最後の文字を待てる時間。
+ * 一回16秒から18秒の声を「先頭から今まで」聞き直すので、14秒だったころの1.4秒では足りない。
+ * MacのGPUでの認識一回分（13秒の声で約1.25秒）に余裕を足した長さ。実機で測って決め直す。
+ */
+export const SPEECH_WAIT_MS = 2000;
+/**
+ * サーバーが受け付ける、声を待つ時間の上限（ms）。画面側の値より少しだけ広く取る。
+ * 画面側が長すぎる値を送ってきても、ここで頭を押さえる。
+ */
+export const SPEECH_WAIT_MAX_MS = SPEECH_WAIT_MS + 1000;
+/** その回の受付の長さ（ms）。マイクの打ち切りも音の受け皿の大きさも、この値から作る。 */
+export const windowMsOf = (round: Round) => round.inputEnd - round.start;
+/** いちばん長い受付（ms）。一回目の18秒。受け皿の大きさと接続の上限はここから作る。 */
+export const MAX_INPUT_MS = Math.max(...ROUNDS.map(windowMsOf));
+/** 16kHzで受け取るので、1msあたり16点。受け皿の大きさを点の数で書くときに使う。 */
+export const SAMPLES_PER_MS = 16;
+/** 音の受け皿に入る点の数の上限。いちばん長い受付の分だけ持つ。 */
+export const MAX_INPUT_SAMPLES = MAX_INPUT_MS * SAMPLES_PER_MS;
+/** 準備の合図の長さ（ms）。90秒には含めない。一回目はこの前に音声認識へつなぐ。 */
+export const COUNTDOWN_MS = 3000;
+/** 二回目からの回で、声の受付を作り直し始める時刻（回の始まりより前、ms）。 */
+export const VOICE_RECONNECT_MS = 2500;
+/**
+ * 音声認識の接続を保てる上限（ms）。画面側が閉じ忘れたときの受け皿で、
+ * 受付が終わる前に切れてはいけない。受付の前につなぐ分と、最後の声を待つ分に余裕を足す。
+ */
+export const speechSocketMsOf = (windowMs: number = MAX_INPUT_MS) =>
+  Math.max(COUNTDOWN_MS, VOICE_RECONNECT_MS) + windowMs + SPEECH_WAIT_MS + 5000;
 /** 声を待つのをやめ、Jevへ送る時刻。声が先に届けばもっと早く送る。 */
 export const speechLimitOf = (round: Round) => round.inputEnd + SPEECH_WAIT_MS;
 /** Jevの返事を受け取れる最後の時刻。確定の手前で必ず打ち切る。 */
 export const replyLimitOf = (round: Round) => round.lock - 100;
+/**
+ * 盾で受け止めきった騎士がよろめく時刻（ms）。一撃が盾に当たってから2.1秒後。
+ * 兜の角が折れる瞬間（knight.ts）と体力が減る段（health-bar.ts）と画面の揺れ（main.ts）は
+ * 同じ一瞬なので、数字はここだけに置く。別々に持つと、片方を直したときにずれる。
+ */
+export const GUARD_STAGGER_MS = ROUNDS[1].impact + 2100;
 /** その時刻に進んでいる回。終わった後は最後の回を返す。 */
 export const roundAt = (ms: number) => ROUNDS.find(round => ms < round.end) ?? ROUNDS[ROUNDS.length - 1];
 

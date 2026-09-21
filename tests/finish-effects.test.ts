@@ -1,11 +1,10 @@
 import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest';
-import { BEATS, beatOf, ROUNDS, FINISH_HIT_OFFSETS_MS } from '../src/game/rounds';
-import { AIM } from '../src/game/guard';
+import { BEATS, beatOf, ROUNDS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS } from '../src/game/rounds';
 import { presets } from '../src/render/effects/presets';
 import { ParticlePool } from '../src/render/effects/particles';
 import { drawTravel, arrivalOf, bodyPoint, hitDelay } from '../src/render/effects/release';
-import { screenState, FINISH_PASS_FLASH } from '../src/render/effects/screen';
-import { MagicCanvas, afterglowFade, stopAtOf } from '../src/render/magic';
+import { screenState, warpOf, warpTime, FINISH_PASS_FLASH, HIT_STOPS } from '../src/render/effects/screen';
+import { MagicCanvas, afterglowEnd, afterglowFade, stopAtOf } from '../src/render/magic';
 import type { Frame } from '../src/render/effects/frame';
 import type { Point, Recipe } from '../src/game/types';
 import {
@@ -16,36 +15,17 @@ import {
 } from '../src/render/effects/finish';
 
 const finishBeat = beatOf(ROUNDS[2]);
-const recipe = (over: Partial<Recipe> = {}): Recipe => ({ version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null, ...over });
-
-/** 描く命令を受け流すだけの仮の canvas。数の指定だけを記録できる。 */
-const digits = (v: number) => Math.round(v * 1000) / 1000;
-const stubContext = (log?: string[]) => {
-  const held: Record<string, unknown> = {};
-  const fake: unknown = new Proxy(held, {
-    get: (target, key: string) => (key in target ? target[key] : (...args: unknown[]) => {
-      log?.push(key + ':' + args.filter(a => typeof a === 'number').map(a => digits(a as number)).join(','));
-      return fake;
-    }),
-    set: (target, key: string, value) => { if (typeof value === 'number') log?.push(key + '=' + digits(value)); target[key] = value; return true; },
-  });
-  return fake as CanvasRenderingContext2D;
-};
+// 仮のcanvasと試験用の魔法は tests/helpers.ts にまとめてある。
+import { stubContext, testFrame, testRecipe as recipe } from './helpers';
 /** 線を数本持つ、仮の術式の点列。 */
 const points: Point[] = [];
 for (let stroke = 0; stroke < 3; stroke++) for (let i = 0; i < 12; i++)
   points.push({ x: .4 + Math.cos(i / 12 * Math.PI * 2) * (.05 + stroke * .03), y: .6 + Math.sin(i / 12 * Math.PI * 2) * .05, t: i * 20, hand: 0, stroke });
 
-/** finish.ts の部品だけを呼ぶための仮の Frame。 */
-const frame = (t: number, over: Partial<Frame> = {}, spell: Partial<Recipe> = {}): Frame => ({
-  c: stubContext(), w: 1280, h: 720, t, dt: .016,
-  sprites: { draw: () => {} } as unknown as Frame['sprites'], pool: new ParticlePool(700),
-  preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
-  recipe: recipe(spell), locked: true, origin: { x: 320, y: 520 }, target: { x: 900, y: 360 },
-  accent: null, live: { words: [], amount: 0, voice: 0, rings: 0 }, points, cursors: [],
-  beat: finishBeat, guard: null, aim: AIM, inherited: [], calm: false,
-  once: (_key, run) => run(), ...over,
+/** finish.ts の部品だけを呼ぶための仮の Frame。共通の土台から、この回のぶんだけ変える。 */
+const frame = (t: number, over: Partial<Frame> = {}, spell: Partial<Recipe> = {}): Frame => testFrame({
+  t, pool: new ParticlePool(700), recipe: recipe(spell), origin: { x: 320, y: 520 },
+  points, beat: finishBeat, ...over,
 });
 
 describe('術式が視界を通り抜ける', () => {
@@ -68,9 +48,9 @@ describe('術式が視界を通り抜ける', () => {
     expect(passThrough(-.01, 抜ける倍率)).toBeNull();
     expect(passThrough(FINISH_PASS.seconds, 抜ける倍率)).toBeNull();
     expect(passThrough(0, 抜ける倍率)!.scale).toBeCloseTo(1, 6);
-    // 52.10秒（発動から0.10秒）ではまだ外周が画面の対角線の半分より内側。
+    // 76.10秒（発動から0.10秒）ではまだ外周が画面の対角線の半分より内側。
     expect(外周(.1)).toBeLessThan(半分);
-    // 52.20秒で抜けきる。
+    // 76.20秒で抜けきる。
     expect(外周(FINISH_PASS.reach)).toBeGreaterThanOrEqual(半分 - 1e-6);
     // 残りの0.05秒でさらに1.3倍まで広がる。
     expect(外周(FINISH_PASS.seconds - .001)).toBeGreaterThan(半分 * (FINISH_PASS.overshoot - .01));
@@ -169,7 +149,7 @@ describe('輪をくぐって奥へ伸びる', () => {
     expect(ringStrokeWidth(720, 1)).toBeGreaterThan(ringStrokeWidth(720));
     expect(FINISH_RING.alpha).toBeGreaterThanOrEqual(.8);
   });
-  it('52.3秒から53.5秒まで5枚の輪が出て、太さと濃さが決めた値を満たす', () => {
+  it('発動の直後から到達の手前まで5枚の輪が出て、太さと濃さが決めた値を満たす', () => {
     const 輪 = (t: number) => {
       const log: string[] = [];
       drawFinish(frame(t, { c: stubContext(log) }));
@@ -179,9 +159,9 @@ describe('輪をくぐって奥へ伸びる', () => {
         濃さ: log.filter(line => line.startsWith('globalAlpha=')).map(line => Number(line.slice(12))),
       };
     };
-    expect(輪(52.29).枚数).toBe(0);
-    expect(輪(53.51).枚数).toBe(0);
-    const 途中 = 輪(52.9);
+    expect(輪(finishBeat.release + .29).枚数).toBe(0);
+    expect(輪(finishBeat.impact - .09).枚数).toBe(0);
+    const 途中 = 輪(finishBeat.release + .9);
     // 外側の輪と内側の輪で、5枚ぶん10個以上。
     expect(途中.枚数).toBeGreaterThanOrEqual(FINISH_RING.count * 2);
     expect(Math.max(...途中.太さ)).toBeGreaterThanOrEqual(720 * FINISH_RING.width);
@@ -227,7 +207,11 @@ describe('輪をくぐって奥へ伸びる', () => {
 describe('多段命中', () => {
   it('当たるのは固定の4回', () => {
     expect(FINISH_HIT_OFFSETS_MS).toEqual([0, 160, 320, 500]);
-    expect(finishHitTimes(finishBeat)).toEqual([53.6, 53.76, 53.92, 54.1]);
+    // 当たるのは77.60、77.76、77.92、78.10秒。1回目は最初の到達（77.6秒）と同じ時刻。
+    const 予定 = [77.60, 77.76, 77.92, 78.10];
+    finishHitTimes(finishBeat).forEach((at, i) => expect(at).toBeCloseTo(予定[i], 6));
+    expect(予定[0]).toBe(finishBeat.impact);
+    expect(FINISH_HIT_MS).toEqual([77600, 77760, 77920, 78100]);
   });
   it('弾の数を4回へ散らす。1発は1回目だけ、5発は1回目が2発', () => {
     expect(finishHitPlan(1)).toEqual([1, 0, 0, 0]);
@@ -304,21 +288,40 @@ describe('四方向から走り込む光の筋', () => {
 describe('描く値だけを止める間と、余韻', () => {
   it('発動の0.4秒前から0.32秒だけ、描く値を止める', () => {
     const from = finishBeat.release - FINISH_HOLD.before;
-    expect(from).toBeCloseTo(51.6, 6);
+    expect(from).toBeCloseTo(finishBeat.release - .4, 6);
     expect(holdTime(from - .001, finishBeat)).toBeNull();
     expect(holdTime(from, finishBeat)).toBe(from);
     expect(holdTime(from + .31, finishBeat)).toBe(from);
-    // 51.92秒からは暗転が受け持つので、止めるのをやめる。
+    // 止める時間が終わったら、そこからは暗転が受け持つ。
     expect(holdTime(from + FINISH_HOLD.seconds, finishBeat)).toBeNull();
     for (const beat of [BEATS[0], BEATS[1]]) expect(holdTime(beat.release - .2, beat)).toBeNull();
   });
-  it('術式の光は余韻の始まりから抜け、世界の59.25秒で消える', () => {
+  it('術式の光は余韻の始まりから抜け、回の終わりまで残る', () => {
+    const 消える = finishBeat.handoff + FINISH_SETTLE.seconds;
     expect(settleFade(finishBeat.handoff - .1, finishBeat)).toBe(1);
     expect(settleFade(finishBeat.handoff, finishBeat)).toBe(1);
     expect(settleFade(finishBeat.handoff + FINISH_SETTLE.seconds / 2, finishBeat)).toBeCloseTo(.5, 6);
-    expect(finishBeat.handoff + FINISH_SETTLE.seconds).toBeCloseTo(59.25, 6);
-    expect(settleFade(59.25, finishBeat)).toBe(0);
-    expect(settleFade(60, finishBeat)).toBe(0);
+    // 抜けきるのは回の終わり（世界の時刻）。手前で消して、動かない絵が続く間を作らない。
+    expect(消える).toBeCloseTo(finishBeat.end, 6);
+    expect(settleFade(消える, finishBeat)).toBe(0);
+    // 魔導書へ移る実際の90.0秒では、世界の時計がまだ手前なので光が残っている。
+    // 控えめモード（止めなし）でも同じ。
+    for (const hitStop of [HIT_STOPS.strong, 0]) {
+      const 世界 = warpTime(finishBeat.end, warpOf(finishBeat, hitStop));
+      expect(世界).toBeLessThan(finishBeat.end);
+      expect(settleFade(世界, finishBeat)).toBeGreaterThan(0);
+    }
+  });
+  it('床の塵は、騎士が倒れ始めてから立つ', () => {
+    const 倒れ始め = FINISH_FALL_FROM_MS / 1000, 倒れきり = FINISH_FALL_TO_MS / 1000;
+    // 塵の時刻は一撃からの秒で持つが、指す先は倒れ始めと同じ時刻。
+    expect((finishBeat.finalBlow ?? 0) + FINISH_SETTLE.dustFrom).toBeCloseTo(倒れ始め, 6);
+    expect(FINISH_SETTLE.dustFrom).toBeLessThan(倒れきり - (finishBeat.finalBlow ?? 0));
+    // 倒れ始めの手前のコマでは粒が増えず、倒れ始めのコマで増える。
+    // 受け皿は大きめに取る。いっぱいになると、増えたかどうかが分からなくなる。
+    const 粒 = (t: number) => { const f = frame(t, { pool: new ParticlePool(20000) }); drawFinish(f); return f.pool.count; };
+    expect(粒(倒れ始め)).toBeGreaterThan(粒(倒れ始め - .001));
+    expect(粒(倒れ始め - .001)).toBe(粒(倒れ始め - .5));
   });
 });
 
@@ -350,7 +353,7 @@ describe('とどめの見せ方を通しで描く', () => {
   const play = (preset = presets.vivid) => {
     const log: string[] = [], magic = screen(log, preset), spell = recipe({ count: 5 });
     let peak = 0;
-    for (let t = 49; t < 59.4; t += 1 / 60) {
+    for (let t = finishBeat.inputEnd; t < finishBeat.end - .6; t += 1 / 60) {
       magic.renderEffects({ points, ms: t * 1000, recipe: spell, voice: 0, cursors: [], ready: false,
         target: { x: .72, y: .45 }, origin: { x: 320, y: 520 }, inherited: [{ x: .2, y: .4 }, { x: .8, y: .5 }] });
       peak = Math.max(peak, magic.particleCount);
@@ -371,35 +374,48 @@ describe('とどめの見せ方を通しで描く', () => {
   it('止めている間は粒も術式も動かない', () => {
     const magic = screen([]), spell = recipe({ count: 3 });
     const at = (t: number) => magic.renderEffects({ points, ms: t * 1000, recipe: spell, voice: 0, cursors: [], ready: false, target: { x: .72, y: .45 }, origin: { x: 320, y: 520 } });
-    for (let t = 49; t < 51.6; t += 1 / 60) at(t);
-    at(51.6); const 止めた時刻 = magic.effectMs;
-    for (let t = 51.6; t < 51.91; t += 1 / 60) at(t);
+    const 止め始め = finishBeat.release - .4;
+    for (let t = finishBeat.inputEnd; t < 止め始め; t += 1 / 60) at(t);
+    at(止め始め); const 止めた時刻 = magic.effectMs;
+    for (let t = 止め始め; t < 止め始め + .31; t += 1 / 60) at(t);
     expect(magic.effectMs).toBe(止めた時刻);
-    at(51.95);
+    at(止め始め + .35);
     expect(magic.effectMs).toBeGreaterThan(止めた時刻);
   });
-  it('51.6秒の「間」は、騎士と術式が見る世界の時刻も止まる', () => {
+  it('発動の0.4秒前の「間」は、騎士と術式が見る世界の時刻も止まる', () => {
     const magic = screen([]), spell = recipe({ count: 3 });
     // effectMsOf は時刻だけで決まるので、コマを回さずに確かめられる。
-    expect(magic.effectMsOf(51500, spell, 0, finishBeat)).toBe(51500);
-    expect(magic.effectMsOf(51700, spell, 0, finishBeat)).toBe(51600);
-    expect(magic.effectMsOf(51910, spell, 0, finishBeat)).toBe(51600);
+    const 止め始め = ROUNDS[2].release - 400;
+    expect(magic.effectMsOf(止め始め - 100, spell, 0, finishBeat)).toBe(止め始め - 100);
+    expect(magic.effectMsOf(止め始め + 100, spell, 0, finishBeat)).toBe(止め始め);
+    expect(magic.effectMsOf(止め始め + 310, spell, 0, finishBeat)).toBe(止め始め);
     // 0.32秒が終われば実際の時刻へ戻る。
-    expect(magic.effectMsOf(51930, spell, 0, finishBeat)).toBe(51930);
-    // 体力の段は53.6秒からなので、この間は影響を受けない。
-    expect(magic.effectMsOf(53600, spell, 0, finishBeat)).toBe(53600);
+    expect(magic.effectMsOf(止め始め + 330, spell, 0, finishBeat)).toBe(止め始め + 330);
+    // 体力の段は最初の到達からなので、この間は影響を受けない。
+    expect(magic.effectMsOf(ROUNDS[2].impact, spell, 0, finishBeat)).toBe(ROUNDS[2].impact);
     // 一回目と防御には「間」がないので、今までどおり実際の時刻のまま。
     for (const beat of [BEATS[0], BEATS[1]])
       for (const ms of [beat.release * 1000 - 400, beat.release * 1000 - 100, beat.release * 1000 - 1])
         expect(magic.effectMsOf(ms, spell, 0, beat)).toBe(ms);
   });
-  it('とどめの余韻は、世界の59.25秒に消えきり、術式は60秒まで残る', () => {
-    // 消えきる時刻は、世界の59.25秒（実際の60.0秒）。
-    expect(afterglowFade(59.6, 59.25, finishBeat)).toBeCloseTo(0, 9);
-    expect(afterglowFade(59.6, 58.25, finishBeat)).toBeCloseTo(.5, 9);
-    // 実際の時刻で数えていたころは、58.1秒でもう消えていた。今は9割ほど残る。
-    expect(afterglowFade(58.1, 58.1 - .725, finishBeat)).toBeGreaterThan(.9);
-    expect(stopAtOf(finishBeat)).toBe(60);
+  it('とどめの余韻は、世界の時刻で消えきり、術式は回の終わりまで残る', () => {
+    const 消える = finishBeat.handoff + FINISH_SETTLE.seconds;
+    // 粒が消えきる時刻も、術式の光と同じく回の終わり（世界の時刻）。
+    expect(afterglowEnd(finishBeat)).toBeCloseTo(finishBeat.end, 6);
+    // 魔導書へ移る実際の90.0秒では、世界の時計がまだ手前なので粒も残っている。
+    for (const hitStop of [HIT_STOPS.strong, 0]) {
+      const 世界 = warpTime(finishBeat.end, warpOf(finishBeat, hitStop));
+      expect(afterglowFade(finishBeat.end, 世界, finishBeat)).toBeGreaterThan(0);
+    }
+    // 消えきるのは世界の時刻で見る。実際の時刻ではそこから0.725秒あと。
+    expect(afterglowFade(消える + .725, 消える, finishBeat)).toBeCloseTo(0, 9);
+    expect(afterglowFade(消える + .725, 消える - 1, finishBeat)).toBeCloseTo(.5, 9);
+    // 同じ実際の時刻でも、世界の時刻で数えるほうが濃く残る（スローのぶんだけ遅れているため）。
+    const いま = 消える - .5 + .725;
+    expect(afterglowFade(いま, いま - .725, finishBeat)).toBeGreaterThan(afterglowFade(いま, いま, finishBeat));
+    // とどめだけは、描くのをやめるのが90.0秒。魔導書へ移る時刻（回の終わり）と同じ。
+    expect(stopAtOf(finishBeat)).toBe(90);
+    expect(stopAtOf(finishBeat)).toBe(finishBeat.end);
   });
   it('一回目と防御の消え際と切る時刻は、今までと完全に同じ', () => {
     for (const beat of [BEATS[0], BEATS[1]]) {
