@@ -387,7 +387,7 @@ function showReveal(t:number,round:Round,recipe:{name:string}|null) {
   const from=lastRound?round.handoff/1000:release+.6;
   const out=lastRound?round.handoff/1000+1.5:round.end/1000-1.5;
   const gone=lastRound?out+.3:round.end/1000-.8;
-  // 発動から余韻の間は下の案内を閉じる。次の回へ渡す間（23秒から）はまた出して、騎士の構えを知らせる。
+  // 発動から余韻の間は下の案内を閉じる。次の回へ渡す間（29秒から）はまた出して、騎士の構えを知らせる。
   // とどめの回は次へ渡すものがないので、閉じたまま戻さない。
   show('bottom-hud',t<release||(!lastRound&&t>=round.handoff/1000));
   if(t>=from&&t<gone&&name) {
@@ -609,7 +609,7 @@ function animate(now:number) {
     battle.tick();
     if(demo)demoInput(battle);
     for(const cast of battle.casts)driveRound(battle,cast);
-    // 魔法が確定するたび（16、33、51秒）に、このPCの中へ保存し直す。増えたときだけ書く。
+    // 魔法が確定するたび（21、48、75秒）に、このPCの中へ保存し直す。増えたときだけ書く。
     let locked=0;for(const cast of battle.casts)if(cast.locked&&cast.recipe)locked++;
     if(recorder&&locked>savedRounds){savedRounds=locked;void recorder.save(battle);}
     // 二回目からの回は、その少し前に声の受付を作り直す。
@@ -650,7 +650,7 @@ function animate(now:number) {
       healthWrapEl.classList.add('hit');healthWrapEl.dataset.hit='1';
       setTimeout(()=>healthWrapEl.classList.remove('hit'),700);
     }
-    // とどめの一撃の0.9秒後から、体力の枠を名前ごと薄くして消す。消したら戻さない。
+    // とどめの一撃の1.3秒後から、体力の枠を名前ごと薄くして消す。消したら戻さない。
     if(!healthGone&&stage.effectMs>=HEALTH_HIDE_MS){healthGone=true;healthWrapEl.dataset.gone='1';}
   }
   // 受け取った入力を描き終えた時刻との差を、手応えの記録に足す。

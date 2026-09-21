@@ -372,7 +372,7 @@ describe('体力の減り方',()=>{
     expect(steps).toHaveLength(13);
     expect(steps[7].at).toBe(GUARD_STEP_MS);
     expect(steps[1].at-steps[0].at).toBe(80);
-    // 段の時刻は弾と同じ hitDelay から作るので、最後の1発（19.18秒）でも減る。
+    // 段の時刻は弾と同じ hitDelay から作るので、最後の1発（24.18秒）でも減る。
     expect(steps[6].at).toBeCloseTo(first.impact+hitDelay(6,7)*1000);
     expect(steps[6].left).toBeCloseTo(steps[7].from,6);
   });

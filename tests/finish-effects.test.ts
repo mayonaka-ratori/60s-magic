@@ -68,9 +68,9 @@ describe('術式が視界を通り抜ける', () => {
     expect(passThrough(-.01, 抜ける倍率)).toBeNull();
     expect(passThrough(FINISH_PASS.seconds, 抜ける倍率)).toBeNull();
     expect(passThrough(0, 抜ける倍率)!.scale).toBeCloseTo(1, 6);
-    // 52.10秒（発動から0.10秒）ではまだ外周が画面の対角線の半分より内側。
+    // 76.10秒（発動から0.10秒）ではまだ外周が画面の対角線の半分より内側。
     expect(外周(.1)).toBeLessThan(半分);
-    // 52.20秒で抜けきる。
+    // 76.20秒で抜けきる。
     expect(外周(FINISH_PASS.reach)).toBeGreaterThanOrEqual(半分 - 1e-6);
     // 残りの0.05秒でさらに1.3倍まで広がる。
     expect(外周(FINISH_PASS.seconds - .001)).toBeGreaterThan(半分 * (FINISH_PASS.overshoot - .01));

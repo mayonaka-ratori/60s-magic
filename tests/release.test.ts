@@ -38,7 +38,7 @@ describe('連弾の到達', () => {
   it('遅れて届く弾は、自分の命中の時刻まで進み続ける', () => {
     const f = frame({ count: 7 });
     const at = (time: number) => bodyPoint(f, 6, travelAt(time), time);
-    // 1発目が届く18.5秒の時点では、最後の弾はまだ途中にいる。
+    // 1発目が届く23.5秒の時点では、最後の弾はまだ途中にいる。
     const half = distanceToTarget(at(ARRIVAL));
     expect(half).toBeGreaterThan(1);
     expect(distanceToTarget(at(ARRIVAL + .1))).toBeLessThan(half);

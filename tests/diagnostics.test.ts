@@ -28,7 +28,7 @@ describe('確認用の記録',()=>{
     const s=new Diagnostics(0,()=>0).summary();
     expect(s.camera.delegate).toBeNull();expect(s.camera.frames).toBe(0);expect(s.camera.detectMs.average).toBeNull();
   });
-  it('24秒の開始が後から決まっても、前の出来事の時刻を合わせる',()=>{
+  it('90秒の開始が後から決まっても、前の出来事の時刻を合わせる',()=>{
     let now=0;const d=new Diagnostics(0,()=>now);
     now=500;d.log('準備');now=2000;d.rebase(2000);d.log('開始');
     expect(d.events.map(e=>e.atMs)).toEqual([-1500,0]);

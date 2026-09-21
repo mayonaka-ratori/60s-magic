@@ -2,6 +2,7 @@ import './look.css';
 import { CompletedSpell } from './render/completed-spell';
 import { Knight } from './render/knight';
 import { completedSpellFrame, fitSpell } from './render/spell-layout';
+import { ROUNDS } from './game/rounds';
 import type { Point } from './game/types';
 
 document.title = '背景・騎士・術式の確認 | はじまりの魔法';
@@ -38,8 +39,13 @@ let knight: Knight;
 try { renderer = new CompletedSpell(canvas); knight = new Knight(el<HTMLCanvasElement>('knight')); }
 catch { el('loading').textContent = '光の表示を準備できませんでした。ブラウザーの画像処理の設定を確認してください。'; throw new Error('確認画面のWebGL初期化に失敗'); }
 
-// 本編と同じ時刻で姿勢を止める。被弾は18.7秒、構えを戻す途中は19.9秒（本編では19.1秒から戻り始め、19.3〜20.2秒がその姿勢）。
-const poseTimes: Record<string, number> = { idle: 0, hit: 18700, recover: 19900 };
+// 本編と同じ時刻で姿勢を止める。時刻は回の表の命中から作り、この画面に秒数を書かない。
+// 被弾は命中の0.2秒後（23.7秒）、構えを戻す途中は命中の1.4秒後（24.9秒）。
+// 本編では命中の0.62秒後（24.1秒）から戻り始め、24.3〜25.2秒がその姿勢。
+const IMPACT_MS = ROUNDS[0].impact;
+const poseTimes: Record<string, number> = { idle: 0, hit: IMPACT_MS + 200, recover: IMPACT_MS + 1400 };
+/** 秒で書くときの見せ方。24900なら「24.9」。 */
+const seconds = (ms: number) => (ms / 1000).toFixed(1);
 let pose = 'idle';
 let animation = requestAnimationFrame(function frame(now: number) {
   animation = requestAnimationFrame(frame);
@@ -50,7 +56,7 @@ let animation = requestAnimationFrame(function frame(now: number) {
 document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(button => button.addEventListener('click', () => {
   pose = button.dataset.pose!;
   document.querySelectorAll<HTMLButtonElement>('[data-pose]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
-  el('note').textContent = pose === 'idle' ? '剣を振りかぶった待機の構えで、剣がゆっくり上下します' : pose === 'hit' ? '魔法が届いた瞬間の姿勢（18.5秒）で止めています' : '構えを戻す途中の姿勢（19.9秒）です';
+  el('note').textContent = pose === 'idle' ? '剣を振りかぶった待機の構えで、剣がゆっくり上下します' : pose === 'hit' ? `魔法が届いた瞬間の姿勢（${seconds(IMPACT_MS)}秒）で止めています` : `構えを戻す途中の姿勢（${seconds(poseTimes.recover)}秒）です`;
 }));
 
 // 見本用の入力点。描き直した場合は、この線を使わず本人の線だけで完成形を作る。
