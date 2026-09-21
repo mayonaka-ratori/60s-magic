@@ -55,8 +55,12 @@ export const FPS_DROP = 55, FPS_BACK = 58;
 
 const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
 
-/** とどめの回で重い後処理を切る時刻を、余韻の始まりから何秒後にするか（秒）。58.5秒まで続ける。 */
-export const POST_FINISH_TAIL = 1.5;
+/**
+ * とどめの回で重い後処理を切る時刻を、余韻の始まりから何秒後にするか（秒）。
+ * この時刻は世界の時刻で比べるので、設計3章の表の「実際の58.5秒」にあたる世界の57.775秒に合わせる。
+ * 余韻の始まり（世界の57.0秒）からの差なので0.775秒。
+ */
+export const POST_FINISH_TAIL = .775;
 
 /** その回で重い後処理を入れる時刻と切る時刻（秒）。一回目は 16.9 と 21 で今までと同じ。 */
 export const postFromOf = (beat: Beat = BEATS[0]) => beat.release - (RELEASE_AT - POST_FROM);

@@ -1,7 +1,7 @@
 import { describe,it,expect } from 'vitest';
 import { BATTLE_END,BEATS,ROUNDS,beatAt,beatOf,phaseAt,roundAt,replyLimitOf,speechLimitOf } from '../src/game/rounds';
 import { Battle } from '../src/game/battle';
-import { FINISH_SLOW,FINISH_STOPS,FINISH_TILT,FINISH_ZOOM,HIT_STOPS,WARP_LIMITS,effectTime,screenState,warpOf,warpTime } from '../src/render/effects/screen';
+import { FINISH_SLOW,FINISH_STOPS,FINISH_TILT,FINISH_ZOOM,HIT_STOPS,WARP_LIMITS,effectTime,screenState,warpOf,warpReal,warpTime } from '../src/render/effects/screen';
 import { postHeavyActive,postToOf } from '../src/render/composite';
 import { presets } from '../src/render/effects/presets';
 import { dueSounds } from '../src/audio/cues';
@@ -89,26 +89,42 @@ describe('世界の時計のゆがみ',()=>{
 
 describe('とどめの回の画面',()=>{
   const state=(t:number,calm=false)=>screenState(t,2,presets.vivid,'attack',0,0,calm,finishBeat);
+  // 直撃は世界の54.5秒に置いてあり、一発目の止め0.10秒だけ遅れるので、実際は54.6秒に見える。
+  const 直撃の実際=54.6;
   it('発動、一発目、直撃で全画面の白が出て、直撃が一番強い',()=>{
-    const 発動=state(52.01).flash,一発目=state(53.61).flash,直撃=state(54.51).flash;
+    const 発動=state(52.01).flash,一発目=state(53.61).flash,直撃=state(直撃の実際+.01).flash;
     expect(発動).toBeGreaterThan(0);expect(一発目).toBeGreaterThan(0);
     expect(直撃).toBeGreaterThanOrEqual(一発目);expect(直撃).toBeGreaterThan(発動);
     // 直撃の白はいっぱいまで出す。0.16秒で引く。
-    expect(state(54.5).flash).toBeGreaterThan(state(54.6).flash);
-    expect(state(54.7).flash).toBe(0);
+    expect(state(直撃の実際).flash).toBeGreaterThan(state(直撃の実際+.1).flash);
+    expect(state(直撃の実際+.2).flash).toBe(0);
+  });
+  it('直撃の光と傾きは、絵と同じ実際の54.6秒に出る',()=>{
+    // 世界の54.5秒のままだと、絵より0.1秒早く光ってしまう。
+    expect(state(54.5).rotate).toBe(0);
+    expect(state(54.5).flash).toBeLessThan(state(直撃の実際).flash);
+    expect(state(直撃の実際).rotate).toBeCloseTo(FINISH_TILT,3);
   });
   it('直撃で傾き2度、寄り1.2倍になり、色がずれる',()=>{
-    const 直撃=state(54.5);
+    const 直撃=state(直撃の実際);
     expect(直撃.rotate).toBeCloseTo(FINISH_TILT,3);
     expect(直撃.zoom).toBeGreaterThan(1.19);expect(直撃.zoom).toBeLessThan(1.25);
     expect(直撃.chromatic).toBeGreaterThan(0);
     // 0.3秒で元へ戻る。
-    expect(state(54.85).rotate).toBeLessThan(.1);
-    expect(state(54.85).zoom).toBeLessThan(1.05);
+    expect(state(直撃の実際+.35).rotate).toBeLessThan(.1);
+    expect(state(直撃の実際+.35).zoom).toBeLessThan(1.05);
   });
   it('控えめモードでは傾きも寄りも足さない',()=>{
+    // 控えめは世界を止めないので、直撃は世界の時刻と同じ54.5秒に来る。
     const 直撃=state(54.5,true);
     expect(直撃.rotate).toBe(0);expect(直撃.zoom).toBe(1);expect(直撃.chromatic).toBe(0);
+    expect(直撃.flash).toBeGreaterThan(0);
+  });
+  it('とどめの画面のゆれは、本人の魔法の用途では変わらない',()=>{
+    const 攻撃=screenState(53.7,2,presets.vivid,'attack',0,0,false,finishBeat);
+    const 補助=screenState(53.7,2,presets.vivid,'enhance',0,0,false,finishBeat);
+    expect(補助.shakeX).toBe(攻撃.shakeX);expect(補助.shakeY).toBe(攻撃.shakeY);
+    expect(補助.rotate).toBeCloseTo(攻撃.rotate,9);
   });
   it('発動の直前（51.92〜52.0秒）に暗転する',()=>{
     expect(state(51.91).blackout).toBe(0);
@@ -126,13 +142,15 @@ describe('とどめの回の画面',()=>{
 });
 
 describe('とどめの回の部品',()=>{
-  it('重い後処理は51.9〜58.5秒だけ出す',()=>{
-    expect(postToOf(finishBeat)).toBeCloseTo(58.5,6);
+  it('重い後処理は世界の51.9〜57.775秒（実際の58.5秒）だけ出す',()=>{
+    // postHeavyActive は世界の時刻で比べる。実際の58.5秒は、遅れ0.725秒を引いた世界の57.775秒。
+    expect(postToOf(finishBeat)).toBeCloseTo(57.775,6);
+    expect(warpReal(postToOf(finishBeat),warpOf(finishBeat,HIT_STOPS.strong))).toBeCloseTo(58.5,6);
     expect(postHeavyActive(51.89,finishBeat)).toBe(false);
     expect(postHeavyActive(51.9,finishBeat)).toBe(true);
     expect(postHeavyActive(54.5,finishBeat)).toBe(true);
-    expect(postHeavyActive(58.4,finishBeat)).toBe(true);
-    expect(postHeavyActive(58.5,finishBeat)).toBe(false);
+    expect(postHeavyActive(57.7,finishBeat)).toBe(true);
+    expect(postHeavyActive(57.775,finishBeat)).toBe(false);
     // 一回目と防御は今までどおり、命中の2.5秒後まで。
     expect(postToOf(BEATS[0])).toBeCloseTo(21,6);
     expect(postToOf(BEATS[1])).toBeCloseTo(37.9,6);
@@ -140,10 +158,28 @@ describe('とどめの回の部品',()=>{
   it('とどめの回の音が回の表から作られる',()=>{
     expect(dueSounds(51990,52010,false).map(c=>c.name)).toEqual(['release']);
     expect(dueSounds(53590,53610,false).map(c=>c.name)).toEqual(['impact']);
-    expect(dueSounds(54490,54510,false).map(c=>c.name)).toEqual(['finish']);
+    // とどめの一撃は世界の54.5秒に置いてあるので、鳴るのは実際の54.6秒。
+    expect(dueSounds(54490,54510,false).map(c=>c.name)).toEqual([]);
+    expect(dueSounds(54590,54610,false).map(c=>c.name)).toEqual(['finish']);
     expect(dueSounds(56990,57010,false).map(c=>c.name)).toEqual(['settle']);
     // とどめの一撃の音は、持たない回には出ない。
     expect(dueSounds(18000,24000,false).map(c=>c.name)).not.toContain('finish');
+  });
+  it('光点だけ先に渡しても、あとから決まった魔法を次の回へ渡せる',()=>{
+    let now=0;const battle=new Battle(()=>now);
+    for(let i=0;i<40;i++)battle.first.motion.add(.3+i*.01,.5+Math.sin(i/6)*.1,i*100);
+    now=16000;battle.tick();
+    // 引き渡しの時刻に、線はあるが魔法がまだ無い状態を作る。
+    const 魔法=battle.first.recipe;battle.first.recipe=null;
+    now=23000;battle.tick();
+    expect(battle.inherited.length).toBeGreaterThan(0);
+    const 光点の数=battle.inherited.length;
+    expect(battle.defend.previous).toBeNull();
+    // そのあとに魔法が決まったら、次の回へ渡る。光点は二度足さない。
+    battle.first.recipe=魔法;
+    now=23500;battle.tick();
+    expect(battle.defend.previous?.name).toBe(魔法?.name);
+    expect(battle.inherited.length).toBe(光点の数);
   });
   it('三回分の魔法が並び、引き継ぐ光点は6個まで',()=>{
     let now=0;const battle=new Battle(()=>now);

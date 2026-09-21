@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { ROUNDS, beatOf } from '../src/game/rounds';
-import { dueSounds, hushAt, soundCues } from '../src/audio/cues';
+import { calmSoundCues, dueSounds, hushAt, soundCues } from '../src/audio/cues';
 import { HIT_STOPS, warpOf, warpReal, warpTime } from '../src/render/effects/screen';
 
 const finish = ROUNDS[2], finishBeat = beatOf(finish);
 const 世界から実際へ = (world: number) => warpReal(world, warpOf(finishBeat, HIT_STOPS.strong));
 const names = (from: number, to: number) => dueSounds(from, to, false).map(cue => cue.name);
+/** その並びの中で、その音が鳴る時刻（ms）。 */
+const 至 = (cues: typeof soundCues, name: string) => cues.find(cue => cue.name === name)!.at;
 
 describe('世界の時刻から実際の時刻を出す', () => {
   it('ゆがみを行き来しても同じ時刻に戻る', () => {
@@ -33,9 +35,11 @@ describe('とどめの回の音の合図', () => {
   it('とどめの一撃は命中と別の合図で、余韻と魔導書の音まで並ぶ', () => {
     expect(names(51990, 52010)).toEqual(['release']);
     expect(names(53590, 53610)).toEqual(['impact']);
-    expect(names(54490, 54510)).toEqual(['finish']);
+    // とどめの一撃も世界の時刻（54.5秒）で置いてあるので、鳴るのは実際の54.6秒。
+    expect(names(54490, 54510)).toEqual([]);
+    expect(names(54590, 54610)).toEqual(['finish']);
     expect(names(56990, 57010)).toEqual(['settle']);
-    expect(names(59990, 60010)).toEqual(['book']);
+    expect(names(59390, 59410)).toEqual(['book']);
     // 一回目と防御には、とどめの音も崩れの音も混ざらない。
     const 前半 = soundCues.filter(cue => cue.round !== 'finish').map(cue => cue.name);
     for (const name of ['finish', 'collapse-sword', 'collapse-knee', 'collapse-fall', 'book']) expect(前半).not.toContain(name);
@@ -45,16 +49,44 @@ describe('とどめの回の音の合図', () => {
     expect(names(56120, 56140)).toEqual(['collapse-knee']);
     expect(names(56920, 56940)).toEqual(['collapse-fall']);
     // 設計3章の「実際」の列（55.65、56.13、56.93秒）と合う。
-    const at = (name: string) => soundCues.find(cue => cue.name === name)!.at;
-    expect(at('collapse-sword')).toBe(Math.round(世界から実際へ(54.925) * 1000));
-    expect(at('collapse-knee')).toBe(56125);
-    expect(at('collapse-fall')).toBe(56925);
+    expect(至(soundCues, 'collapse-sword')).toBe(Math.round(世界から実際へ(54.925) * 1000));
+    expect(至(soundCues, 'collapse-knee')).toBe(56125);
+    expect(至(soundCues, 'collapse-fall')).toBe(56925);
+  });
+  it('控えめモードは世界を止めないので、崩れる音ととどめの一撃が早く来る', () => {
+    // 控えめでは止めが無く、スローだけ残る。世界の54.925秒＝実際の55.3秒。
+    expect(至(calmSoundCues, 'finish')).toBe(54500);
+    expect(至(calmSoundCues, 'collapse-sword')).toBe(55300);
+    expect(至(calmSoundCues, 'collapse-knee')).toBe(55775);
+    expect(至(calmSoundCues, 'collapse-fall')).toBe(56575);
+    expect(dueSounds(55290, 55310, false, true).map(cue => cue.name)).toEqual(['collapse-sword']);
+    // 通常の並びでは、その時刻にはまだ鳴らない。
+    expect(names(55290, 55310)).toEqual([]);
+    // 世界の時刻で置いていない音は、控えめでも通常と同じ。
+    for (const name of ['chant', 'build', 'complete', 'release', 'impact', 'settle', 'book'])
+      expect(至(calmSoundCues, name)).toBe(至(soundCues, name));
+  });
+  it('魔導書の一音は、結果画面へ移る前のコマで鳴る', () => {
+    // animate は60秒のコマで先に結果画面へ移すので、そのコマでは音を鳴らさない。
+    expect(dueSounds(59990, 60010, false)).toEqual([]);
+    expect(dueSounds(59990, 60500, false)).toEqual([]);
+    // 16ミリ秒ごとのコマを並べると、魔導書の一音は結果画面より前に鳴る。
+    const 鳴った: string[] = [];
+    let previous = 40000;
+    for (let now = 40016; now <= 60000; now += 16) {
+      for (const cue of dueSounds(previous, now, false)) 鳴った.push(cue.name);
+      previous = now;
+    }
+    expect(鳴った).toContain('book');
+    expect(鳴った).toContain('finish');
+    expect(鳴った).toContain('collapse-fall');
   });
   it('合図は時刻の順に並び、とどめの回は9つ', () => {
     const finishCues = soundCues.filter(cue => cue.round === 'finish');
     expect(finishCues.map(cue => cue.name)).toEqual([
       'chant', 'build', 'complete', 'release', 'impact', 'finish',
       'collapse-sword', 'collapse-knee', 'collapse-fall', 'settle', 'book']);
+    expect(至(soundCues, 'finish')).toBe(54600);
     for (let i = 1; i < soundCues.length; i++) expect(soundCues[i].at).toBeGreaterThanOrEqual(soundCues[i - 1].at);
   });
   it('マイクを使う回は、録音の終わりを待つまで鳴らさない', () => {
@@ -67,21 +99,28 @@ describe('とどめの回の音の合図', () => {
 });
 
 describe('音を抜く間', () => {
-  it('発動の0.4秒前から抜き、暗転の間は無音、発動で戻る', () => {
+  it('発動の0.4秒前から抜き、暗転の間は無音、発動の0.05秒前から戻し始める', () => {
     expect(hushAt(51500)).toBe(1);
     expect(hushAt(51600)).toBeCloseTo(1, 6);
     expect(hushAt(51760)).toBeCloseTo(.5, 6);
     expect(hushAt(51920)).toBe(0);
-    expect(hushAt(51999)).toBe(0);
+    expect(hushAt(51949)).toBe(0);
+    // 発動音の出だしが潰れないよう、51.95秒から52.0秒までに1へ戻す。
+    expect(hushAt(51975)).toBeCloseTo(.5, 6);
     expect(hushAt(52000)).toBe(1);
   });
-  it('直撃の直前だけ短く弱める', () => {
-    expect(hushAt(54290)).toBe(1);
-    expect(hushAt(54300)).toBeLessThan(.5);
-    expect(hushAt(54499)).toBeLessThan(.5);
-    expect(hushAt(54500)).toBe(1);
+  it('直撃の直前だけ短く弱め、直撃の0.05秒前から戻し始める', () => {
+    // 直撃は実際の54.6秒なので、弱めるのは54.4〜54.6秒。
+    expect(hushAt(54390)).toBe(1);
+    expect(hushAt(54400)).toBeLessThan(.5);
+    expect(hushAt(54549)).toBeLessThan(.5);
+    expect(hushAt(54575)).toBeGreaterThan(.6);
+    expect(hushAt(54600)).toBe(1);
+    // 控えめモードでは直撃が54.5秒なので、弱める間もそのぶん早い。
+    expect(hushAt(54300, true)).toBeLessThan(.5);
+    expect(hushAt(54500, true)).toBe(1);
   });
   it('一回目と防御では音を抜かない', () => {
-    for (let ms = 0; ms < 40000; ms += 20) expect(hushAt(ms)).toBe(1);
+    for (let ms = 0; ms < 40000; ms += 20) { expect(hushAt(ms)).toBe(1); expect(hushAt(ms, true)).toBe(1); }
   });
 });

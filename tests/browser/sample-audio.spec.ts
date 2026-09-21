@@ -1,8 +1,11 @@
 import { test,expect } from '@playwright/test';
 import { soundCues } from '../../src/audio/cues';
 
-/** 鳴るはずの音の並びと、素材を使うかどうか。素材を置いた合図だけが true になる。 */
-const 鳴る音=soundCues.filter(cue=>cue.name!=='book').map(cue=>[cue.name,cue.name==='complete'||cue.name==='impact']);
+/**
+ * 鳴るはずの音の並びと、素材を使うかどうか。素材を置いた合図だけが true になる。
+ * 魔導書の音（book）は59.4秒に戦いの中で鳴るので、ここにも入る。
+ */
+const 鳴る音=soundCues.map(cue=>[cue.name,cue.name==='complete'||cue.name==='impact']);
 
 /** 短い正弦波のWAVを作る。外部の素材の代わりに、読み込みと再生の経路だけを確かめる。 */
 function wav(seconds:number,frequency:number,level:number) {

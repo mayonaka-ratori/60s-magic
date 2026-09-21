@@ -4,9 +4,9 @@ import { soundCues } from '../../src/audio/cues';
 
 /**
  * 鳴るはずの音の並び。回の表から作るので、回や合図を足しても書き直さなくてよい。
- * 60秒の魔導書の音（book）は結果画面が受け持つため、戦いの間の合図だけを並べる。
+ * 魔導書の音（book）は、魔導書の枠が浮かび始める59.4秒に戦いの中で鳴るので、ここにも入る。
  */
-const 鳴る音=soundCues.filter(cue=>cue.name!=='book').map(cue=>cue.name);
+const 鳴る音=soundCues.map(cue=>cue.name);
 
 test('騎士が被弾して構えを戻し、効果音を鳴らして消音できる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));

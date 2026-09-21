@@ -5,7 +5,7 @@ import { presets } from '../src/render/effects/presets';
 import { ParticlePool } from '../src/render/effects/particles';
 import { drawTravel, arrivalOf, bodyPoint, hitDelay } from '../src/render/effects/release';
 import { screenState, FINISH_PASS_FLASH } from '../src/render/effects/screen';
-import { MagicCanvas } from '../src/render/magic';
+import { MagicCanvas, afterglowFade, stopAtOf } from '../src/render/magic';
 import type { Frame } from '../src/render/effects/frame';
 import type { Point, Recipe } from '../src/game/types';
 import {
@@ -314,6 +314,36 @@ describe('とどめの見せ方を通しで描く', () => {
     expect(magic.effectMs).toBe(止めた時刻);
     at(51.95);
     expect(magic.effectMs).toBeGreaterThan(止めた時刻);
+  });
+  it('51.6秒の「間」は、騎士と術式が見る世界の時刻も止まる', () => {
+    const magic = screen([]), spell = recipe({ count: 3 });
+    // effectMsOf は時刻だけで決まるので、コマを回さずに確かめられる。
+    expect(magic.effectMsOf(51500, spell, 0, finishBeat)).toBe(51500);
+    expect(magic.effectMsOf(51700, spell, 0, finishBeat)).toBe(51600);
+    expect(magic.effectMsOf(51910, spell, 0, finishBeat)).toBe(51600);
+    // 0.32秒が終われば実際の時刻へ戻る。
+    expect(magic.effectMsOf(51930, spell, 0, finishBeat)).toBe(51930);
+    // 体力の段は53.6秒からなので、この間は影響を受けない。
+    expect(magic.effectMsOf(53600, spell, 0, finishBeat)).toBe(53600);
+    // 一回目と防御には「間」がないので、今までどおり実際の時刻のまま。
+    for (const beat of [BEATS[0], BEATS[1]])
+      for (const ms of [beat.release * 1000 - 400, beat.release * 1000 - 100, beat.release * 1000 - 1])
+        expect(magic.effectMsOf(ms, spell, 0, beat)).toBe(ms);
+  });
+  it('とどめの余韻は、世界の59.25秒に消えきり、術式は60秒まで残る', () => {
+    // 消えきる時刻は、世界の59.25秒（実際の60.0秒）。
+    expect(afterglowFade(59.6, 59.25, finishBeat)).toBeCloseTo(0, 9);
+    expect(afterglowFade(59.6, 58.25, finishBeat)).toBeCloseTo(.5, 9);
+    // 実際の時刻で数えていたころは、58.1秒でもう消えていた。今は9割ほど残る。
+    expect(afterglowFade(58.1, 58.1 - .725, finishBeat)).toBeGreaterThan(.9);
+    expect(stopAtOf(finishBeat)).toBe(60);
+  });
+  it('一回目と防御の消え際と切る時刻は、今までと完全に同じ', () => {
+    for (const beat of [BEATS[0], BEATS[1]]) {
+      expect(stopAtOf(beat)).toBe(Math.max(beat.end - .5, beat.impact + 4.5));
+      for (let t = beat.release; t < beat.end; t += 1 / 240)
+        expect(afterglowFade(t, t, beat)).toBeCloseTo(1 - Math.min(1, Math.max(0, (t - (beat.impact + 2.5)) / 2)), 12);
+    }
   });
   it('一回目の回では、とどめの部品を描かない', () => {
     const log: string[] = [];

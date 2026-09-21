@@ -36,6 +36,8 @@ export class CastAudio {
   private volume=.25;
   /** とどめの回で音を抜く倍率（0〜1）。ふだんは1。 */
   private hush=1;
+  /** 控えめモード。世界を止めないので、崩れの音ととどめの一撃の時刻が変わる。 */
+  private calm=false;
   private unavailable=false;
   private previewVersion=0;
   private events:Array<{name:SoundCue;atMs:number;sample:boolean}>=[];
@@ -56,8 +58,21 @@ export class CastAudio {
     } catch {this.unavailable=true;}
   }
   setEnabled(value:boolean){this.enabled=value;this.applyVolume();if(!value)this.clearSources();}
+  /** 控えめモードの切り替え。音の中身は変えず、世界の時刻から直す音の時刻だけが変わる。 */
+  setCalm(value:boolean){this.calm=value;}
   setVolume(value:number){this.volume=Math.max(0,Math.min(1,value));this.applyVolume();}
-  private applyVolume(seconds=.015){if(this.context&&this.master)this.master.gain.setTargetAtTime(this.enabled?this.volume*this.hush:0,this.context.currentTime,seconds);}
+  /**
+   * 全体の音量を今の値へ寄せる。
+   * linear が真なら、その秒数で直線に動かしきる。抜いた音を戻すときに使い、
+   * 発動音と一撃音の出だしが潰れないようにする。
+   */
+  private applyVolume(seconds=.015,linear=false) {
+    const ctx=this.context,master=this.master;if(!ctx||!master)return;
+    const target=this.enabled?this.volume*this.hush:0,at=ctx.currentTime;
+    if(!linear){master.gain.setTargetAtTime(target,at,seconds);return;}
+    master.gain.cancelScheduledValues(at);master.gain.setValueAtTime(master.gain.value,at);
+    master.gain.linearRampToValueAtTime(target,at+seconds);
+  }
   start(microphone:boolean) {
     this.stop();this.running=true;this.microphone=microphone;this.lastMs=-1;this.events=[];
     this.setDuck(microphone,.05);this.bgmStarted=false;this.bgmStartedAtMs=null;this.hush=1;this.applyVolume();
@@ -79,13 +94,13 @@ export class CastAudio {
   private clearSources(){for(const source of this.sources){try{source.stop();}catch{/* 既に終了した音 */}source.disconnect();}this.sources.clear();}
   update(ms:number,recipe:Recipe|null,preset:EffectPreset=getPreset(null),amount=0) {
     if(!this.running)return;
-    const cues=dueSounds(this.lastMs,ms,this.microphone);this.lastMs=ms;
+    const cues=dueSounds(this.lastMs,ms,this.microphone,this.calm);this.lastMs=ms;
     // 録音している回の間だけ曲を下げる。回ごとに下げ直す。
     const duck=this.microphone&&shouldDuck(ms);
     if(duck!==this.ducked)this.setDuck(duck,duck?.05:.4);
-    // とどめの発動前の「間」と直撃の直前だけ、全体の音を抜く。抜くのは速く、戻すのはゆっくり。
-    const hush=hushAt(ms);
-    if(hush!==this.hush){const down=hush<this.hush;this.hush=hush;this.applyVolume(down?.02:.08);}
+    // とどめの発動前の「間」と直撃の直前だけ、全体の音を抜く。抜くのは速く、戻すのは0.05秒で直線に。
+    const hush=hushAt(ms,this.calm);
+    if(hush!==this.hush){const down=hush<this.hush;this.hush=hush;this.applyVolume(down?.02:.05,!down);}
     if(!this.enabled||!this.volume||this.context?.state!=='running'||!this.master)return;
     // 素材の読み込みや音の許可が開始より遅れても、そのときの進み具合の位置から曲を始める。
     if(!this.bgmStarted&&this.bank.bgm){this.startBgm(ms/1000);this.bgmStartedAtMs=ms;}
