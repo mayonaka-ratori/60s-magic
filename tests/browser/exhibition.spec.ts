@@ -81,6 +81,8 @@ test('画面で読む文字はゴシック体、明朝は題字と魔法名だ�
 test('入力から描き終わるまでの時間を記録に残す',async({page})=>{
   await page.goto('/?dev=1');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
+  // 3秒の合図の間に描いた線は本編の入力に数えないので、合図が消えてから描く。
+  await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
   for(let i=0;i<5;i++){
     await page.mouse.move(500+i*40,420+i*20);await page.mouse.down();
     await page.mouse.move(560+i*40,470+i*20,{steps:3});await page.mouse.up();

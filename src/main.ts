@@ -251,7 +251,6 @@ async function begin(isDemo=false) {
     session.defend.speech.add({id:0,revision:1,startMs:4000,endMs:6500,text:'氷よ、壁となれ、弾き返せ',final:true,stability:1,source:'typed'});
     session.finish.speech.add({id:0,revision:1,startMs:4000,endMs:8500,text:'光よ、集まれ、貫け',final:true,stability:1,source:'typed'});
   }
-  if(el<HTMLInputElement>('chant').value)addTypedChant();
   updateUi();
 }
 

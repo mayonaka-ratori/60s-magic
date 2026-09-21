@@ -66,7 +66,7 @@ describe('詠唱の受付',()=>{
   });
 });
 describe('形と言葉を魔法へ反映する',()=>{
-  it.each([['炎よ、球となれ','fire','orb',1],['氷よ、壁となれ','ice','wall',1],['雷よ、七つに分かれろ','lightning','swarm',7],['風よ、すべてを押し流せ','wind','wave',1],['光よ、貫け','light','beam',1],['カメナリよ7つに分かれろ','lightning','swarm',7],['闇よ、結界となれ','dark','dome',1]] as const)('%s', (text,element,form,count)=>{
+  it.each([['炎よ、球となれ','fire','orb',1],['氷よ、壁となれ','ice','wall',1],['雷よ、七つに分かれろ','lightning','swarm',7],['風よ、すべてを押し流せ','wind','wave',1],['光よ、貫け','light','beam',1],['カメナリよ7つに分かれろ','lightning','swarm',7],['カメナリを7つに分かれろ','lightning','swarm',7],['カメラリを7つに分かれろ','lightning','swarm',7],['かめなりよ、七つに分かれろ','lightning','swarm',7],['カメラリオ7つに分かれろ','lightning','swarm',7],['神なりよ、七つに分かれろ','lightning','swarm',7],['闇よ、結界となれ','dark','dome',1]] as const)('%s', (text,element,form,count)=>{
     const r=makeRecipe(state(text));expect(r.element).toBe(element);expect(r.form).toBe(form);expect(r.count).toBe(count);
   });
   it('否定・言い直し・最大個数を扱う',()=>{
