@@ -9,7 +9,8 @@ test('画面全体の二筆が収まり、縦画面の結果からもう一度�
   await expect(page.locator('#step-release')).toHaveClass('active',{timeout:19000});
   expect(Number(await page.locator('#spell').getAttribute('data-scale'))).toBeLessThan(.5);
   await page.screenshot({path:'test-results/wide-cast.png'});
-  await expect(page.locator('#result')).toBeVisible({timeout:46000});
+  // 60秒の本編が終わってから結果が出る。読み込みの分も見て余裕をとる。
+  await expect(page.locator('#result')).toBeVisible({timeout:70000});
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:'test-results/cast-mobile-result.png'});
   // 縦長の魔導書では、術式が一番上に正方形で横いっぱいに出る。
   const shape=await page.locator('#result-spell').boundingBox();

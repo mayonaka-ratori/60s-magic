@@ -81,7 +81,7 @@ describe('とどめの回の音の合図', () => {
     expect(鳴った).toContain('finish');
     expect(鳴った).toContain('collapse-fall');
   });
-  it('合図は時刻の順に並び、とどめの回は9つ', () => {
+  it('合図は時刻の順に並び、とどめの回は11個', () => {
     const finishCues = soundCues.filter(cue => cue.round === 'finish');
     expect(finishCues.map(cue => cue.name)).toEqual([
       'chant', 'build', 'complete', 'release', 'impact', 'finish',

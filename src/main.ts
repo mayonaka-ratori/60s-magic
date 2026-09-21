@@ -16,7 +16,7 @@ import { resetLiveWords } from './game/live-words';
 import { resetInputAmount, speechKey } from './game/input-amount';
 import { ScreenOverlay } from './render/overlay';
 import { GUARD_STEP_MS, HEALTH_HIDE_MS, HealthBar } from './render/health-bar';
-import { DELIVERY_MESSAGES, PlayRecorder, nameParts, playOf, resultRows, type ResultRow } from './game/record';
+import { DELIVERY_MESSAGES, PlayRecorder, nameParts, playOf, resultRows, type PlayContext, type ResultRow } from './game/record';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas><canvas id="composite" aria-hidden="true"></canvas>
@@ -118,6 +118,8 @@ const rowCanvases=ROW_LABELS.map(label=>{const canvas=document.createElement('ca
 const rowMagic=rowCanvases.map(canvas=>new MagicCanvas(canvas,'calm'));
 /** 今の結果画面に並べている三件。画面の大きさが変わったときに描き直すため覚えておく。 */
 let shownRows:ResultRow[]=[];
+/** 三件の小さい絵を消す。描かなかった回に前の人の線が残らないようにする。 */
+const clearThumb=(canvas:HTMLCanvasElement)=>canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);
 let session:Battle|null=null,camera:HandCamera|null=null,voice:VoiceInput|null=null;
 let cursors:Array<{x:number;y:number}>=[],lastHandAt=0,mode='pointer',demo=false,preparing=false;
 let resultShown=false,lastUi=0,feedback:string|null=null,lastCameraLatency=0;
@@ -136,6 +138,15 @@ const frameIntervals:number[]=[],inputLags:number[]=[];let lastFrame=performance
 let diag:Diagnostics|null=null,lastReport:ReturnType<typeof report>|null=null;
 // このPCの中への保存係。開始のときに作り、確認番号を先に決めておく。
 let recorder:PlayRecorder|null=null,savedRounds=0;
+/**
+ * 記録に添える、点列の読み方など（設計仕様4.2）。
+ * カメラのときは左右を裏返して受け取っているので mirrored は true。
+ * 見本の自動再生は人の手ではないので、裏返しかどうかは決められず null にする。
+ */
+function playContext():PlayContext {
+  return {coordinates:'normalized-0-1',mirrored:demo?null:mode==='camera',
+    viewport:{width:innerWidth,height:innerHeight},inputMode:demo?'demo':mode==='camera'?'camera':'pointer'};
+}
 /** 回が始まる何ミリ秒前に、声の受付をつなぎ直すか。 */
 const VOICE_RECONNECT_MS=2500;
 /** 24秒の前に置く準備の秒数。手や声の位置を決める時間で、24秒にも60秒にも含めない。 */
@@ -145,7 +156,7 @@ async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json
   el('voice-availability').textContent=status.speech?(status.speechProvider==='local'?'（このPCで聞き取ります）':'（Googleで聞き取ります）'):status.localSpeech?.state==='loading'?'（準備中です）':'（いまは使えません）';
   el<HTMLInputElement>('use-voice').disabled=!status.speech;
   if(!status.speech)el<HTMLInputElement>('use-voice').checked=false;
-  el('privacy').textContent=`${status.speechProvider==='google'?'カメラの映像はこのPCの中だけで扱います。声はGoogleへ送って文字に変えます。':'カメラの映像も声も、このPCの中だけで扱い、外へ送りません。'}${status.jev?'文字にした言葉と動きの形だけ、魔法を決める処理へ送ります。':''}記録は保存しません。`;}
+  el('privacy').textContent=`${status.speechProvider==='google'?'カメラの映像はこのPCの中だけで扱います。声はGoogleへ送って文字に変えます。':'カメラの映像も声も、このPCの中だけで扱い、外へ送りません。'}${status.jev?'文字にした言葉と動きの形だけ、魔法を決める処理へ送ります。':''}描いた線と唱えた言葉は、このPCの中にだけ残します。カメラの映像と声そのものは残しません。`;}
 void readStatus();
 const statusTimer=setInterval(()=>{if(!session&&!preparing)void readStatus();},3000);
 
@@ -158,11 +169,15 @@ function cleanup(){sound.stop();camera?.dispose();camera=null;voice?.dispose();v
   begun.clear();ended.clear();requested.clear();lockLog.clear();revealed.clear();damaged.clear();voiceRound=null;voicePrepared.clear();voiceReadyFor=null;voiceLost=false;lastRings=0;actShown='';show('act-title',false);}
 function toReady(message='') {
   el('app').dataset.screen='ready';attract=false;clearTimeout(attractReturn);markActive();
-  if(session&&!resultShown){diag?.log('中止');lastReport=report();}
+  if(session&&!resultShown){diag?.log('中止');lastReport=report();
+    // 途中でやめたことを記録にも残す。すでに保存した回があるときだけ、一度だけ書き足す。
+    const battle=session;if(recorder)void recorder.saveCancelled(battle);}
   prepareVersion++;session?.cancel();cleanup();session=null;preparing=false;countingDown=false;show('countdown',false);
   show('last-record',!!lastReport);
   show('welcome',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);show('reveal',false);
   revealed.clear();el('reveal').classList.remove('in');el('deadline').style.opacity='0';el('app').dataset.deadline='';el('result').classList.remove('name-only');
+  // 結果画面の絵を消しておく。次の人の画面に前の人の術式が残らないようにする。
+  shownRows=[];clearThumb(resultCanvas);rowCanvases.forEach(clearThumb);
   showHealthFrame();
   el<HTMLButtonElement>('start').disabled=false;el<HTMLButtonElement>('demo').disabled=false;el('notice').textContent=message;
 }
@@ -218,7 +233,7 @@ async function begin(isDemo=false) {
   session=new Battle(undefined,id);diag?.rebase(session.startMs);diag?.log('60秒を開始');
   // 確認番号を先に決める。保存済みの番号を読むので少し待つが、使うのは60秒後なので間に合う。
   recorder=null;savedRounds=0;
-  {const battle=session;void PlayRecorder.open().then(made=>{if(session===battle){recorder=made;diag?.log('確認番号を用意',{code:made.code,storage:made.available?'このPCの中に保存する':'保存先を使えない'});}});}
+  {const battle=session;void PlayRecorder.open(null,Math.random,()=>new Date(),playContext()).then(made=>{if(session===battle){recorder=made;diag?.log('確認番号を用意',{code:made.code,storage:made.available?'このPCの中に保存する':'保存先を使えない'});}});}
   voice?.start(Math.max(0,performance.now()-session.startMs));if(voice)voiceRound='first';
   sound.start(!!voice);
   el('app').dataset.screen='playing';
@@ -497,11 +512,12 @@ function finish() {
   const spoken=last.state?.speech.rawTranscript||battle.defend.state?.speech.rawTranscript||battle.first.state?.speech.rawTranscript||'';
   el('transcript').textContent=spoken?`「${spoken}」${last.state?.speech.status==='typed'?'（文字で入力）':last.speech.usedFallback?'（確定が間に合わず、途中の聞き取りを使用）':''}`:'詠唱はなく、描いた線だけで魔法をつくりました';
   // 並べる三件は、保存する形（記録）から作る。画面に出るものと保存したものを同じにするため。
-  shownRows=resultRows(playOf(battle,recorder?.code??'',recorder?.startedAt??new Date().toISOString()));
+  shownRows=resultRows(playOf(battle,recorder?.code??'',recorder?.startedAt??new Date().toISOString(),recorder?.context));
   fillSpellList(shownRows);
   // 持ち帰りの場所。公開ページがまだ無いので、嘘のQRは出さず、確認番号と一行だけを出す。
-  el('confirm-number').textContent=recorder?.code??'------';
-  el('save-state').textContent=recorder?recorder.message:DELIVERY_MESSAGES['local-only'];
+  // 保存できていないときは番号に「未保存」を添える。係員が探しても見つからないことが分かるようにするため。
+  el('confirm-number').textContent=recorder?`${recorder.code}${recorder.stored?'':'（未保存）'}`:'------';
+  el('save-state').textContent=recorder?recorder.message:DELIVERY_MESSAGES['not-stored'];
   diag?.log('結果を表示',{transcript:spoken,usedFallback:last.speech.usedFallback,code:recorder?.code??null,stored:recorder?.stored??false});
   const credits=sound.snapshot.credits;el('credits').textContent=credits.join('　');show('credits',credits.length>0);
   el('app').dataset.screen='result';show('hud',false);show('timer',false);drawResult();
@@ -512,13 +528,19 @@ function finish() {
 }
 
 function drawResult() {
-  const battle=session;if(!battle)return;
+  if(!shownRows.length)return;
   // 縮小の絵は、遊んでいるときの画面の縦横に合わせてから枠に収める。
   const source={width:magic.canvas.clientWidth,height:magic.canvas.clientHeight};
-  const last=battle.finish.recipe?battle.finish:battle.defend.recipe?battle.defend:battle.first;
-  if(last.recipe)resultMagic.thumbnail(last.motion.display,colors[last.recipe.element],source);
-  shownRows.forEach((row,index)=>{
-    if(row.points.length>1&&row.element)rowMagic[index].thumbnail(row.points,colors[row.element],source);
+  // 左の大きい絵も、下の三件と同じ記録から描く。二つの絵が食い違わないようにするため。
+  const drawable=(row:ResultRow)=>!!row.element&&row.points.length>1;
+  const main=[...shownRows].reverse().find(drawable);
+  if(main)resultMagic.thumbnail(main.points,colors[main.element!],source);
+  else clearThumb(resultCanvas);
+  // 描かなかった回の枠は必ず消す。消さないと前の人の術式が残る。
+  rowCanvases.forEach((canvas,index)=>{
+    const row=shownRows[index];
+    if(row&&drawable(row))rowMagic[index].thumbnail(row.points,colors[row.element!],source);
+    else clearThumb(canvas);
   });
 }
 
@@ -530,6 +552,7 @@ function report() {
     note:'inputToDrawMsは、入力を受け取った時刻から、その入力を含む描画を終えるまでの時間。0.1秒以内を目安にする。カメラ処理時間とは別。'},
     // 確認番号は、あとから記録どうしを突き合わせるために入れる。個人を指す値は入れない。
     confirmCode:recorder?.code??null,storedLocally:recorder?.stored??false,storeAvailable:recorder?.available??false,
+    saveState:recorder?.delivery??null,saveFailure:recorder?.failure??null,
     diagnostics:diag?.summary()??null,recordedAt:new Date().toISOString(),userAgent:navigator.userAgent,screen:{width:innerWidth,height:innerHeight,pixelRatio:devicePixelRatio}};
 }
 /** サーバー側の記録（音声認識の処理時間など）も合わせて一つのJSONにする。 */

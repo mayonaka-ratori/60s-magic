@@ -1,12 +1,20 @@
 import { test,expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
-import { soundCues } from '../../src/audio/cues';
 
 /**
- * 鳴るはずの音の並び。回の表から作るので、回や合図を足しても書き直さなくてよい。
- * 魔導書の音（book）は、魔導書の枠が浮かび始める59.4秒に戦いの中で鳴るので、ここにも入る。
+ * 鳴るはずの音の並び。実装から作らず、ここに直接書く。
+ * 一回目、防御、とどめの順。とどめの並びは tests/finish-audio.test.ts と同じ。
+ * 魔導書の音（book）は、魔導書の枠が浮かび始める59.4秒に戦いの中で鳴るので、とどめの最後に入る。
  */
-const 鳴る音=soundCues.map(cue=>cue.name);
+const 鳴る音=[
+  // 一回目（0〜24秒）
+  'trace','chant','build','complete','release','impact','settle',
+  // 防御（24〜40秒）。命中ではなく、盾で受ける音になる。
+  'chant','build','complete','release','block','settle',
+  // とどめ（40〜60秒）
+  'chant','build','complete','release','impact','finish',
+  'collapse-sword','collapse-knee','collapse-fall','settle','book',
+];
 
 test('騎士が被弾して構えを戻し、効果音を鳴らして消音できる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
