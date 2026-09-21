@@ -18,7 +18,7 @@ export const emptyLive: LiveInput = { words: [], amount: 0, voice: 0, rings: 0, 
  * aspect は画面の横と縦の比。印に掛かっているかを、実際に見えている輪と同じ形で測るために渡す。
  */
 export function liveInput(points: readonly Point[], entries: readonly SpeechEntry[], voice: number, aim: XY | null = null, speechOffsetMs = 0, aspect: number = DEFAULT_ASPECT): LiveInput {
-  return { words: liveWords(entries, speechOffsetMs), amount: inputAmount(points, entries), voice,
+  return { words: liveWords(entries, speechOffsetMs), amount: inputAmount(points, entries, speechOffsetMs), voice,
     rings: aim ? enclosingStrokes(points, aim).length : 0, covered: aim ? coversAim(points, aim, aspect) : false };
 }
 

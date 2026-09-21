@@ -1,10 +1,10 @@
 import { describe,it,expect } from 'vitest';
-import { ROUNDS,BATTLE_END,beatAt,phaseAt,roundAt,speechLimitOf,replyLimitOf } from '../src/game/rounds';
+import { ROUNDS,BATTLE_END,GUARD_STAGGER_MS,beatAt,phaseAt,roundAt,speechLimitOf,replyLimitOf } from '../src/game/rounds';
 import { Battle } from '../src/game/battle';
 import { CastSession } from '../src/game/session';
 import { AIM,AIM_RADIUS,DEFAULT_ASPECT,ENCLOSE_TURN,GUARD_REACH,coversAim,dropNegated,enclosingStrokes,guardStyleOf,shieldOf,strokeEncloses,strokesOf,windingAround } from '../src/game/guard';
 import { aimMark } from '../src/render/effects/guard';
-import { GUARD_DAMAGE,GUARD_STEP_MS,healthSteps } from '../src/render/health-bar';
+import { GUARD_DAMAGE,healthSteps } from '../src/render/health-bar';
 import { hitDelay } from '../src/render/effects/release';
 import { liveWords } from '../src/game/live-words';
 import { beatOf } from '../src/game/rounds';
@@ -441,7 +441,11 @@ describe('体力の減り方',()=>{
   it('一回目の命中と、防御の受け止めの二回で減る',()=>{
     const steps=healthSteps(null);
     // 防御の段の後ろに、とどめの回の5段（多段命中4回ととどめの一撃）が続く。
-    const guard=steps.find(step=>step.at===GUARD_STEP_MS)!;
+    // よろめく時刻は回の表から作る。一撃が盾に当たった後、弱点が出る前。
+    expect(GUARD_STAGGER_MS).toBe(52500);
+    expect(GUARD_STAGGER_MS).toBeGreaterThan(ROUNDS[1].impact);
+    expect(GUARD_STAGGER_MS).toBeLessThan(ROUNDS[1].handoff);
+    const guard=steps.find(step=>step.at===GUARD_STAGGER_MS)!;
     expect(guard).toBeTruthy();
     expect(guard.from-guard.left).toBe(GUARD_DAMAGE);
     expect(steps[0].at).toBe(first.impact);
@@ -456,7 +460,7 @@ describe('体力の減り方',()=>{
     const steps=healthSteps(recipe);
     // 7発それぞれに一段、8段目が防御の受け止め。そのあとにとどめの5段が続く。
     expect(steps).toHaveLength(13);
-    expect(steps[7].at).toBe(GUARD_STEP_MS);
+    expect(steps[7].at).toBe(GUARD_STAGGER_MS);
     expect(steps[1].at-steps[0].at).toBe(80);
     // 段の時刻は弾と同じ hitDelay から作るので、最後の1発（24.18秒）でも減る。
     expect(steps[6].at).toBeCloseTo(first.impact+hitDelay(6,7)*1000);

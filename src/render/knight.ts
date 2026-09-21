@@ -17,7 +17,7 @@ import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
-import { BATTLE_END, FINAL_BLOW_MS, FINISH_COLLAPSE_MS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS, FINISH_KNEEL_MS, FINISH_SWORD_DROP_MS, ROUNDS } from '../game/rounds';
+import { BATTLE_END, FINAL_BLOW_MS, FINISH_COLLAPSE_MS, GUARD_STAGGER_MS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS, FINISH_KNEEL_MS, FINISH_SWORD_DROP_MS, ROUNDS } from '../game/rounds';
 import { colors } from './magic';
 import { getPreset, type EffectPreset } from './effects/presets';
 import { smooth } from './effects/frame';
@@ -171,8 +171,6 @@ const GUARD_STEPS:Array<{at:number;pose:number;ramp:number}>=[
 ];
 /** 弾き返したとき、騎士が自分の一撃を受ける時刻（秒）。一撃が盾に当たってから0.8秒後。 */
 export const REFLECT_BACK_AT=DEFEND.impact/1000+.8;
-/** 盾に弾かれて兜の角が折れる時刻（ms）。 */
-export const HORN_BREAK_MS=DEFEND.impact+2100;
 /** 胸当てが外れて弱点が見え始める時刻（ms）。 */
 export const WEAKPOINT_MS=DEFEND.handoff;
 
@@ -1028,7 +1026,7 @@ export class Knight {
     const pose=guarding?guardPose(ms,this.calm,guardStyle??'block')
       :knightPose(ms,active,this.calm,recipe?.purpose,power??reactionPower(recipe,amount,this.preset),this.calm);
     // 盾に弾かれた勢いで折れる兜の角。止め方によらず、受け止めきった時点で欠ける。
-    if(this.horns[0])this.horns[0].setEnabled(!(active&&ms>=HORN_BREAK_MS));
+    if(this.horns[0])this.horns[0].setEnabled(!(active&&ms>=GUARD_STAGGER_MS));
     // 弱点。胸当てが前へ外れ、胸の線が左右へ開き、核が大きくなる。
     const open=active&&ms>=WEAKPOINT_MS?clamp((ms-WEAKPOINT_MS)/700):0;
     const t=ms/1000;

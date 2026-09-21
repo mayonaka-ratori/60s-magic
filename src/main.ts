@@ -1,7 +1,7 @@
 import './style.css';
 import { Battle } from './game/battle';
 import type { CastSession } from './game/session';
-import { BATTLE_END, COUNTDOWN_MS, ROUNDS, SPEECH_WAIT_MS, VOICE_RECONNECT_MS, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
+import { BATTLE_END, COUNTDOWN_MS, GUARD_STAGGER_MS, ROUNDS, SPEECH_WAIT_MS, VOICE_RECONNECT_MS, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
 import { GUARD_LABELS } from './game/guard';
 import { ELEMENT_LABELS, PURPOSE_LABELS, FORM_LABELS, type Phase } from './game/types';
 import { HandCamera } from './input/camera';
@@ -15,7 +15,7 @@ import { liveInput, emptyLive, wordless, type LiveInput } from './game/live-inpu
 import { resetLiveWords } from './game/live-words';
 import { resetInputAmount, speechKey } from './game/input-amount';
 import { ScreenOverlay } from './render/overlay';
-import { GUARD_STEP_MS, HEALTH_HIDE_MS, HealthBar } from './render/health-bar';
+import { HEALTH_HIDE_MS, HealthBar } from './render/health-bar';
 import { DELIVERY_MESSAGES, PlayRecorder, nameParts, playOf, resultRows, type PlayContext, type ResultRow } from './game/record';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
@@ -288,7 +288,7 @@ const ACT_NAMES:Record<string,string>={defend:'防御',finish:'とどめ'};
 /** 二回目からの回。声の受付を作り直す相手なので、毎コマ切り出さずに一度だけ作る。 */
 const LATER_ROUNDS=ROUNDS.slice(1);
 
-const HEALTH_SHAKE_MS=[ROUNDS[0].impact,GUARD_STEP_MS,ROUNDS[2].impact,
+const HEALTH_SHAKE_MS=[ROUNDS[0].impact,GUARD_STAGGER_MS,ROUNDS[2].impact,
   ...ROUNDS.flatMap(round=>round.finalBlow===null?[]:[round.finalBlow])];
 
 /** 回ごとの、まだ何も唱えていない人へ出す詠唱の例。 */
@@ -625,7 +625,7 @@ function animate(now:number) {
   let live=emptyLive;
   if(cast) {
     const defending=cast.round.id==='defend';
-    const entries=cast.speech.live(),key=`${cast.round.id}:${cast.motion.raw.length}:${speechKey(entries)}`;
+    const entries=cast.speech.live(),key=`${cast.round.id}:${cast.motion.raw.length}:${speechKey(entries,cast.speechOffset)}`;
     // 声の時刻は回ごとに0から数えるので、回の始まりを足して戦いの時刻へそろえる。
     if(key!==liveKey){liveKey=key;liveBase=liveInput(cast.motion.raw,entries,0,defending&&cast.accepting?session!.aim:null,cast.speechOffset,session!.aspect);}
     // 発動より後は言葉を使わないので空にする。入力の量はそのまま残す。声の大きさは毎コマ入れ直す。

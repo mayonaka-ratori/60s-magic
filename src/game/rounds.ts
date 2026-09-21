@@ -113,6 +113,12 @@ export const speechSocketMsOf = (windowMs: number = MAX_INPUT_MS) =>
 export const speechLimitOf = (round: Round) => round.inputEnd + SPEECH_WAIT_MS;
 /** Jevの返事を受け取れる最後の時刻。確定の手前で必ず打ち切る。 */
 export const replyLimitOf = (round: Round) => round.lock - 100;
+/**
+ * 盾で受け止めきった騎士がよろめく時刻（ms）。一撃が盾に当たってから2.1秒後。
+ * 兜の角が折れる瞬間（knight.ts）と体力が減る段（health-bar.ts）と画面の揺れ（main.ts）は
+ * 同じ一瞬なので、数字はここだけに置く。別々に持つと、片方を直したときにずれる。
+ */
+export const GUARD_STAGGER_MS = ROUNDS[1].impact + 2100;
 /** その時刻に進んでいる回。終わった後は最後の回を返す。 */
 export const roundAt = (ms: number) => ROUNDS.find(round => ms < round.end) ?? ROUNDS[ROUNDS.length - 1];
 
