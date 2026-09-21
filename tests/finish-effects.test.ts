@@ -3,7 +3,7 @@ import { BEATS, beatOf, ROUNDS, FINISH_HIT_OFFSETS_MS } from '../src/game/rounds
 import { AIM } from '../src/game/guard';
 import { presets } from '../src/render/effects/presets';
 import { ParticlePool } from '../src/render/effects/particles';
-import { drawTravel, arrivalOf } from '../src/render/effects/release';
+import { drawTravel, arrivalOf, bodyPoint, hitDelay } from '../src/render/effects/release';
 import { screenState, FINISH_PASS_FLASH } from '../src/render/effects/screen';
 import { MagicCanvas } from '../src/render/magic';
 import type { Frame } from '../src/render/effects/frame';
@@ -190,6 +190,27 @@ describe('輪をくぐって奥へ伸びる', () => {
     expect(finishBoost(frame(finishBeat.release)).size).toBeCloseTo(1, 6);
     expect(finishBoost(frame(finishBeat.impact)).travel).toBeCloseTo(1, 6);
     expect(finishBoost(frame(finishBeat.impact)).size).toBeGreaterThan(1.9);
+  });
+  it('輪をくぐりきった後も進み続け、連弾の最後の弾も騎士まで届く', () => {
+    const 五連 = (t: number) => frame(t, {}, { count: 5 });
+    // 到達の0.5秒後。bodyPoint は弾ごとの遅れを引くので、頭打ちにすると5発目が届かない。
+    const 後 = 五連(finishBeat.impact + .5), 進み = finishBoost(後).travel;
+    const 遅れ = hitDelay(4, 5) / arrivalOf(後);
+    expect(進み - 遅れ).toBeGreaterThanOrEqual(1);
+    // bodyPoint を通した5発目の位置は、騎士のところに重なる。
+    const 先 = bodyPoint(後, 4, 進み, 後.t - finishBeat.release);
+    expect(先.x).toBeCloseTo(後.target.x, 6);
+    expect(先.y).toBeCloseTo(後.target.y, 6);
+    // 到達の時刻では、まだ5発目は手前にいる。
+    const 中 = 五連(finishBeat.impact), 途中 = bodyPoint(中, 4, finishBoost(中).travel, 中.t - finishBeat.release);
+    expect(Math.hypot(途中.x - 中.target.x, 途中.y - 中.target.y)).toBeGreaterThan(20);
+    // 1発目は今までどおり、到達の時刻で騎士に重なる。
+    const 先頭 = bodyPoint(中, 0, finishBoost(中).travel, 中.t - finishBeat.release);
+    expect(先頭.x).toBeCloseTo(中.target.x, 6);
+  });
+  it('弾の数が数でなくても、当たる回の割り当ては空にならない', () => {
+    expect(finishHitPlan(Number.NaN)).toEqual([1, 0, 0, 0]);
+    expect(finishHitPlan(Number.POSITIVE_INFINITY)).toEqual([1, 0, 0, 0]);
   });
   it('倍率を渡さない飛翔は、今までと同じ命令になる', () => {
     const at = (boost?: { travel: number; size: number }) => {

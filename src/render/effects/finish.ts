@@ -83,7 +83,6 @@ export const FINISH_BLOW = {
 export const FINISH_SETTLE = {
   /** 術式の光が抜けきるまで（秒）。世界の時刻で59.25秒に終わる長さ */ seconds: 2.25,
   /** 倒れた衝撃で床の塵が立つ、一撃からの秒 */ dustFrom: 1.7,
-  /** 塵が広がりきる、一撃からの秒 */ dustTo: 2.4,
 };
 
 /** 引き継いだ光点（6章）。 */
@@ -122,11 +121,28 @@ export function ringLayout(i: number, count = FINISH_RING.count) {
 }
 
 /** 輪の間で、速さが何倍になるかの区切り。0〜1の道のりを輪で切った並び。 */
-function ringEdges(count: number) {
+function makeRingEdges(count: number) {
   const edges = [0];
   for (let i = 0; i < count; i++) edges.push(ringLayout(i, count).depth);
   edges.push(1);
   return edges;
+}
+/** 区切りは枚数だけで決まるので、一度作ったら覚えておく。毎コマ作り直さない。 */
+const ringEdgesCache = new Map<number, number[]>();
+function ringEdges(count: number) {
+  let edges = ringEdgesCache.get(count);
+  if (!edges) { edges = makeRingEdges(count); ringEdgesCache.set(count, edges); }
+  return edges;
+}
+/**
+ * 輪を全部くぐった後の進む速さ（飛翔の割合1あたりの道のり）。
+ * 最後の区間と同じ速さで、騎士のさらに先まで進み続けるために使う。
+ */
+export function afterRingsSpeed(count = FINISH_RING.count) {
+  const edges = ringEdges(count);
+  let total = 0;
+  for (let k = 0; k < edges.length - 1; k++) total += (edges[k + 1] - edges[k]) / Math.pow(FINISH_RING.speedUp, k);
+  return total > 0 ? Math.pow(FINISH_RING.speedUp, edges.length - 2) * total : 1;
 }
 
 /**
@@ -169,7 +185,8 @@ export function ringPassAt(i: number, count = FINISH_RING.count) {
  */
 export function finishHitPlan(count: number) {
   const slots = FINISH_HIT_OFFSETS.length, plan = new Array<number>(slots).fill(0);
-  const bullets = Math.max(1, Math.round(count));
+  // 弾の数が数でないときは1発とみなす。そのままだと全部0になり、当たっても何も出なくなる。
+  const bullets = Number.isFinite(count) ? Math.max(1, Math.round(count)) : 1;
   for (let i = 0; i < Math.min(bullets, slots); i++) plan[i] = 1;
   for (let i = 0, extra = bullets - slots; extra > 0; i++, extra--) plan[i % slots]++;
   return plan;
@@ -202,11 +219,17 @@ export function inheritedSpot(i: number, total: number, time: number, w: number,
   return { x: from.x + (to.x - from.x) * near, y: from.y + (to.y - from.y) * near, alpha: .16 + near * .18 };
 }
 
-/** 飛翔の部品へ渡す倍率。輪をくぐるたびに太く速くなる。 */
+/**
+ * 飛翔の部品へ渡す倍率。輪をくぐるたびに太く速くなる。
+ * 輪を全部くぐった後（u が1を超えた後）は1で止めず、最後の区間と同じ速さで進み続ける。
+ * 連弾では bodyPoint が弾ごとの遅れを引くので、1で止めると2発目から先が騎士へ届かずに消える。
+ */
 export function finishBoost(f: Frame) {
   const flight = f.beat.impact - f.beat.release;
-  const step = finishTravel(flight > 0 ? (f.t - f.beat.release) / flight : 1);
-  return { travel: step.travel, size: step.scale };
+  const u = flight > 0 ? (f.t - f.beat.release) / flight : 1;
+  const step = finishTravel(u);
+  const travel = u > 1 ? step.travel + (u - 1) * afterRingsSpeed() : step.travel;
+  return { travel, size: step.scale };
 }
 
 /** 術式の線をたどる道を組み立てる。倍率 scale で中心から広げる。 */
@@ -289,7 +312,11 @@ function drawRings(f: Frame) {
   }
 }
 
-/** 当たったとき、火の粉と破片を手前へ飛ばす。下向きに強く、画面の外へ抜けるまで大きくする。 */
+/**
+ * 当たったとき、火の粉と破片を手前へ飛ばす。下向きに強く、画面の外へ抜けるまで大きくする。
+ * 当たる4回は弾の数によらず必ず起こり、体力も部品もその4回で動く。
+ * そのため弾が割り当たらない回（bullets が0）も、1発ぶんの粒は出す。
+ */
 function spawnForward(f: Frame, bullets: number) {
   const g = f.target;
   const n = Math.round(few(f, increase(f.preset.impactParticles, f.intensity, .5) * .5 * Math.max(1, bullets)));

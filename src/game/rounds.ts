@@ -47,6 +47,21 @@ export const BATTLE_END = ROUNDS[ROUNDS.length - 1].end;
 export const FINISH_HIT_OFFSETS_MS = [0, 160, 320, 500];
 /** とどめの多段命中の時刻（ms）。53600、53760、53920、54100。 */
 export const FINISH_HIT_MS = FINISH_HIT_OFFSETS_MS.map(offset => ROUNDS[2].impact + offset);
+/**
+ * とどめの一撃の時刻（ms）。表に無ければ起動した時点で止める。
+ * ここを通ったあとは、騎士も体力の枠もこの一つの値だけを見る。
+ */
+function finalBlowMs() {
+  const finish = ROUNDS[2];
+  if (finish.finalBlow === null) throw new Error('とどめの回にとどめの一撃の時刻が無い');
+  return finish.finalBlow;
+}
+export const FINAL_BLOW_MS = finalBlowMs();
+/**
+ * 騎士が膝をつき始め、体力の枠が消え始める時刻（ms）。とどめの一撃の0.9秒後。
+ * 崩れ落ちと枠の消え方をそろえるため、二か所で別々に書かない。
+ */
+export const FINISH_COLLAPSE_MS = FINAL_BLOW_MS + 900;
 /** 締め切りのあと、声の最後の文字を待てる時間。MacのGPUでの認識一回分が入る長さ。 */
 export const SPEECH_WAIT_MS = 1400;
 /** 声を待つのをやめ、Jevへ送る時刻。声が先に届けばもっと早く送る。 */

@@ -1,18 +1,18 @@
 import type { Recipe } from '../game/types';
 import { hitDelay } from './effects/release';
-import { FINISH_HIT_MS, ROUNDS } from '../game/rounds';
+import { FINAL_BLOW_MS as FINISH_BLOW_MS, FINISH_COLLAPSE_MS, FINISH_HIT_MS, ROUNDS } from '../game/rounds';
 
 const clamp = (x: number) => Math.min(1, Math.max(0, x));
 /** 防御で一撃を受け止めきったときに減る量。止め方や入力では変わらない。 */
 export const GUARD_DAMAGE=10;
 /** 騎士がよろめいて体力が減る時刻（ms）。一撃が盾に当たってから2.1秒後。 */
 export const GUARD_STEP_MS=ROUNDS[1].impact+2100;
-/** とどめの一撃の時刻（ms）。ここで体力を直に0にする。 */
-export const FINAL_BLOW_MS=ROUNDS[2].finalBlow!;
+/** とどめの一撃の時刻（ms）。ここで体力を直に0にする。回の表から作る。 */
+export const FINAL_BLOW_MS=FINISH_BLOW_MS;
 /** とどめの多段命中で減らす割合。そのとき残っている量の9割を4回に等分する。 */
 export const FINISH_DAMAGE_RATIO=.9;
-/** 体力の枠を消し始める時刻（ms、世界の時刻）。とどめの一撃の0.9秒後。 */
-export const HEALTH_HIDE_MS=FINAL_BLOW_MS+900;
+/** 体力の枠を消し始める時刻（ms、世界の時刻）。とどめの一撃の0.9秒後。騎士の崩れ落ちと同じ値を使う。 */
+export const HEALTH_HIDE_MS=FINISH_COLLAPSE_MS;
 /** 命中で減る量。派手さ（個数、範囲、収束）で20〜45%にする。 */
 function damage(recipe: Recipe | null) {
   if (!recipe) return 24;

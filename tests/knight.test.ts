@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { knightPose, guardPose, GUARD_FROM, reactionPower, knightTransform, knightMatrix, knightPoint,
-  FINISH_DROPS, droppedAt, debrisMotion, coreBlink, FINISH_THROWS, FALL_TURN, FALL_NEAR } from '../src/render/knight';
+  FINISH_DROPS, droppedAt, debrisMotion, coreBlink, corePulse, idlePulse, FINISH_THROWS, FALL_TURN, FALL_NEAR,
+  FINISH_FLASH, FINAL_BLOW_AT, KNEEL_AT } from '../src/render/knight';
 import { getPreset } from '../src/render/effects/presets';
+import { FINISH_COLLAPSE_MS, FINISH_HIT_MS } from '../src/game/rounds';
 import type { Recipe } from '../src/game/types';
 
 const recipe = (over: Partial<Recipe>): Recipe => ({ version: 'recipe-1', accent: null, element: 'fire', purpose: 'attack', form: 'orb',
@@ -232,6 +234,63 @@ describe('とどめの核の明滅', () => {
       expect(coreBlink(t)).toBeGreaterThanOrEqual(0);
       expect(coreBlink(t)).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe('核の脈打ちは40秒でつながる', () => {
+  it('39.99秒と40.01秒で明るさが飛ばない', () => {
+    expect(Math.abs(corePulse(40.01) - corePulse(39.99))).toBeLessThanOrEqual(.05);
+    // 混ぜ終わる40秒より前は、今までの速い脈のまま。
+    expect(corePulse(39.5)).toBeCloseTo(idlePulse(39.5), 6);
+    // 40秒から後は、とどめの回の明滅そのもの。
+    for (const t of [40, 40.5, 44.5, 52]) expect(corePulse(t)).toBeCloseTo(coreBlink(t), 6);
+  });
+  it('混ぜている間も0〜1に収まり、急に飛ばない', () => {
+    let previous = corePulse(39);
+    for (let t = 39; t <= 41; t += .01) {
+      const now = corePulse(t);
+      expect(now).toBeGreaterThanOrEqual(0);
+      expect(now).toBeLessThanOrEqual(1);
+      expect(Math.abs(now - previous)).toBeLessThanOrEqual(.08);
+      previous = now;
+    }
+  });
+});
+
+describe('とどめの白飛び', () => {
+  const alpha = (t: number, reduced = false) => guardPose(t * 1000, reduced, 'block').flashAlpha;
+  it('4回の命中はそれぞれ0.08秒の白', () => {
+    for (const ms of FINISH_HIT_MS) {
+      const at = ms / 1000;
+      expect(alpha(at - .01)).toBe(0);
+      expect(alpha(at)).toBeCloseTo(FINISH_FLASH.hitAlpha, 6);
+      expect(alpha(at + FINISH_FLASH.hit - .001)).toBeCloseTo(FINISH_FLASH.hitAlpha, 6);
+      expect(alpha(at + FINISH_FLASH.hit + .001)).toBe(0);
+      // 命中の白に属性色は混ぜない。
+      expect(guardPose(ms, false, 'block').flashTint).toBe(0);
+    }
+  });
+  it('直撃は白、属性色、白の三段で0.15秒', () => {
+    const 直撃 = FINAL_BLOW_AT;
+    expect(alpha(直撃 - .01)).toBe(0);
+    expect(alpha(直撃)).toBeCloseTo(.85, 6);
+    expect(guardPose(直撃 * 1000, false, 'block').flashTint).toBe(0);
+    expect(guardPose((直撃 + .06) * 1000, false, 'block').flashTint).toBe(1);
+    expect(alpha(直撃 + .06)).toBeCloseTo(.65, 6);
+    expect(guardPose((直撃 + .12) * 1000, false, 'block').flashTint).toBe(0);
+    expect(alpha(直撃 + .12)).toBeCloseTo(.45, 6);
+    expect(alpha(直撃 + FINISH_FLASH.blow + .001)).toBe(0);
+  });
+  it('控えめモードでは3分の1になる', () => {
+    expect(alpha(FINISH_HIT_MS[0] / 1000, true)).toBeCloseTo(FINISH_FLASH.hitAlpha / 3, 6);
+    expect(alpha(FINAL_BLOW_AT, true)).toBeCloseTo(.85 / 3, 6);
+  });
+});
+
+describe('崩れ落ちの時刻は一か所で決める', () => {
+  it('膝をつき始める時刻は回の表の値と同じ', () => {
+    expect(KNEEL_AT).toBe(FINISH_COLLAPSE_MS / 1000);
+    expect(KNEEL_AT).toBeCloseTo(FINAL_BLOW_AT + .9, 6);
   });
 });
 

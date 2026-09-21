@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { planHealthSteps, healthAt, healthSteps, FINAL_BLOW_MS, HEALTH_HIDE_MS } from '../src/render/health-bar';
-import { FINISH_HIT_MS, ROUNDS } from '../src/game/rounds';
+import { FINISH_HIT_MS, FINISH_COLLAPSE_MS, ROUNDS } from '../src/game/rounds';
+import { KNEEL_AT } from '../src/render/knight';
 import { hitDelay } from '../src/render/effects/release';
 import { effectTime, HIT_STOPS } from '../src/render/effects/screen';
 import type { Recipe } from '../src/game/types';
@@ -152,5 +153,8 @@ describe('とどめの体力', () => {
     expect(FINISH_HIT_MS).toEqual([53600, 53760, 53920, 54100]);
     // 枠を消し始めるのは、とどめの一撃の0.9秒後。
     expect(HEALTH_HIDE_MS).toBe(55400);
+    // 枠が消え始める時刻と、騎士が膝をつき始める時刻は同じ一つの値から作る。
+    expect(HEALTH_HIDE_MS).toBe(FINISH_COLLAPSE_MS);
+    expect(HEALTH_HIDE_MS).toBe(KNEEL_AT * 1000);
   });
 });

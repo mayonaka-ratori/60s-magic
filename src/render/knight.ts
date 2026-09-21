@@ -17,13 +17,15 @@ import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
-import { BATTLE_END, FINISH_HIT_OFFSETS_MS, ROUNDS } from '../game/rounds';
+import { BATTLE_END, FINAL_BLOW_MS, FINISH_COLLAPSE_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS, ROUNDS } from '../game/rounds';
 import { colors } from './magic';
 import { getPreset, type EffectPreset } from './effects/presets';
 import { smooth } from './effects/frame';
 import { IMPACT_AT } from './effects/screen';
 import type { Recipe } from '../game/types';
 
+/** 画面の中の点を出すときに使う単位行列。毎コマ作らず、この一つを使い回す。 */
+const IDENTITY=Matrix.Identity();
 /** 反応の強さの基準にする設定（派手）。この設定のときの強さは今まで通りにする。 */
 const BASE_PRESET = getPreset(null);
 /** 立体を描く面の粗さ。背景の一枚絵より少しだけ粗く描き、拡大で輪郭をなまらせる。描く点が減るので速さにも効く。 */
@@ -104,17 +106,18 @@ const pad=(weights:number[])=>{const full=new Array(POSES.length).fill(0);for(le
 
 // 防御の回ととどめの回の時刻は、回の表（rounds.ts）から作る。表を直したら騎士も一緒に動く。
 const FIRST=ROUNDS[0],DEFEND=ROUNDS[1],FINISH=ROUNDS[2];
-/** とどめの一撃が核へ届く時刻（秒、世界の時刻）。 */
-export const FINAL_BLOW_AT=FINISH.finalBlow!/1000;
-/** 膝をつき始める時刻（秒）。とどめの一撃の0.9秒後。 */
-export const KNEEL_AT=FINAL_BLOW_AT+.9;
+/** とどめの一撃が核へ届く時刻（秒、世界の時刻）。回の表で作った値をそのまま秒にする。 */
+export const FINAL_BLOW_AT=FINAL_BLOW_MS/1000;
+/** 膝をつき始める時刻（秒）。とどめの一撃の0.9秒後。体力の枠が消え始める時刻と同じ値を使う。 */
+export const KNEEL_AT=FINISH_COLLAPSE_MS/1000;
 /** 膝をつききるまでの長さ（秒）。ここまで来たら、そのまま倒れ始める。 */
 export const KNEEL_RAMP=.8;
 /** 手前へ倒れ始める時刻と、倒れきる時刻（秒）。 */
 export const FALL_FROM=KNEEL_AT+KNEEL_RAMP,FALL_TO=FALL_FROM+.7;
 /**
  * 倒れるときに足元を軸に回す角（ラジアン）と、視点へ近づく距離。
- * 近づけすぎると兜の上面だけが画面いっぱいの黒い形になり、何が映っているか分からなくなる。
+ * 設計の初めの案は1.2ラジアンと0.6だったが、0.6まで寄せると兜の上面だけが画面いっぱいの
+ * 黒い形になり、何が映っているか分からなくなる。回す角も1.0で十分に倒れて見えるので浅くした。
  * 倒れた体の一番上が画面の縦の真ん中より下へ来る程度に抑える。
  */
 export const FALL_TURN=1,FALL_NEAR=.25;
@@ -161,6 +164,11 @@ export const SCAR_MARKS:Array<{key:DropKey;at:number}>=[...FINISH_DROPS.slice(0,
 export const CORE_BREAK_SECONDS=.125;
 /** その時刻までに落ちている部品の一覧。 */
 export const droppedAt=(t:number):DropKey[]=>FINISH_DROPS.filter(drop=>t>=drop.at).map(drop=>drop.key);
+
+/** 落ちる部品ひとつ分の覚え書き。落ちる前に戻すための場所と、傷あとの印を持つ。 */
+type Part={key:DropKey;at:number;node:TransformNode;home:TransformNode|null;
+  pos:Vector3;rot:Vector3;scale:Vector3;spot:TransformNode;v:Throw;floor:number;
+  dropped:boolean;start:Vector3;startRot:Vector3};
 
 /** 落ちる速さ（1秒あたり）と、床で跳ね返るときに残る割合。 */
 export const GRAVITY=9.8,BOUNCE=.34;
@@ -213,8 +221,43 @@ export function coreBlink(t:number) {
   return from+(1-from)*clamp(t-aim);
 }
 
+/** とどめの回より前の、核のふだんの脈打ち（0〜1）。1秒に2回ほどの速い脈。 */
+export const idlePulse=(t:number)=>.5+.5*Math.sin(t*12);
+/** ふだんの脈から、とどめの回の明滅へ移り変わる長さ（秒）。 */
+export const CORE_BLEND=.3;
+/**
+ * 核の明るさの脈（0〜1）。40秒の手前0.3秒で、速い脈からとどめの回の明滅へ混ぜて移る。
+ * 40秒より後で混ぜると、速い脈が40秒をまたいで残り、境目で明るさが大きく動いてしまう。
+ */
+export function corePulse(t:number) {
+  const start=FINISH.start/1000;
+  if(t<start-CORE_BLEND)return idlePulse(t);
+  const u=smooth(clamp((t-(start-CORE_BLEND))/CORE_BLEND));
+  // 40秒より前の coreBlink は0なので、混ぜ先は40秒の値（0.5）から始める。
+  return idlePulse(t)*(1-u)+coreBlink(Math.max(t,start))*u;
+}
+
 /** 膝をついてから手前へ倒れるまでの進み具合（0〜1）。控えめモードでも減らさない。 */
 export const fallAt=(t:number)=>smooth(clamp((t-FALL_FROM)/(FALL_TO-FALL_FROM)));
+
+/**
+ * とどめの回の白飛び。4回の命中はそれぞれ短い白、とどめの一撃は白→属性色→白の三段。
+ * 命中点の丸い光だけでは当たった実感が薄いので、騎士の形の上だけを白く飛ばす。
+ */
+export const FINISH_FLASH={hit:.08,hitAlpha:.5,blow:.15};
+/** その時刻の、とどめの白飛びの濃さと、属性色の段かどうか。控えめモードの割引はここでは掛けない。 */
+export function finishFlashAt(t:number) {
+  for(const at of FINISH_HIT_MS) {
+    const since=t-at/1000;
+    if(since>=0&&since<FINISH_FLASH.hit)return {alpha:FINISH_FLASH.hitAlpha,tint:false};
+  }
+  const since=t-FINAL_BLOW_AT;
+  if(since>=0&&since<FINISH_FLASH.blow) {
+    const step=Math.min(2,Math.floor(since/(FINISH_FLASH.blow/3)));
+    return {alpha:.85-step*.2,tint:step===1};
+  }
+  return {alpha:0,tint:false};
+}
 
 /**
  * 防御の回（23秒以降）の姿勢。順に姿勢を移すだけで、入力では変えない。
@@ -242,17 +285,19 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
   const flash=struck?Math.max(0,1-back/.24)*soft:0;
   // 崩れ落ち。膝をついてから手前へ倒れる進み具合。倒れきったら呼吸の揺れも止める。
   const fall=fallAt(t),still=1-fall;
+  // とどめの4回の命中と直撃の白飛び。防御の弾き返しとは時刻が離れているが、念のため濃いほうを使う。
+  const blast=finishFlashAt(t);
   return {weights,lean:reduced?0:repel*.35,
     // 0に丸めるときに符号が残らないよう、0を足しておく。
     breath:reduced?0:(Math.sin(ms*.0016)*.003+charging*Math.sin(t*Math.PI*2)*.004)*still+0,
-    flash,fall,still,blink:coreBlink(t),
+    flash,fall,still,blink:corePulse(t),
     // shakeは体の細かい震え。一回目と同じ作り方にする。
     shake:reduced?0:flash*.028,
     // 崩れ始めと倒れきった後は、とどめの回だけの名前にする。ブラウザーの試験はこれを見る。
     state:t>=FALL_TO?'down':index>=7?'collapse':index>=6?'exposed':index===5?'recover':index===4?'repel':index===3?'swing':index===2?'charge':index===1?'guard':'idle',
     strength:.5,push:reduced?0:repel*.5+(struck?Math.max(0,1-back/.3)*.3:0),collapse:0,
     spin:reduced?0:repel*2.2,
-    flashAlpha:stepIndex<0?0:(.85-stepIndex*.2)*.75*soft,flashTint:stepIndex===1?1:0,
+    flashAlpha:Math.max(stepIndex<0?0:(.85-stepIndex*.2)*.75*soft,blast.alpha*soft),flashTint:stepIndex===1||blast.tint?1:0,
     ghost:reduced||!struck?0:back<.3?1-back/.3:0,
     // 弱点の輪郭の光は、回の終わりまでに0へ戻す。結果を出したまま待つ間、毎コマ形を塗り直さないため。
     rim:t>=weak?smooth((t-weak)/.5)*(1-smooth((t-weak-.5)/.5))*.5:struck?1-smooth(back/.6):0};
@@ -324,9 +369,9 @@ export class Knight {
   private stencilContext:CanvasRenderingContext2D|null;
   private trail:KnightTransform[]=[];
   /** とどめの回で落ちる部品。落ちた後は親から外し、重力で床まで落として止める。 */
-  private parts:Array<{key:DropKey;at:number;node:TransformNode;home:TransformNode|null;
-    pos:Vector3;rot:Vector3;scale:Vector3;spot:TransformNode;v:Throw;floor:number;
-    dropped:boolean;start:Vector3;startRot:Vector3}>=[];
+  private parts:Part[]=[];
+  /** 部品を名前で引く表。毎コマ一覧を探し直さない。 */
+  private partOf=new Map<DropKey,Part>();
   /** 今落ちている部品。毎コマの分岐で使う。 */
   private down=new Set<DropKey>();
   private cssSize='';
@@ -723,9 +768,10 @@ export class Knight {
     const at=FINISH_DROPS.find(drop=>drop.key===key)!.at,v=FINISH_THROWS[key],floor=v.floor;
     const spot=new TransformNode('傷あとの位置',this.scene);
     spot.parent=node.parent;spot.position.copyFrom(node.position);
-    this.parts.push({key,at,node,home:node.parent as TransformNode|null,
+    const part:Part={key,at,node,home:node.parent as TransformNode|null,
       pos:node.position.clone(),rot:node.rotation.clone(),scale:node.scaling.clone(),spot,v,floor,
-      dropped:false,start:node.position.clone(),startRot:node.rotation.clone()});
+      dropped:false,start:node.position.clone(),startRot:node.rotation.clone()};
+    this.parts.push(part);this.partOf.set(key,part);
   }
   /**
    * 部品の脱落を時刻から作り直す。落ちる時刻を過ぎたら親から外して落とし、
@@ -746,7 +792,9 @@ export class Knight {
         if(part.key==='core')this.core.setEnabled(true);
         else{part.node.setParent(part.home);part.node.position.copyFrom(part.pos);part.node.rotation.copyFrom(part.rot);part.node.scaling.copyFrom(part.scale);part.node.setEnabled(true);}
       }
-      if(!part.dropped)continue;
+      // 落ちるまでは、傷あとの印を部品の今の場所に合わせておく。
+      // 胸当てのように途中で動く部品は、組み立てたときの場所のままだと当たった所からずれる。
+      if(!part.dropped){part.spot.position.copyFrom(part.node.position);continue;}
       const dt=t-part.at;
       if(part.key==='core') {
         // 核は落とさず、その場で縮んで消す。世界の時計で0.125秒（スロー中なので実際は0.5秒）。
@@ -763,8 +811,8 @@ export class Knight {
   }
   /** 傷あとを描く場所（表に出す面の中の点）。部品が落ちた後も、当たった所を指し続ける。 */
   private scarSpot(key:DropKey,rw:number,rh:number,w:number,h:number) {
-    const part=this.parts.find(p=>p.key===key);if(!part)return null;
-    const at=Vector3.Project(part.spot.getAbsolutePosition(),Matrix.Identity(),this.scene.getTransformMatrix(),this.camera.viewport.toGlobal(rw,rh));
+    const part=this.partOf.get(key);if(!part)return null;
+    const at=Vector3.Project(part.spot.getAbsolutePosition(),IDENTITY,this.scene.getTransformMatrix(),this.camera.viewport.toGlobal(rw,rh));
     return {x:at.x*w/rw,y:at.y*h/rh};
   }
   resize() {
@@ -894,9 +942,9 @@ export class Knight {
     this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live,0,-p.swordOut);
     this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);
     // 一回目の締め切りからの蓄積で核が明るくなり、命中では前から強く照らす。弱点が出たら脈打つ。
-    // とどめの回は、明滅の速さを回の表から作った coreBlink に任せる。
+    // とどめの回は、明滅の速さを回の表から作った corePulse に任せる。40秒の境目もここでつなぐ。
     const charge=active?clamp((ms-FIRST.inputEnd)/4500):0;
-    const pulse=active&&t>=FINISH.start/1000?pose.blink:.5+.5*Math.sin(ms*.012);
+    const pulse=active?corePulse(t):idlePulse(t);
     const glow=.22+charge*.5+pose.flash*1.5+open*pulse*.7;
     this.coreMaterial.emissiveColor.set(.42+glow,.32+glow*.86,.17+glow*.7);
     const blink=.82+Math.sin(t*1.7)*.18*live+pose.flash*.6;
@@ -907,7 +955,7 @@ export class Knight {
     this.scene.render();
     // 立体を描いた面は表に出す面より粗いので、胸の核の位置は表の面の大きさへ直してから使う。
     const rw=this.engine.getRenderWidth(),rh=this.engine.getRenderHeight();
-    const projected=Vector3.Project(this.core.getAbsolutePosition(),Matrix.Identity(),this.scene.getTransformMatrix(),this.camera.viewport.toGlobal(rw,rh));
+    const projected=Vector3.Project(this.core.getAbsolutePosition(),IDENTITY,this.scene.getTransformMatrix(),this.camera.viewport.toGlobal(rw,rh));
     const w=Math.max(1,this.canvas.width),h=Math.max(1,this.canvas.height);
     const unit=w/Math.max(1,this.canvas.clientWidth||w);
     // 置き方は一度だけ出し、絵と胸の狙い先の両方に同じものを使う。
