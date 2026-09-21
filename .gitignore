@@ -17,3 +17,6 @@ public/audio/**/*.ogg
 public/audio/**/*.mp3
 public/audio/**/*.wav
 public/audio/**/*.opus
+
+# 担当ごとの作業用の複製（Claude Codeが作る）。中身は各自のブランチにある。
+.claude/worktrees/
