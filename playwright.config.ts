@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 // Windowsだけ Direct3D 11 を指定する。Macでこの指定を付けるとソフトウェア描画に落ち、24秒を通す試験が間に合わなくなる。
 const gpuArgs=process.platform==='win32'?['--use-angle=d3d11']:[];
 export default defineConfig({
-  // 通しの試験は60秒の本編に、読み込みと準備の合図が乗る。待ちが足りずに落ちないよう長めにする。
+  // 通しの試験は90秒の本編に、読み込みと準備の合図が乗る。待ちが足りずに落ちないよう長めにする。
   testDir:'tests/browser',timeout:150000,fullyParallel:false,workers:1,
   use:{baseURL:'http://127.0.0.1:5173',viewport:{width:1440,height:900},headless:true,channel:'chromium',
     launchOptions:{args:[...gpuArgs,'--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']}},

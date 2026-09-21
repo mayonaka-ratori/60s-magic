@@ -24,16 +24,16 @@ test('結果のまま誰も触らなければ、タイトルへ戻って自動�
 test('唱える時間になると、まだ何も言っていない人に例を出す',async({page})=>{
   await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
-  await expect(page.locator('#hint')).toHaveText('たとえば「雷よ、七つに分かれろ」',{timeout:20000});
+  await expect(page.locator('#hint')).toHaveText('たとえば「雷よ、七つに分かれろ」',{timeout:26000});
 });
 
 test('もう言葉を入れた人には、詠唱の例を出さない',async({page})=>{
   await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
-  // 締め切り前に入れる。14秒を過ぎると入力欄が閉じるので、始めてすぐ入れる。
+  // 締め切り前に入れる。18秒を過ぎると入力欄が閉じるので、始めてすぐ入れる。
   await page.locator('#chant').fill('氷よ、壁となれ');
   const 見たひとこと=new Set<string>();
-  for(let i=0;i<18&&await page.locator('#timer').isVisible();i++) {
+  for(let i=0;i<26&&await page.locator('#timer').isVisible();i++) {
     見たひとこと.add(await page.locator('#hint').innerText());
     await page.waitForTimeout(700);
   }
@@ -45,7 +45,7 @@ test('当たった瞬間に体力バーが反応し、騎士に魔法の傷あ�
   await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   const 見たもの=new Set<string>();
-  for(let i=0;i<140&&await page.locator('#result').isHidden();i++) {
+  for(let i=0;i<210&&await page.locator('#result').isHidden();i++) {
     const いま=await page.evaluate(()=>({
       傷:(document.getElementById('knight') as HTMLElement).dataset.scar,
       反応:document.querySelector<HTMLElement>('.enemy-health')!.dataset.hit==='1',

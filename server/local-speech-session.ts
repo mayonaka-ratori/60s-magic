@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
 import type { LocalSpeechResult, LocalSpeechStatus } from './local-speech';
+import { SPEECH_WAIT_MS } from '../src/game/rounds';
 export type LocalRecognizer = {
   getStatus:()=>LocalSpeechStatus;
   reserve:(owner:object)=>boolean;
@@ -39,9 +40,9 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
     if(now>=deadline){if(ended)finish();return;}
     if(!force&&!ended&&(now-lastRequestAt<650||lastSample-firstSample<6400))return;
     // 終了の直前に途中の認識を始めず、最後の音を含む要求を優先する。
-    // MacのGPUでは一回に約1.3秒かかるため、受付の終わりの1.4秒前からは途中の認識を始めない。
-    // 一回目（14秒）なら12.6秒、防御（7秒）なら5.6秒。回の長さに合わせる。
-    if(!ended&&lastSample>=Math.max(0,windowMs-1400)*16)return;
+    // 境目は、画面側が最後の声を待つ長さ（SPEECH_WAIT_MS）と同じにする。
+    // 一回目（18秒）なら16秒、防御（15秒）なら13秒。回の長さに合わせる。
+    if(!ended&&lastSample>=Math.max(0,windowMs-SPEECH_WAIT_MS)*16)return;
     // 締め切りに間に合わない認識は始めない。結果を捨てるだけで、直前の結果を送るのも遅れる。
     if(ended&&lastProcessingMs>0&&now+lastProcessingMs>deadline){finish();return;}
     busy=true;lastRequestAt=now;

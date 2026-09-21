@@ -5,8 +5,8 @@ import { BATTLE_END, ROUNDS, phaseAt, roundAt } from './rounds';
 import type { Phase, Point } from './types';
 
 /**
- * 60秒の進行役。回ごとの仕組み（CastSession）を並べ、今どの回かを決めるだけ。
- * 時刻はすべて戦いの開始からのms。一回目（0〜24秒）、防御（24〜40秒）、とどめ（40〜60秒）の三回。
+ * 90秒の進行役。回ごとの仕組み（CastSession）を並べ、今どの回かを決めるだけ。
+ * 時刻はすべて戦いの開始からのms。一回目（0〜30秒）、防御（30〜56秒）、とどめ（56〜90秒）の三回。
  */
 export class Battle {
   readonly id:string;
@@ -14,7 +14,7 @@ export class Battle {
   readonly casts:CastSession[];
   elapsed=0;
   cancelled=false;
-  /** 前の回から引き継ぐ光点。一回目の分を23秒、防御の分を39秒で決め、あとの回の間ずっと薄く残す。 */
+  /** 前の回から引き継ぐ光点。一回目の分を29秒、防御の分を55秒で決め、あとの回の間ずっと薄く残す。 */
   inherited:Point[]=[];
   /** 光点をもう受け取った回の名前。同じ回から二度取らないための覚え書き。魔法の引き継ぎとは別に数える。 */
   private handedOff=new Set<string>();
@@ -22,7 +22,7 @@ export class Battle {
     this.id=id;this.startMs=clock();
     this.casts=ROUNDS.map(round=>new CastSession(clock,id,round,this.startMs));
   }
-  // 回の判定はそのときの時計で見る。1コマ前の値で見ると、24秒ちょうどの一瞬だけ
+  // 回の判定はそのときの時計で見る。1コマ前の値で見ると、30秒ちょうどの一瞬だけ
   // 前の回のまま（受付は閉じている）になり、描き始めの点を落とす。
   get round() {return roundAt(this.cancelled?this.elapsed:Math.max(0,this.clock()-this.startMs));}
   get active() {return this.casts[this.round.index-1];}
@@ -58,7 +58,7 @@ export class Battle {
   }
   cancel() {this.cancelled=true;for(const cast of this.casts)cast.cancel();}
   report() {
-    return {sessionId:this.id,scope:'full-60-seconds',rounds:this.casts.map(cast=>cast.report()),
+    return {sessionId:this.id,scope:'full-90-seconds',rounds:this.casts.map(cast=>cast.report()),
       cancelled:this.cancelled,inheritedNodes:this.inherited.length};
   }
 }

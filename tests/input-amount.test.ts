@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { inputAmount, resetInputAmount } from '../src/game/input-amount';
+import { BEATS } from '../src/game/rounds';
 import { intensityOf, presets } from '../src/render/effects/presets';
 import { screenState } from '../src/render/effects/screen';
 import type { Point, Recipe, SpeechEntry } from '../src/game/types';
@@ -82,8 +83,8 @@ describe('入力の量が演出に効く', () => {
     // 量は intensityOf の一か所で派手さに足す。screenState の6番目の引数はもう何にも効かない。
     const strong = intensityOf(null, presets.vivid, 1), weak = intensityOf(null, presets.vivid, 0);
     expect(strong).toBeGreaterThan(weak);
-    expect(screenState(16.5, strong, presets.vivid, 'attack', 0).darken).toBeGreaterThan(screenState(16.5, weak, presets.vivid, 'attack', 0).darken);
-    expect(screenState(16.5, 1, presets.vivid, 'attack', 0, 1).darken).toBe(screenState(16.5, 1, presets.vivid, 'attack', 0, 0).darken);
-    expect(screenState(16.5, 1, presets.vivid, 'attack', 0).darken).toBe(screenState(16.5, 1, presets.vivid, 'attack').darken);
+    expect(screenState(BEATS[0].lock-.5, strong, presets.vivid, 'attack', 0).darken).toBeGreaterThan(screenState(BEATS[0].lock-.5, weak, presets.vivid, 'attack', 0).darken);
+    expect(screenState(BEATS[0].lock-.5, 1, presets.vivid, 'attack', 0, 1).darken).toBe(screenState(BEATS[0].lock-.5, 1, presets.vivid, 'attack', 0, 0).darken);
+    expect(screenState(BEATS[0].lock-.5, 1, presets.vivid, 'attack', 0).darken).toBe(screenState(BEATS[0].lock-.5, 1, presets.vivid, 'attack').darken);
   });
 });

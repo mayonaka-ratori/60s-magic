@@ -11,7 +11,7 @@ export const GUARD_STEP_MS=ROUNDS[1].impact+2100;
 export const FINAL_BLOW_MS=FINISH_BLOW_MS;
 /** とどめの多段命中で減らす割合。そのとき残っている量の9割を4回に等分する。 */
 export const FINISH_DAMAGE_RATIO=.9;
-/** 体力の枠を消し始める時刻（ms、世界の時刻）。とどめの一撃の0.9秒後。騎士の崩れ落ちと同じ値を使う。 */
+/** 体力の枠を消し始める時刻（ms、世界の時刻）。とどめの一撃の1.3秒後。騎士の崩れ落ちと同じ値を使う。 */
 export const HEALTH_HIDE_MS=FINISH_COLLAPSE_MS;
 /** 命中で減る量。派手さ（個数、範囲、収束）で20〜45%にする。 */
 function damage(recipe: Recipe | null) {
@@ -24,9 +24,9 @@ function damage(recipe: Recipe | null) {
 export type HealthStep = { at: number; from: number; left: number };
 
 /**
- * 体力が減る段を作る。命中の18.5秒から、弾が届く時刻に合わせて一段ずつ減らす。
+ * 体力が減る段を作る。命中の23.5秒から、弾が届く時刻に合わせて一段ずつ減らす。
  * 段の時刻は弾と同じ `hitDelay` から作るので、最後の特大の1発でもきちんと減る。
- * 単発は18.5秒ちょうどの一段だけ。
+ * 単発は23.5秒ちょうどの一段だけ。
  */
 export function planHealthSteps(recipe: Recipe | null): HealthStep[] {
   const total = damage(recipe);
@@ -53,7 +53,7 @@ export function healthAt(ms: number, steps: HealthStep[]) {
  * 一戦を通した体力の段。一回目の命中の段に、防御で一撃を受け止めきったときの一段と、
  * とどめの回の段を足す。とどめの多段命中では、そのとき残っている量の9割を4回に等分して減らし、
  * 最後のとどめの一撃では「残りを全部」ではなく 0 と直に書く。
- * 前の二回でどれだけ減っていても、54.5秒には必ず0になる。
+ * 前の二回でどれだけ減っていても、78.5秒には必ず0になる。
  */
 export function healthSteps(recipe: Recipe | null): HealthStep[] {
   const steps = planHealthSteps(recipe);

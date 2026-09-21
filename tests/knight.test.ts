@@ -3,7 +3,14 @@ import { knightPose, guardPose, GUARD_FROM, reactionPower, knightTransform, knig
   FINISH_DROPS, droppedAt, debrisMotion, coreBlink, corePulse, idlePulse, FINISH_THROWS, FALL_TURN, FALL_NEAR,
   FINISH_FLASH, FINAL_BLOW_AT, KNEEL_AT } from '../src/render/knight';
 import { getPreset } from '../src/render/effects/presets';
-import { FINISH_COLLAPSE_MS, FINISH_HIT_MS } from '../src/game/rounds';
+import { FINISH_COLLAPSE_MS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_SWORD_DROP_MS, ROUNDS } from '../src/game/rounds';
+
+// 時刻は回の表から作る。数字を書き並べない。
+const first = ROUNDS[0], finish = ROUNDS[2];
+/** 一回目の命中の時刻（ms）。反応の試験はここからの差で書く。 */
+const 命中 = first.impact;
+/** 崩れ落ちの時刻（秒）。膝をつき始め、つききり、倒れきる。 */
+const 膝 = FINISH_COLLAPSE_MS / 1000, 倒れ始め = FINISH_FALL_FROM_MS / 1000, 倒れきり = FINISH_FALL_TO_MS / 1000;
 import type { Recipe } from '../src/game/types';
 
 const recipe = (over: Partial<Recipe>): Recipe => ({ version: 'recipe-1', accent: null, element: 'fire', purpose: 'attack', form: 'orb',
@@ -30,49 +37,49 @@ describe('反応の強さ', () => {
     expect(reactionPower(recipe({ count: 7, area: 1, concentration: 1 }), 1)).toBeLessThanOrEqual(1);
   });
   it('弱いと怯むだけ、強いと大きく崩れて戻りも遅い', () => {
-    const weak = knightPose(18600, true, false, 'attack', .1);
-    const strong = knightPose(18600, true, false, 'attack', 1);
+    const weak = knightPose(命中 + 100, true, false, 'attack', .1);
+    const strong = knightPose(命中 + 100, true, false, 'attack', 1);
     expect(weak.collapse).toBe(0);
     expect(strong.collapse).toBeGreaterThan(0);
     expect(strong.spin).toBeGreaterThan(weak.spin);
     // 強いほど戻りが遅い。
-    expect(knightPose(19100, true, false, 'attack', 1).push).toBeGreaterThan(knightPose(19100, true, false, 'attack', .1).push);
+    expect(knightPose(命中 + 600, true, false, 'attack', 1).push).toBeGreaterThan(knightPose(命中 + 600, true, false, 'attack', .1).push);
     // 沈み込みは0.6秒あたりが底で、1.8秒で戻り切る。
-    expect(knightPose(19100, true, false, 'attack', 1).collapse).toBeGreaterThan(.9);
-    expect(knightPose(20400, true, false, 'attack', 1).collapse).toBeCloseTo(0, 2);
+    expect(knightPose(命中 + 600, true, false, 'attack', 1).collapse).toBeGreaterThan(.9);
+    expect(knightPose(命中 + 1900, true, false, 'attack', 1).collapse).toBeCloseTo(0, 2);
   });
   it('拘束と強化では反応が小さい', () => {
-    expect(knightPose(18600, true, false, 'bind', 1).spin).toBeLessThan(knightPose(18600, true, false, 'attack', 1).spin);
-    expect(knightPose(18600, true, false, 'enhance', 1).collapse).toBe(0);
+    expect(knightPose(命中 + 100, true, false, 'bind', 1).spin).toBeLessThan(knightPose(命中 + 100, true, false, 'attack', 1).spin);
+    expect(knightPose(命中 + 100, true, false, 'enhance', 1).collapse).toBe(0);
   });
   it('白飛びは白、属性色、白の三段で0.15秒', () => {
-    expect(knightPose(18520, true).flashTint).toBe(0);
-    expect(knightPose(18570, true).flashTint).toBe(1);
-    expect(knightPose(18620, true).flashTint).toBe(0);
-    expect(knightPose(18620, true).flashAlpha).toBeGreaterThan(0);
-    expect(knightPose(18660, true).flashAlpha).toBe(0);
-    expect(knightPose(18490, true).flashAlpha).toBe(0);
+    expect(knightPose(命中 + 20, true).flashTint).toBe(0);
+    expect(knightPose(命中 + 70, true).flashTint).toBe(1);
+    expect(knightPose(命中 + 120, true).flashTint).toBe(0);
+    expect(knightPose(命中 + 120, true).flashAlpha).toBeGreaterThan(0);
+    expect(knightPose(命中 + 160, true).flashAlpha).toBe(0);
+    expect(knightPose(命中 - 10, true).flashAlpha).toBe(0);
   });
   it('残像は0.3秒、輪郭の光は0.6秒で消える', () => {
-    expect(knightPose(18700, true).ghost).toBeGreaterThan(0);
-    expect(knightPose(18810, true).ghost).toBe(0);
-    expect(knightPose(19000, true).rim).toBeGreaterThan(0);
-    expect(knightPose(19110, true).rim).toBe(0);
+    expect(knightPose(命中 + 200, true).ghost).toBeGreaterThan(0);
+    expect(knightPose(命中 + 310, true).ghost).toBe(0);
+    expect(knightPose(命中 + 500, true).rim).toBeGreaterThan(0);
+    expect(knightPose(命中 + 610, true).rim).toBe(0);
   });
   it('控えめモードでは白飛びが出ず、残像と輪郭の光は3分の1になる', () => {
-    for (const ms of [18510, 18560, 18610, 18640]) {
+    for (const ms of [命中 + 10, 命中 + 60, 命中 + 110, 命中 + 140]) {
       expect(knightPose(ms, true, false, 'attack', 1, true).flashAlpha).toBe(0);
       expect(knightPose(ms, true, false, 'attack', 1).flashAlpha).toBeGreaterThan(0);
     }
-    const calm = knightPose(18700, true, false, 'attack', 1, true);
-    const loud = knightPose(18700, true, false, 'attack', 1);
+    const calm = knightPose(命中 + 200, true, false, 'attack', 1, true);
+    const loud = knightPose(命中 + 200, true, false, 'attack', 1);
     expect(calm.ghost).toBeCloseTo(loud.ghost / 3, 5);
-    expect(knightPose(19000, true, false, 'attack', 1, true).rim).toBeCloseTo(knightPose(19000, true, false, 'attack', 1).rim / 3, 5);
+    expect(knightPose(命中 + 500, true, false, 'attack', 1, true).rim).toBeCloseTo(knightPose(命中 + 500, true, false, 'attack', 1).rim / 3, 5);
     // 控えめでないときの見た目は変えない。
     expect(loud.ghost).toBeGreaterThan(0);
   });
   it('動きを減らす設定では回転も移動も0にする', () => {
-    const quiet = knightPose(18600, true, true, 'attack', 1);
+    const quiet = knightPose(命中 + 100, true, true, 'attack', 1);
     expect(quiet.spin).toBe(0); expect(quiet.push).toBe(0); expect(quiet.collapse).toBe(0);
   });
   it('見た目の設定が派手なほど強く崩れる', () => {
@@ -94,21 +101,21 @@ describe('騎士の置き方', () => {
   // 幅1000、高さ800の面に、画面1pxあたり2点で描く場合。
   const place = (pose: ReturnType<typeof knightPose>) => knightTransform(pose, 1000, 800, 2);
   it('描く絵と命中の位置は同じ計算から出る', () => {
-    const t = place(knightPose(18600, true, false, 'attack', 1));
+    const t = place(knightPose(命中 + 100, true, false, 'attack', 1));
     // 絵は knightMatrix の行列で置く。命中の位置は同じ行列を点へ当てた結果になる。
     const m = knightMatrix(t), p = knightPoint(t, 300, 240);
     expect(p.x).toBeCloseTo(m.a * 300 + m.c * 240 + m.e, 10);
     expect(p.y).toBeCloseTo(m.b * 300 + m.d * 240 + m.f, 10);
   });
   it('命中の前は動かさず、足元は画面の高さの71.4%', () => {
-    const t = place(knightPose(18000, true, false, 'attack', 1));
+    const t = place(knightPose(命中 - 500, true, false, 'attack', 1));
     expect(t.x).toBe(0); expect(t.y).toBe(0); expect(t.scale).toBe(1); expect(t.rot).toBe(0);
     expect(t.footX).toBe(500); expect(t.footY).toBeCloseTo(571.2, 10);
     const p = knightPoint(t, 480, 300);
     expect(p.x).toBeCloseTo(480, 10); expect(p.y).toBeCloseTo(300, 10);
   });
   it('命中の0.1秒後は上へ押されて縮み、右へ回る', () => {
-    const t = place(knightPose(18600, true, false, 'attack', 1));
+    const t = place(knightPose(命中 + 100, true, false, 'attack', 1));
     expect(t.y).toBeCloseTo(-14.6667, 3);
     expect(t.scale).toBeCloseTo(.976296, 6);
     expect(t.rot).toBeCloseTo(.056109, 6);
@@ -118,7 +125,7 @@ describe('騎士の置き方', () => {
     expect(p.x).toBeGreaterThan(500);
   });
   it('動きを減らす設定では置き方も動かない', () => {
-    const t = place(knightPose(18600, true, true, 'attack', 1));
+    const t = place(knightPose(命中 + 100, true, true, 'attack', 1));
     expect(t.y).toBe(0); expect(t.scale).toBe(1); expect(t.rot).toBe(0);
   });
 });
@@ -136,7 +143,8 @@ describe('待機の構え', () => {
     expect(blendPose(knightPose(0, false).weights).turn).toBeGreaterThan(.1);
   });
   it('防御の回の溜めは、待機のどこよりも高く上げる', () => {
-    expect(blendPose(guardPose(32000).weights).swordSwing).toBeLessThan(sword(half) - .3);
+    // 溜めは確定の3秒前に上げきる。上げきったところを見る。
+    expect(blendPose(guardPose(ROUNDS[1].lock - 1000).weights).swordSwing).toBeLessThan(sword(half) - .3);
   });
   it('動きを減らす設定では待機が止まる', () => {
     expect(sword(half, true)).toBeCloseTo(sword(0, true), 10);
@@ -144,13 +152,13 @@ describe('待機の構え', () => {
 });
 
 /**
- * とどめの回（40〜60秒）の崩れ落ち。時刻から姿勢と脱落を出す計算だけを試す。
+ * とどめの回（56〜90秒）の崩れ落ち。時刻から姿勢と脱落を出す計算だけを試す。
  * ここで見る時刻はすべて世界の時刻で、騎士の render に来るミリ秒と同じもの。
  */
 describe('とどめの崩れ落ち', () => {
   const at = (t: number) => guardPose(t * 1000, false, 'block');
-  it('40秒から55.4秒までは前屈のまま', () => {
-    for (const t of [40, 44, 49, 52, 53.6, 54.5, 55.39]) {
+  it('とどめの回は、膝をつき始めるまで前屈のまま', () => {
+    for (const t of [finish.start, finish.chant, finish.inputEnd, finish.release, finish.impact, finish.finalBlow!].map(ms => ms / 1000).concat(膝 - .01)) {
       const pose = at(t);
       expect(pose.weights[7]).toBeCloseTo(1, 6);
       expect(pose.weights[8]).toBe(0);
@@ -158,35 +166,37 @@ describe('とどめの崩れ落ち', () => {
       expect(pose.state).toBe('exposed');
     }
   });
-  it('55.4秒から膝をつき、56.2秒でつききる', () => {
-    expect(at(55.4).weights[8]).toBeCloseTo(0, 6);
-    const half = at(55.8);
+  it('とどめの一撃の1.3秒後から膝をつき、1.1秒でつききる', () => {
+    expect(at(膝).weights[8]).toBeCloseTo(0, 6);
+    const half = at((膝 + 倒れ始め) / 2);
     expect(half.weights[8]).toBeGreaterThan(.2);
     expect(half.weights[8]).toBeLessThan(.8);
     expect(half.weights[7]).toBeCloseTo(1 - half.weights[8], 10);
-    expect(at(56.2).weights[8]).toBeCloseTo(1, 6);
-    expect(at(55.8).state).toBe('collapse');
+    expect(at(倒れ始め).weights[8]).toBeCloseTo(1, 6);
+    expect(half.state).toBe('collapse');
   });
-  it('56.2秒から56.9秒で手前へ倒れる', () => {
-    expect(at(56.19).fall).toBe(0);
-    expect(at(56.55).fall).toBeGreaterThan(.4);
-    expect(at(56.55).fall).toBeLessThan(.6);
-    expect(at(56.9).fall).toBe(1);
+  it('膝をついたあと、1.1秒かけて手前へ倒れる', () => {
+    const 途中 = (倒れ始め + 倒れきり) / 2;
+    expect(at(倒れ始め - .01).fall).toBe(0);
+    expect(at(途中).fall).toBeGreaterThan(.4);
+    expect(at(途中).fall).toBeLessThan(.6);
+    expect(at(倒れきり).fall).toBe(1);
     // 倒れる途中は増えるだけで戻らない。
-    for (let t = 56.2; t < 56.9; t += .02) expect(at(t + .02).fall).toBeGreaterThanOrEqual(at(t).fall);
+    for (let t = 倒れ始め; t < 倒れきり; t += .02) expect(at(t + .02).fall).toBeGreaterThanOrEqual(at(t).fall);
   });
-  it('56.9秒から後は何も動かない', () => {
-    const down = at(56.9);
+  it('倒れきってから後は何も動かない', () => {
+    const down = at(倒れきり);
     expect(down.state).toBe('down');
     // 呼吸の揺れも止める。
     expect(down.breath).toBe(0);
-    for (const t of [57, 58.4, 59.25, 60]) {
+    for (const t of [倒れきり + .5, finish.handoff / 1000, finish.end / 1000 - 1, finish.end / 1000]) {
       expect(at(t)).toEqual(down);
       expect(at(t).state).toBe('down');
     }
   });
   it('控えめモードでも崩れ落ちは残す', () => {
-    const quiet = guardPose(56.55 * 1000, true, 'block'), loud = at(56.55);
+    const 途中 = (倒れ始め + 倒れきり) / 2;
+    const quiet = guardPose(途中 * 1000, true, 'block'), loud = at(途中);
     expect(quiet.fall).toBe(loud.fall);
     expect(quiet.weights).toEqual(loud.weights);
     expect(quiet.state).toBe(loud.state);
@@ -196,22 +206,24 @@ describe('とどめの崩れ落ち', () => {
 describe('とどめの部品の脱落', () => {
   it('落ちる時刻は多段命中の一覧から作る', () => {
     const map = Object.fromEntries(FINISH_DROPS.map(drop => [drop.key, drop.at]));
-    expect(map.shoulderSpike).toBeCloseTo(53.6, 6);
-    expect(map.shield).toBeCloseTo(53.76, 6);
-    expect(map.horn).toBeCloseTo(53.92, 6);
-    expect(map.chestPlate).toBeCloseTo(54.1, 6);
-    expect(map.core).toBeCloseTo(54.8, 6);
-    expect(map.sword).toBeCloseTo(54.925, 6);
+    const [一, 二, 三, 四] = FINISH_HIT_MS.map(ms => ms / 1000);
+    expect(map.shoulderSpike).toBeCloseTo(一, 6);
+    expect(map.shield).toBeCloseTo(二, 6);
+    expect(map.horn).toBeCloseTo(三, 6);
+    expect(map.chestPlate).toBeCloseTo(四, 6);
+    expect(map.core).toBeCloseTo(FINAL_BLOW_AT + .3, 6);
+    expect(map.sword).toBeCloseTo(FINISH_SWORD_DROP_MS / 1000, 6);
     // 時刻は前から順に進む。
     for (let i = 1; i < FINISH_DROPS.length; i++) expect(FINISH_DROPS[i].at).toBeGreaterThan(FINISH_DROPS[i - 1].at);
   });
-  it('53.6秒で肩の棘が落ち、54.925秒で剣が落ちる', () => {
-    expect(droppedAt(53.59)).toEqual([]);
-    expect(droppedAt(53.6)).toEqual(['shoulderSpike']);
-    expect(droppedAt(54.11)).toEqual(['shoulderSpike', 'shield', 'horn', 'chestPlate']);
-    expect(droppedAt(54.9)).not.toContain('sword');
-    expect(droppedAt(54.925)).toContain('sword');
-    expect(droppedAt(60)).toHaveLength(6);
+  it('一発目で肩の棘が落ち、とどめの0.6秒後に剣が落ちる', () => {
+    const 剣 = FINISH_SWORD_DROP_MS / 1000, 一 = FINISH_HIT_MS[0] / 1000, 四 = FINISH_HIT_MS[3] / 1000;
+    expect(droppedAt(一 - .01)).toEqual([]);
+    expect(droppedAt(一)).toEqual(['shoulderSpike']);
+    expect(droppedAt(四 + .01)).toEqual(['shoulderSpike', 'shield', 'horn', 'chestPlate']);
+    expect(droppedAt(剣 - .01)).not.toContain('sword');
+    expect(droppedAt(剣)).toContain('sword');
+    expect(droppedAt(finish.end / 1000)).toHaveLength(6);
   });
   it('落ちた部品は床で1回跳ねて止まる', () => {
     const v = { vx: .8, vy: 1.4, vz: -1.2, spin: 5 };
@@ -232,42 +244,45 @@ describe('とどめの部品の脱落', () => {
 });
 
 describe('とどめの核の明滅', () => {
-  it('40〜44秒は2秒に1回、44〜49秒は1秒に1回', () => {
-    expect(coreBlink(39.9)).toBe(0);
-    // 2秒に1回。40秒で中ほど、40.5秒で最大、41.5秒で最小。
-    expect(coreBlink(40)).toBeCloseTo(.5, 6);
-    expect(coreBlink(40.5)).toBeCloseTo(1, 6);
-    expect(coreBlink(41.5)).toBeCloseTo(0, 6);
-    expect(coreBlink(42.5)).toBeCloseTo(1, 6);
+  const 始まり = finish.start / 1000, 案内 = finish.chant / 1000, 確定 = finish.lock / 1000;
+  it('回の始まりからは2秒に1回、詠唱の案内からは1秒に1回', () => {
+    expect(coreBlink(始まり - .1)).toBe(0);
+    // 2秒に1回。回の始まりで中ほど、0.5秒後に最大、1.5秒後に最小。
+    expect(coreBlink(始まり)).toBeCloseTo(.5, 6);
+    expect(coreBlink(始まり + .5)).toBeCloseTo(1, 6);
+    expect(coreBlink(始まり + 1.5)).toBeCloseTo(0, 6);
+    expect(coreBlink(始まり + 2.5)).toBeCloseTo(1, 6);
     // 1秒に1回へ速まる。
-    expect(coreBlink(44.25)).toBeCloseTo(1, 6);
-    expect(coreBlink(44.75)).toBeCloseTo(0, 6);
-    expect(coreBlink(45.25)).toBeCloseTo(1, 6);
+    expect(coreBlink(案内 + .25)).toBeCloseTo(1, 6);
+    expect(coreBlink(案内 + .75)).toBeCloseTo(0, 6);
+    expect(coreBlink(案内 + 1.25)).toBeCloseTo(1, 6);
   });
-  it('50.6秒から51.6秒で最大の明るさになり、そのまま保つ', () => {
-    for (const t of [51.6, 52.5, 53.6, 54.5, 60]) expect(coreBlink(t)).toBeCloseTo(1, 6);
+  it('確定の0.4秒前から1秒で最大の明るさになり、そのまま保つ', () => {
+    for (const t of [確定 + .6, finish.release / 1000, finish.impact / 1000, finish.finalBlow! / 1000, finish.end / 1000])
+      expect(coreBlink(t)).toBeCloseTo(1, 6);
     // 途中は上がっていくだけ。
-    for (let t = 50.6; t < 51.6; t += .05) expect(coreBlink(t + .05)).toBeGreaterThanOrEqual(coreBlink(t) - 1e-9);
+    for (let t = 確定 - .4; t < 確定 + .6; t += .05) expect(coreBlink(t + .05)).toBeGreaterThanOrEqual(coreBlink(t) - 1e-9);
   });
   it('0〜1の間に収まる', () => {
-    for (let t = 39; t <= 60; t += .05) {
+    for (let t = 始まり - 1; t <= finish.end / 1000; t += .05) {
       expect(coreBlink(t)).toBeGreaterThanOrEqual(0);
       expect(coreBlink(t)).toBeLessThanOrEqual(1);
     }
   });
 });
 
-describe('核の脈打ちは40秒でつながる', () => {
-  it('39.99秒と40.01秒で明るさが飛ばない', () => {
-    expect(Math.abs(corePulse(40.01) - corePulse(39.99))).toBeLessThanOrEqual(.05);
-    // 混ぜ終わる40秒より前は、今までの速い脈のまま。
-    expect(corePulse(39.5)).toBeCloseTo(idlePulse(39.5), 6);
-    // 40秒から後は、とどめの回の明滅そのもの。
-    for (const t of [40, 40.5, 44.5, 52]) expect(corePulse(t)).toBeCloseTo(coreBlink(t), 6);
+describe('核の脈打ちはとどめの回の始まりでつながる', () => {
+  const 始まり = finish.start / 1000;
+  it('境目の前後で明るさが飛ばない', () => {
+    expect(Math.abs(corePulse(始まり + .01) - corePulse(始まり - .01))).toBeLessThanOrEqual(.05);
+    // 混ぜ終わる境目より前は、今までの速い脈のまま。
+    expect(corePulse(始まり - .5)).toBeCloseTo(idlePulse(始まり - .5), 6);
+    // 境目から後は、とどめの回の明滅そのもの。
+    for (const t of [始まり, 始まり + .5, 始まり + 4.5, finish.release / 1000]) expect(corePulse(t)).toBeCloseTo(coreBlink(t), 6);
   });
   it('混ぜている間も0〜1に収まり、急に飛ばない', () => {
-    let previous = corePulse(39);
-    for (let t = 39; t <= 41; t += .01) {
+    let previous = corePulse(始まり - 1);
+    for (let t = 始まり - 1; t <= 始まり + 1; t += .01) {
       const now = corePulse(t);
       expect(now).toBeGreaterThanOrEqual(0);
       expect(now).toBeLessThanOrEqual(1);
@@ -310,34 +325,34 @@ describe('とどめの白飛び', () => {
 describe('崩れ落ちの時刻は一か所で決める', () => {
   it('膝をつき始める時刻は回の表の値と同じ', () => {
     expect(KNEEL_AT).toBe(FINISH_COLLAPSE_MS / 1000);
-    expect(KNEEL_AT).toBeCloseTo(FINAL_BLOW_AT + .9, 6);
+    expect(KNEEL_AT).toBeCloseTo(FINAL_BLOW_AT + 1.3, 6);
   });
 });
 
 /**
  * 一回目と防御の姿勢を、うっかり変えていないことの確かめ。
- * 0〜40秒を0.1秒刻みで全部並べた値から、決まった手順で一つの数を作って固定しておく。
+ * 一回目と防御の終わりまでを0.1秒刻みで全部並べた値から、決まった手順で一つの数を作って固定しておく。
  * 待機に息づかい（姿勢9）を足したときに、この数を取り直した。見るのは混ぜ方と反応の値で、
  * 角度の表そのものはこの数に入らない（角度は「待機の構え」の試験で見る）。
  * 変えたつもりがないのに数が変わったら、直し過ぎている。
  */
 describe('一回目と防御の姿勢は変わらない', () => {
-  it('0〜40秒の姿勢の値が決めたとおりのまま', () => {
+  it('防御の終わりまでの姿勢の値が決めたとおりのまま', () => {
     const values: number[] = [];
-    for (let ms = 0; ms <= 40000; ms += 100) {
+    for (let ms = 0; ms <= ROUNDS[1].end; ms += 100) {
       const p = ms >= GUARD_FROM * 1000 ? guardPose(ms, false, 'block') : knightPose(ms, true, false, 'attack', .7, false);
-      // 崩れ落ちの姿勢は、40秒までは一度も混ざらない。
+      // 崩れ落ちの姿勢は、防御の終わりまでは一度も混ざらない。
       expect(p.weights[8] ?? 0).toBe(0);
       expect(p.fall).toBe(0);
       values.push(...p.weights, p.lean, p.breath, p.flash, p.shake, p.strength, p.push, p.collapse, p.spin, p.flashAlpha, p.flashTint, p.ghost, p.rim);
     }
-    expect(values.length).toBe(8822);
+    expect(values.length).toBe((ROUNDS[1].end / 100 + 1) * 22);
     let digest = 0;
     for (const value of values) digest = (digest * 31 + Math.round(value * 1e9)) % 2147483647;
-    expect(digest).toBe(578597514);
+    expect(digest).toBe(1842800863);
   });
-  it('40秒までは部品が一つも落ちない', () => {
-    for (let t = 0; t <= 40; t += .1) expect(droppedAt(t)).toEqual([]);
+  it('とどめの命中までは部品が一つも落ちない', () => {
+    for (let t = 0; t <= FINISH_HIT_MS[0] / 1000 - .1; t += .1) expect(droppedAt(t)).toEqual([]);
   });
 });
 

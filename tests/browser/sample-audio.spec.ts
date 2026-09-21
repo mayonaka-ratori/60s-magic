@@ -6,11 +6,11 @@ import { test,expect } from '@playwright/test';
  * 魔導書の音（book）は、魔導書の枠が浮かび始める59.4秒に戦いの中で鳴るので、とどめの最後に入る。
  */
 const 鳴る音=[
-  // 一回目（0〜24秒）
+  // 一回目（0〜30秒）
   'trace','chant','build','complete','release','impact','settle',
-  // 防御（24〜40秒）。命中ではなく、盾で受ける音になる。
+  // 防御（30〜56秒）。命中ではなく、盾で受ける音になる。
   'chant','build','complete','release','block','settle',
-  // とどめ（40〜60秒）
+  // とどめ（56〜90秒）
   'chant','build','complete','release','impact','finish',
   'collapse-sword','collapse-knee','collapse-fall','settle','book',
 ];
@@ -58,7 +58,7 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばす',asy
   // 6秒より前は合図が無いので、ここで音が出ていれば曲が鳴っている。
   await page.waitForTimeout(1500);
   expect(await page.evaluate(()=>(window as any).__soundProbe.rms)).toBeGreaterThan(.001);
-  await expect(page.locator('#result')).toBeVisible({timeout:70000});
+  await expect(page.locator('#result')).toBeVisible({timeout:100000});
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.samples).toEqual({manifest:true,loaded:['bgm/test.wav','sfx/chime.wav','sfx/hit-1.wav','sfx/hit-2.wav'],missing:['sfx/missing.wav']});
   expect(report.audio.credits).toEqual(['テスト用の曲']);

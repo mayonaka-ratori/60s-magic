@@ -94,7 +94,7 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
 
   // 命中で世界を止める長さ。下のとどめの時刻を実際の時刻へ直すのにも使う。
   const hitStop = hitStopOf(preset, intensity, calm, beat);
-  // とどめの一撃の時刻。t は実際の時刻なので、世界の時刻で置いた54.5秒を実際の時刻（54.6秒）へ直してから比べる。
+  // とどめの一撃の時刻。t は実際の時刻なので、世界の時刻で置いた78.5秒を実際の時刻（78.6秒）へ直してから比べる。
   // ほかの回は null なので、ここから下の足し算は何も起こらない（値は今までと同じまま）。
   const finalBlow = beat.finish && beat.finalBlow !== null ? warpReal(beat.finalBlow, warpOf(beat, hitStop)) : null;
   // 一撃からの強さ。0.3秒で0へ戻る。傾きと寄りに使う。

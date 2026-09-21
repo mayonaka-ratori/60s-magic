@@ -22,9 +22,9 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     await expect(page.locator('#hud')).toBeVisible({timeout:30000});await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
     await page.mouse.move(500,420);await page.mouse.down();
     for(let i=0;i<18;i++){await page.mouse.move(620+Math.sin(i/4)*140,420+Math.cos(i/4)*120);await page.waitForTimeout(30);}
-    await page.mouse.up();await expect(page.locator('#instruction')).toHaveText('描きながら、詠唱せよ',{timeout:13000});
+    await page.mouse.up();await expect(page.locator('#instruction')).toHaveText('描きながら、詠唱せよ',{timeout:17000});
     await page.mouse.move(540,480);await page.mouse.down();await page.mouse.move(610,320,{steps:12});await page.mouse.up();
-    await expect(page.locator('#result')).toBeVisible({timeout:34000});
+    await expect(page.locator('#result')).toBeVisible({timeout:64000});
     // 落ちたときに何を聞き取ったかが分かるよう、魔法を確かめる前に記録を開いて一回目の聞き取りを出す。
     await page.locator('#record').click();
     const report=JSON.parse(await page.locator('#sheet-body pre').innerText());

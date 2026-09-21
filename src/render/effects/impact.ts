@@ -66,7 +66,7 @@ function drawGroundMark(f: Frame, impact: number, radius: number, y: number) {
   c.globalCompositeOperation = before;
 }
 
-/** 命中（18.5秒）。破裂、火花、輪、亀裂、属性ごとの作用。防御と強化は波紋と包む光にする。 */
+/** 命中（23.5秒）。破裂、火花、輪、亀裂、属性ごとの作用。防御と強化は波紋と包む光にする。 */
 export function drawImpact(f: Frame) {
   const { c, t, target: g, preset, intensity, recipe: r } = f;
   const impact = t - f.beat.impact;

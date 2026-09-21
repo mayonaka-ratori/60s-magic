@@ -32,7 +32,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </section>`).join('')}
     </div>
     <footer class="lab-footer">
-      <label>時刻 <input id="time" type="range" min="13.5" max="23.5" step="0.01" value="13.5"><output id="time-value">13.5秒</output></label>
+      <label>時刻 <input id="time" type="range" min="18.5" max="29.5" step="0.01" value="18.5"><output id="time-value">18.5秒</output></label>
       <label>属性 <select id="element">${options(ELEMENTS, ELEMENT_LABELS, params.get('element') ?? 'fire')}</select></label>
       <label>形 <select id="form">${options(FORMS, FORM_LABELS, params.get('form') ?? 'orb')}</select></label>
       <label>用途 <select id="purpose">${options(PURPOSES, PURPOSE_LABELS, params.get('purpose') ?? 'attack')}</select></label>

@@ -27,11 +27,11 @@ async function playThrough(page:Page,where:string) {
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   await page.mouse.move(420,400);await page.mouse.down();await page.mouse.move(700,520,{steps:20});await page.mouse.up();
   // 描いている間から余韻まで、1秒ごとに見る。描画が遅い環境でも取りこぼさない。
-  for(let i=0;i<44&&await page.locator('#result').isHidden();i++) {
+  for(let i=0;i<74&&await page.locator('#result').isHidden();i++) {
     found.push(...await overlaps(page,`${where}・${await page.locator('#timer').innerText()}`));
     await page.waitForTimeout(1000);
   }
-  await expect(page.locator('#result')).toBeVisible({timeout:14000});
+  await expect(page.locator('#result')).toBeVisible({timeout:20000});
   found.push(...await overlaps(page,`${where}・結果`));
   return [...new Set(found)];
 }
@@ -79,7 +79,7 @@ test('遊ぶ人の画面には確認用の表示を出さない',async({page})=>
   await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
   for(const target of ['.trial','#settings','.dev-only'])await expect(page.locator(target).first()).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#timer')).toContainText('のこり');
-  await expect(page.locator('#result')).toBeVisible({timeout:50000});
+  await expect(page.locator('#result')).toBeVisible({timeout:80000});
   await expect(page.locator('.report-actions')).toBeHidden();await expect(page.locator('#feedback')).toBeHidden();
   await page.goto('/?dev=1');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
 });
@@ -106,8 +106,8 @@ test('締め切りが近づくと知らせ、発動では魔法名を大きく�
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
   // 描画が遅い環境でも取りこぼさないよう、1秒ごとに見て、出たものを集める。
   const 見たもの=new Set<string>();
-  // 一回目と防御の回を合わせて40秒あるので、結果が出るまで最長50回（約47秒）見続ける。
-  for(let i=0;i<50&&await page.locator('#result').isHidden();i++) {
+  // 一回目と防御の回を合わせて56秒あるので、結果が出るまで最長80回（約76秒）見続ける。
+  for(let i=0;i<80&&await page.locator('#result').isHidden();i++) {
     const いま=await page.evaluate(()=>({
       段階:document.getElementById('app')!.dataset.deadline??'',
       時計:!(document.getElementById('timer') as HTMLElement).hidden,
@@ -124,7 +124,7 @@ test('締め切りが近づくと知らせ、発動では魔法名を大きく�
   }
   for(const 期待 of ['段階:soon','段階:urgent','外周の光','締め切り後は時計を消す','魔法名:7つの雷の連弾','発動中は案内を閉じる'])
     expect([...見たもの],`${期待}を見ていない`).toContain(期待);
-  await expect(page.locator('#result')).toBeVisible({timeout:20000});
+  await expect(page.locator('#result')).toBeVisible({timeout:26000});
   await page.waitForTimeout(1500);
   await expect(page.locator('#result')).not.toHaveClass(/name-only/);
   await expect(page.locator('#again')).toBeVisible();

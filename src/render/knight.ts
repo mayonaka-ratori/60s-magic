@@ -17,7 +17,7 @@ import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
-import { BATTLE_END, FINAL_BLOW_MS, FINISH_COLLAPSE_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS, ROUNDS } from '../game/rounds';
+import { BATTLE_END, FINAL_BLOW_MS, FINISH_COLLAPSE_MS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS, FINISH_KNEEL_MS, FINISH_SWORD_DROP_MS, ROUNDS } from '../game/rounds';
 import { colors } from './magic';
 import { getPreset, type EffectPreset } from './effects/presets';
 import { smooth } from './effects/frame';
@@ -122,12 +122,12 @@ const pad=(weights:number[])=>{const full=new Array(POSES.length).fill(0);for(le
 const FIRST=ROUNDS[0],DEFEND=ROUNDS[1],FINISH=ROUNDS[2];
 /** とどめの一撃が核へ届く時刻（秒、世界の時刻）。回の表で作った値をそのまま秒にする。 */
 export const FINAL_BLOW_AT=FINAL_BLOW_MS/1000;
-/** 膝をつき始める時刻（秒）。とどめの一撃の0.9秒後。体力の枠が消え始める時刻と同じ値を使う。 */
+/** 膝をつき始める時刻（秒）。とどめの一撃の1.3秒後。体力の枠が消え始める時刻と同じ値を使う。 */
 export const KNEEL_AT=FINISH_COLLAPSE_MS/1000;
 /** 膝をつききるまでの長さ（秒）。ここまで来たら、そのまま倒れ始める。 */
-export const KNEEL_RAMP=.8;
-/** 手前へ倒れ始める時刻と、倒れきる時刻（秒）。 */
-export const FALL_FROM=KNEEL_AT+KNEEL_RAMP,FALL_TO=FALL_FROM+.7;
+export const KNEEL_RAMP=FINISH_KNEEL_MS/1000;
+/** 手前へ倒れ始める時刻と、倒れきる時刻（秒）。崩れる音と同じ表から作る。 */
+export const FALL_FROM=FINISH_FALL_FROM_MS/1000,FALL_TO=FINISH_FALL_TO_MS/1000;
 /**
  * 倒れるときに足元を軸に回す角（ラジアン）と、視点へ近づく距離。
  * 設計の初めの案は1.2ラジアンと0.6だったが、0.6まで寄せると兜の上面だけが画面いっぱいの
@@ -141,7 +141,8 @@ export const GUARD_FROM=FIRST.handoff/1000;
 const GUARD_STEPS:Array<{at:number;pose:number;ramp:number}>=[
   {at:0,pose:0,ramp:.5},                        // 待機
   {at:GUARD_FROM,pose:3,ramp:1},                // 構え
-  {at:DEFEND.start/1000+.2,pose:4,ramp:6},      // 溜め
+  // 溜め。剣を上げきるまでの長さは回の表から作り、確定の3秒前に上げきる。
+  {at:DEFEND.start/1000+.2,pose:4,ramp:(DEFEND.lock-DEFEND.start)/1000-3},
   {at:DEFEND.lock/1000,pose:5,ramp:.55},        // 振り下ろし
   {at:DEFEND.impact/1000,pose:6,ramp:.22},      // 弾かれる
   {at:DEFEND.impact/1000+2.2,pose:2,ramp:1.1},  // よろめきから構えを戻す
@@ -167,7 +168,7 @@ export const FINISH_DROPS:Array<{key:DropKey;at:number}>=[
   {key:'horn',at:(FINISH.impact+FINISH_HIT_OFFSETS_MS[2])/1000},
   {key:'chestPlate',at:(FINISH.impact+FINISH_HIT_OFFSETS_MS[3])/1000},
   {key:'core',at:FINAL_BLOW_AT+.3},
-  {key:'sword',at:FINAL_BLOW_AT+.425},
+  {key:'sword',at:FINISH_SWORD_DROP_MS/1000},
 ];
 /**
  * とどめの傷あとの表。4回の命中は当たった部品の場所に、直撃は核の場所に残る。
@@ -222,7 +223,7 @@ export function debrisMotion(dt:number,height:number,v:{vx:number;vy:number;vz:n
 }
 
 /**
- * とどめの回の核の明滅（0〜1）。40〜44秒は2秒に1回、44〜49秒は1秒に1回、
+ * とどめの回の核の明滅（0〜1）。56〜64秒は2秒に1回、64〜72秒は1秒に1回、
  * 確定の0.4秒前から1秒かけて最大の明るさまで上げ、そのあとは最大のままにする。
  */
 export function coreBlink(t:number) {
@@ -230,7 +231,7 @@ export function coreBlink(t:number) {
   if(t<start)return 0;
   if(t<fast)return .5+.5*Math.sin((t-start)*Math.PI*2/2);
   if(t<aim)return .5+.5*Math.sin((t-fast)*Math.PI*2);
-  // 50.6秒から1秒かけて上げきり、そのあとは最大のまま。
+  // 74.6秒から1秒かけて上げきり、そのあとは最大のまま。
   const from=.5+.5*Math.sin((aim-fast)*Math.PI*2);
   return from+(1-from)*clamp(t-aim);
 }
@@ -240,14 +241,14 @@ export const idlePulse=(t:number)=>.5+.5*Math.sin(t*12);
 /** ふだんの脈から、とどめの回の明滅へ移り変わる長さ（秒）。 */
 export const CORE_BLEND=.3;
 /**
- * 核の明るさの脈（0〜1）。40秒の手前0.3秒で、速い脈からとどめの回の明滅へ混ぜて移る。
- * 40秒より後で混ぜると、速い脈が40秒をまたいで残り、境目で明るさが大きく動いてしまう。
+ * 核の明るさの脈（0〜1）。56秒の手前0.3秒で、速い脈からとどめの回の明滅へ混ぜて移る。
+ * 56秒より後で混ぜると、速い脈が56秒をまたいで残り、境目で明るさが大きく動いてしまう。
  */
 export function corePulse(t:number) {
   const start=FINISH.start/1000;
   if(t<start-CORE_BLEND)return idlePulse(t);
   const u=smooth(clamp((t-(start-CORE_BLEND))/CORE_BLEND));
-  // 40秒より前の coreBlink は0なので、混ぜ先は40秒の値（0.5）から始める。
+  // 56秒より前の coreBlink は0なので、混ぜ先は56秒の値（0.5）から始める。
   return idlePulse(t)*(1-u)+coreBlink(Math.max(t,start))*u;
 }
 
@@ -274,7 +275,7 @@ export function finishFlashAt(t:number) {
 }
 
 /**
- * 防御の回（23秒以降）の姿勢。順に姿勢を移すだけで、入力では変えない。
+ * 防御の回（29秒以降）の姿勢。順に姿勢を移すだけで、入力では変えない。
  * 「返せ」で弾き返したときだけ、騎士が自分の一撃を受けて短くひるむ。
  */
 export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase'='block') {
@@ -960,7 +961,7 @@ export class Knight {
     this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live,0,-p.swordOut);
     this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);
     // 一回目の締め切りからの蓄積で核が明るくなり、命中では前から強く照らす。弱点が出たら脈打つ。
-    // とどめの回は、明滅の速さを回の表から作った corePulse に任せる。40秒の境目もここでつなぐ。
+    // とどめの回は、明滅の速さを回の表から作った corePulse に任せる。56秒の境目もここでつなぐ。
     const charge=active?clamp((ms-FIRST.inputEnd)/4500):0;
     const pulse=active?corePulse(t):idlePulse(t);
     const glow=.22+charge*.5+pose.flash*1.5+open*pulse*.7;

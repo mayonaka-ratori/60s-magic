@@ -4,39 +4,46 @@ import { MotionRecorder,summarizeMotion } from '../src/game/motion';
 import { makeRecipe } from '../src/game/recipe';
 import { SpeechBook } from '../src/game/speech-book';
 import type { JevReply,SpellState } from '../src/game/types';
+import { ROUNDS,replyLimitOf } from '../src/game/rounds';
+
+// 秒数は回の表から作る。表を直したら、この試験も一緒に動く。
+const first=ROUNDS[0];
 
 function state(text=''):SpellState {
   const s=new CastSession(()=>0);
   s.motion.add(0.2,0.5,0);s.motion.add(0.5,0.55,100);
-  if(text)s.speech.add({id:1,revision:1,startMs:11000,endMs:13999,text,final:true,stability:1,source:'typed'});
+  if(text)s.speech.add({id:1,revision:1,startMs:first.chant,endMs:first.inputEnd-1,text,final:true,stability:1,source:'typed'});
   return s.freeze();
 }
 const text=(b:SpeechBook)=>b.snapshot().map(e=>e.text).join('、');
 const reply=(s:SpellState,answers:JevReply['answers']):JevReply=>({sessionId:s.sessionId,castId:s.castId,inputRevision:s.inputRevision,status:'ok',model:'test-model',answers});
-describe('最初の24秒',()=>{
+describe('最初の30秒',()=>{
   it('全ての受付と演出の境目を固定する',()=>{
-    for(const [time,phase] of [[0,'draw'],[5999,'draw'],[6000,'build'],[10999,'build'],[11000,'chant'],[13999,'chant'],[14000,'complete'],[16999,'complete'],[17000,'release'],[22999,'release'],[23000,'handoff'],[24000,'finished']] as const)expect(phaseAt(time)).toBe(phase);
+    const 境目:Array<[number,string]>=[[0,'draw'],[first.build!-1,'draw'],[first.build!,'build'],[first.chant-1,'build'],
+      [first.chant,'chant'],[first.inputEnd-1,'chant'],[first.inputEnd,'complete'],[first.release-1,'complete'],
+      [first.release,'release'],[first.handoff-1,'release'],[first.handoff,'handoff'],[first.end,'finished']];
+    for(const [time,phase] of 境目)expect(phaseAt(time)).toBe(phase);
   });
-  it('詠唱を終えた後も最後の線まで受け付け、16秒で一度だけ確定する',()=>{
+  it('詠唱を終えた後も最後の線まで受け付け、締め切りの3秒後に一度だけ確定する',()=>{
     let now=0;const s=new CastSession(()=>now);
     s.speech.add({id:1,revision:1,startMs:1000,endMs:3000,text:'雷よ',final:true,stability:1,source:'google'});
-    now=13000;expect(s.accepting).toBe(true);s.motion.add(0.3,0.3,now);
-    now=13999;s.motion.add(0.4,0.4,now);now=14000;expect(s.accepting).toBe(false);
+    now=first.inputEnd-1000;expect(s.accepting).toBe(true);s.motion.add(0.3,0.3,now);
+    now=first.inputEnd-1;s.motion.add(0.4,0.4,now);now=first.inputEnd;expect(s.accepting).toBe(false);
     const snapshot=s.freeze();expect(snapshot.motion.sampleCount).toBe(2);expect(snapshot.speech.rawTranscript).toBe('雷よ');
-    now=14701;s.receive(reply(snapshot,{element:{type:'choice',choice:'fire',probabilities:{fire:.95,ice:.05}}}));s.tick();expect(s.recipe).toBeNull();
-    now=16000;s.tick();expect(s.recipe?.element).toBe('lightning');const recipe=s.recipe;
-    now=18000;s.receive(reply(snapshot,{}));s.tick();expect(s.recipe).toBe(recipe);expect(s.phase).toBe('release');
+    now=first.inputEnd+700;s.receive(reply(snapshot,{element:{type:'choice',choice:'fire',probabilities:{fire:.95,ice:.05}}}));s.tick();expect(s.recipe).toBeNull();
+    now=first.lock;s.tick();expect(s.recipe?.element).toBe('lightning');const recipe=s.recipe;
+    now=first.release+1000;s.receive(reply(snapshot,{}));s.tick();expect(s.recipe).toBe(recipe);expect(s.phase).toBe('release');
   });
-  it('無応答でも16秒で確定し、17秒より前には放たない',()=>{
-    let now=0;const s=new CastSession(()=>now);now=16000;s.tick();expect(s.locked).toBe(true);expect(s.phase).toBe('complete');
+  it('無応答でも確定の時刻で確定し、発動より前には放たない',()=>{
+    let now=0;const s=new CastSession(()=>now);now=first.lock;s.tick();expect(s.locked).toBe(true);expect(s.phase).toBe('complete');
     expect(s.recipe?.assistance).toContain('動きがないため中央の光点を使用');
-    now=17000;s.tick();expect(s.phase).toBe('release');
+    now=first.release;s.tick();expect(s.phase).toBe('release');
   });
   it('別のプレイ、遅い返事、中止後の返事を使わない',()=>{
     let now=0;const s=new CastSession(()=>now),snapshot=s.freeze();
     expect(s.receive({...reply(snapshot,{}),sessionId:'other'})).toBe(false);
     expect(s.receive({...reply(snapshot,{}),inputRevision:2})).toBe(false);
-    now=15900;expect(s.receive(reply(snapshot,{}))).toBe(false);
+    now=replyLimitOf(first);expect(s.receive(reply(snapshot,{}))).toBe(false);
     const other=new CastSession(()=>0),o=other.freeze();other.cancel();expect(other.receive(reply(o,{}))).toBe(false);expect(other.accepting).toBe(false);
   });
 });
@@ -49,7 +56,7 @@ describe('本人の線を残す',()=>{
   it('長い軌跡は表示だけ間引き、開始点と最後の点と元の点列を残す',()=>{
     const m=new MotionRecorder();for(let i=0;i<420;i++)m.add(.4+Math.sin(i/40)*.15,.5+Math.cos(i/40)*.15,i*33);
     expect(m.display.length).toBeLessThanOrEqual(256);expect(m.raw).toHaveLength(420);expect(m.display[0].t).toBe(0);expect(m.display.at(-1)?.t).toBe(419*33);
-    expect(m.add(.6,.6,14000)).toBe(false);
+    expect(m.add(.6,.6,first.inputEnd)).toBe(false);
   });
   it('小さな片手の動きも入力ありにする',()=>{const m=new MotionRecorder();m.add(.5,.5,0);m.add(.505,.505,33);expect(summarizeMotion(m.raw).hasMovement).toBe(true);});
 });

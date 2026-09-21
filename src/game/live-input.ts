@@ -19,7 +19,7 @@ export function liveInput(points: readonly Point[], entries: readonly SpeechEntr
     rings: aim ? enclosingStrokes(points, aim).length : 0, covered: aim ? coversAim(points, aim) : false };
 }
 
-/** 言葉だけ空にした複製。発動（17秒）から後は言葉を使わないので、量と声だけを渡す。 */
+/** 言葉だけ空にした複製。発動（22秒）から後は言葉を使わないので、量と声だけを渡す。 */
 export function wordless(live: LiveInput): LiveInput {
   return live.words.length ? { ...live, words: [] } : live;
 }

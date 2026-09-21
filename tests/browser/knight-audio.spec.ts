@@ -7,11 +7,11 @@ import { writeFile } from 'node:fs/promises';
  * 魔導書の音（book）は、魔導書の枠が浮かび始める59.4秒に戦いの中で鳴るので、とどめの最後に入る。
  */
 const 鳴る音=[
-  // 一回目（0〜24秒）
+  // 一回目（0〜30秒）
   'trace','chant','build','complete','release','impact','settle',
-  // 防御（24〜40秒）。命中ではなく、盾で受ける音になる。
+  // 防御（30〜56秒）。命中ではなく、盾で受ける音になる。
   'chant','build','complete','release','block','settle',
-  // とどめ（40〜60秒）
+  // とどめ（56〜90秒）
   'chant','build','complete','release','impact','finish',
   'collapse-sword','collapse-knee','collapse-fall','settle','book',
 ];
@@ -44,12 +44,12 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
   await page.locator('#use-sound').check();await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
   await expect(page.locator('#knight')).toHaveAttribute('data-state','idle');
-  await expect(page.locator('#knight')).toHaveAttribute('data-state','hit',{timeout:21000});
+  await expect(page.locator('#knight')).toHaveAttribute('data-state','hit',{timeout:27000});
   await page.screenshot({path:'test-results/knight-hit.png'});
   await expect(page.locator('#knight')).toHaveAttribute('data-state','recover');
   await page.screenshot({path:'test-results/knight-recover.png'});
-  // とどめの回まで進むので、結果画面は60秒すぎに出る。
-  await expect(page.locator('#result')).toBeVisible({timeout:45000});
+  // とどめの回まで進むので、結果画面は90秒すぎに出る。
+  await expect(page.locator('#result')).toBeVisible({timeout:75000});
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.activeSources).toBe(0);
   expect(report.audio.events.map((e:{name:string})=>e.name)).toEqual(鳴る音);

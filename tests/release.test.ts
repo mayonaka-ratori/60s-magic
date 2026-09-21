@@ -2,7 +2,7 @@ import { BEATS } from '../src/game/rounds';
 import { AIM } from '../src/game/guard';
 import { describe, it, expect } from 'vitest';
 import { ARRIVAL, bodyPoint, drawBody, drawRelease, drawTravel, hitDelay } from '../src/render/effects/release';
-import { RELEASE_AT } from '../src/render/effects/screen';
+import { IMPACT_AT, RELEASE_AT } from '../src/render/effects/screen';
 import { presets, mixHue, type Palette } from '../src/render/effects/presets';
 import { ParticlePool } from '../src/render/effects/particles';
 import type { Frame } from '../src/render/effects/frame';
@@ -26,10 +26,10 @@ describe('連弾の到達', () => {
       const p = bodyPoint(f, i, travelAt(time), time);
       expect(distanceToTarget(p)).toBeLessThan(.001);
     }
-    // 最後の1発は19.18秒（18.5 + 0.08×6 + 0.2）に届く。
-    expect(RELEASE_AT + ARRIVAL + hitDelay(6, 7)).toBeCloseTo(19.18);
+    // 最後の1発は命中の0.68秒後（0.08×6 + 0.2）に届く。
+    expect(RELEASE_AT + ARRIVAL + hitDelay(6, 7)).toBeCloseTo(IMPACT_AT + .68);
   });
-  it('1発目も18.5秒ちょうどに騎士の位置へ届く', () => {
+  it('1発目も命中の時刻ちょうどに騎士の位置へ届く', () => {
     const single = frame(), time = ARRIVAL;
     expect(distanceToTarget(bodyPoint(single, 0, travelAt(time), time))).toBeLessThan(.001);
     const many = frame({ count: 7 });

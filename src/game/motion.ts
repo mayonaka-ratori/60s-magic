@@ -10,7 +10,7 @@ export class MotionRecorder {
   private first: Point | null = null;
   /** 一度でも最初の点から動いたか。毎コマ全点を集計せずに済むよう、点を足すときに覚える。 */
   hasMovement = false;
-  /** 受け付ける時刻の範囲。回ごとに変わる（一回目は0〜14秒、防御は24〜31秒）。 */
+  /** 受け付ける時刻の範囲。回ごとに変わる（一回目は0〜18秒、防御は30〜45秒）。 */
   constructor(private from = 0, private to = 14000) {}
   add(x: number, y: number, t: number, hand = 0) {
     if (![x, y, t].every(Number.isFinite) || t < this.from || t >= this.to) return false;

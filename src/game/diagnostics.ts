@@ -24,7 +24,7 @@ export class Diagnostics {
   private lastAudioMs:number|null=null;
   constructor(private startMs:number,private clock:()=>number=()=>performance.now()) {}
   get elapsed(){return this.clock()-this.startMs;}
-  /** 24秒の開始時刻が決まったら、それまでの記録の時刻も合わせる。 */
+  /** 本編の開始時刻が決まったら、それまでの記録の時刻も合わせる。 */
   rebase(startMs:number){const delta=this.startMs-startMs;this.startMs=startMs;for(const e of this.events)e.atMs=Math.round(e.atMs+delta);}
   log(kind:string,detail?:Record<string,unknown>){if(this.events.length<800)this.events.push({atMs:Math.round(this.elapsed),kind,...(detail?{detail}:{})});}
   /** 線の入力が来た。次の描画までの時間を測る。 */
@@ -46,7 +46,7 @@ export class Diagnostics {
     const localOrGoogle=this.transcripts.filter(t=>t.source!=='typed');
     const last=localOrGoogle.at(-1)??null;
     return {
-      note:'時刻はすべて24秒の開始からのミリ秒。声の「arrivedMs」は文字が画面側へ届いた時刻、「endMs」はその文字が含む音の最後の時刻。差が大きいほど声が遅れて届いている。カメラの「detectMs」は手を探す処理そのものの時間。',
+      note:'時刻はすべて本編（90秒）の開始からのミリ秒。声の「arrivedMs」は文字が画面側へ届いた時刻、「endMs」はその文字が含む音の最後の時刻。差が大きいほど声が遅れて届いている。カメラの「detectMs」は手を探す処理そのものの時間。',
       drawing:{
         pointerEvents:this.pointerCount,
         pointerToFrameMs:{average:average(this.pointerLatency),p50:percentile(this.pointerLatency,0.5),p99:percentile(this.pointerLatency,0.99),max:percentile(this.pointerLatency,1)},

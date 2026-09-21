@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { fitSpell, completedSpellFrame, spellPose, backdropTarget, smoothStroke } from '../src/render/spell-layout';
+import { ROUNDS } from '../src/game/rounds';
+
+const first=ROUNDS[0];
 import type { Point } from '../src/game/types';
 
 describe('完成した術式の配置', () => {
@@ -28,18 +31,18 @@ describe('完成した術式の配置', () => {
     const [p] = fitSpell([points[0]],1440,900,frame);
     expect(p.x).toBe(.5); expect(p.y).toBeCloseTo(.66);
   });
-  it('14秒までは入力位置を動かさず、17秒で完成位置と一致する',()=>{
+  it('締め切りまでは入力位置を動かさず、発動で完成位置と一致する',()=>{
     const w=1440,h=900;
-    for(const ms of [0,6000,13999,14000]) {
+    for(const ms of [0,first.build!,first.inputEnd-1,first.inputEnd]) {
       const pose=spellPose(points,w,h,ms);expect(pose.scale).toBe(1);expect(pose.dx).toBe(0);expect(pose.dy).toBe(0);
     }
-    const pose=spellPose(points,w,h,17000),fitted=fitSpell(points,w,h,completedSpellFrame(w,h));
+    const pose=spellPose(points,w,h,first.release),fitted=fitSpell(points,w,h,completedSpellFrame(w,h));
     for(let i=0;i<points.length;i++) {
       expect(((points[i].x-.5)*w*pose.scale+pose.dx+w/2)/w).toBeCloseTo(fitted[i].x);
       expect(((points[i].y-.5)*h*pose.scale+pose.dy+h/2)/h).toBeCloseTo(fitted[i].y);
     }
-    expect(spellPose(points,w,h,15500).progress).toBe(.5);
-    expect(spellPose(points,w,h,23000).opacity).toBe(0);
+    expect(spellPose(points,w,h,(first.inputEnd+first.release)/2).progress).toBe(.5);
+    expect(spellPose(points,w,h,first.handoff).opacity).toBe(0);
   });
   it('縦長と横長でも命中位置が背景画像の胸からずれない',()=>{
     for(const [w,h] of [[1440,900],[390,844],[2560,1080]]) {

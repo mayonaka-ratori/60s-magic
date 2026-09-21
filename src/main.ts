@@ -21,7 +21,7 @@ import { DELIVERY_MESSAGES, PlayRecorder, nameParts, playOf, resultRows, type Pl
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas><canvas id="composite" aria-hidden="true"></canvas>
   <div class="vignette"></div>
-  <header><div class="brand"><span class="sigil" aria-hidden="true"></span><div><div class="brand-name">はじまりの魔法</div><p class="eyebrow">描いて、唱えて、解き放つ</p></div></div><div class="top-right"><span class="trial dev-only">60秒・試作</span><div class="timer" id="timer" hidden><small>のこり</small><b>24</b><small>秒</small></div></div></header>
+  <header><div class="brand"><span class="sigil" aria-hidden="true"></span><div><div class="brand-name">はじまりの魔法</div><p class="eyebrow">描いて、唱えて、解き放つ</p></div></div><div class="top-right"><span class="trial dev-only">90秒・試作</span><div class="timer" id="timer" hidden><small>のこり</small><b>18</b><small>秒</small></div></div></header>
   <section class="welcome" id="welcome"><div class="chapter">第一幕 / 最初の魔法</div><h1><span>その手で描く</span><span>その言葉で放つ</span></h1><p class="intro">自由に描いた線が、ひとつの魔法になる。<br>手を動かしながら、好きな言葉を唱えよう。<br>二回目は、左に浮かぶ輪の中に描けば盾になります</p>
     <fieldset class="mode-options"><legend>描き方を選ぶ</legend><label class="mode-option"><input type="radio" name="mode" value="camera"><strong>手で描く</strong><small>カメラに手を映す（片手でも大丈夫）</small></label><label class="mode-option"><input type="radio" name="mode" value="pointer" checked><strong>マウスで試す</strong><small>画面を押したまま動かす</small></label></fieldset>
     <label class="voice-option"><input type="checkbox" id="use-voice">マイクで唱える <span id="voice-availability"></span></label>
@@ -151,7 +151,7 @@ function playContext():PlayContext {
 }
 /** 回が始まる何ミリ秒前に、声の受付をつなぎ直すか。 */
 const VOICE_RECONNECT_MS=2500;
-/** 24秒の前に置く準備の秒数。手や声の位置を決める時間で、24秒にも60秒にも含めない。 */
+/** 本編の前に置く準備の秒数。手や声の位置を決める時間で、90秒には含めない。 */
 const COUNTDOWN_SECONDS=3;let countingDown=false;
 
 async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json());}catch{serviceNotice='接続を確認できません。このPCの中だけで魔法を決めます。';status.speech=false;}
@@ -218,7 +218,7 @@ async function begin(isDemo=false) {
   }
   if(version!==prepareVersion)return;
   if(!demo) {
-    // 機器の準備が終わってから、手の位置と声の用意をする時間を置く。ここは24秒に含めない。
+    // 機器の準備が終わってから、手の位置と声の用意をする時間を置く。ここは90秒に含めない。
     countingDown=true;el('app').dataset.screen='countdown';
     show('welcome',false);show('result',false);show('hud',true);show('timer',false);show('bottom-hud',false);show('input-panel',false);show('recognized',false);show('demo-tag',false);
     show('meter',!!voice);show('voice-label',false);show('countdown',true);
@@ -232,8 +232,8 @@ async function begin(isDemo=false) {
     countingDown=false;show('countdown',false);
   }
   resetLiveWords();resetInputAmount();liveKey='';liveBase=emptyLive;
-  session=new Battle(undefined,id);diag?.rebase(session.startMs);diag?.log('60秒を開始');
-  // 確認番号を先に決める。保存済みの番号を読むので少し待つが、使うのは60秒後なので間に合う。
+  session=new Battle(undefined,id);diag?.rebase(session.startMs);diag?.log('90秒を開始');
+  // 確認番号を先に決める。保存済みの番号を読むので少し待つが、使うのは90秒後なので間に合う。
   recorder=null;savedRounds=0;
   {const battle=session;void PlayRecorder.open(null,Math.random,()=>new Date(),playContext()).then(made=>{if(session===battle){recorder=made;diag?.log('確認番号を用意',{code:made.code,storage:made.available?'このPCの中に保存する':'保存先を使えない'});}});}
   voice?.start(Math.max(0,performance.now()-session.startMs));if(voice)voiceRound='first';
@@ -285,7 +285,7 @@ const ACT_NAMES:Record<string,string>={defend:'防御',finish:'とどめ'};
 /**
  * 体力の枠をゆらす世界の時刻（ms）。一回目の命中、防御の反撃、とどめの一発目、とどめの直撃。
  * 体力と同じ世界の時計で見るので、命中で止めている間は先へ進まない。
- * とどめの間の3回（53.76、53.92、54.10秒）ではゆらさない。
+ * とどめの間の3回（77.76、77.92、78.10秒）ではゆらさない。
  */
 /** 二回目からの回。声の受付を作り直す相手なので、毎コマ切り出さずに一度だけ作る。 */
 const LATER_ROUNDS=ROUNDS.slice(1);
@@ -380,7 +380,7 @@ function updateUi() {
  */
 function showReveal(t:number,round:Round,recipe:{name:string}|null) {
   const name=recipe?.name,release=round.release/1000;
-  // とどめの回だけ、魔法名を余韻の始まり（57秒）に出して58.5秒で引く。
+  // とどめの回だけ、魔法名を余韻の始まり（84秒）に出して85.5秒で引く。
   // 発動の直後に出すと、視界を通り抜ける術式や輪をくぐる魔法に文字が重なるため。
   const lastRound=round.id==='finish';
   const from=lastRound?round.handoff/1000:release+.6;
@@ -432,7 +432,7 @@ function driveRound(battle:Battle,cast:CastSession) {
 
 /**
  * 二回目からの回のために、声の受付を作り直す。前の回の接続は確定のときに閉じている。
- * つなぐのは回の始まりより前（防御は21.5秒、とどめは37.5秒）だが、録音を始めるのは回が始まってから。
+ * つなぐのは回の始まりより前（防御は27.5秒、とどめは53.5秒）だが、録音を始めるのは回が始まってから。
  * 声の時刻は回ごとに0から数えるので、早く始めるとその分だけ時刻がずれ、受付の長さをはみ出して捨てられる。
  */
 function prepareRoundVoice(battle:Battle,round:Round) {
@@ -574,7 +574,7 @@ el('chant-words').addEventListener('click',()=>{
   const groups=[...new Set(chantDictionary.entries.map(w=>w.group))];
   sheet('詠唱の言葉',`好きな言葉を組み合わせて唱えられます。短い言葉でも大丈夫です。\n難しい言葉は聞き違えることがあります。声の代わりに文字でも試せます。\n\n試しに唱える例\n${chantDictionary.examples.join('\n\n')}\n\n${groups.map(group=>`${group}\n${chantDictionary.entries.filter(w=>w.group===group).map(w=>`${w.term}（${w.reading}）`).join('・')}`).join('\n\n')}\n\nほかの作品の言葉は、読み方の参考として載せています。`);
 });
-el('settings').addEventListener('click',async()=>{await readStatus();sheet('接続の確認',`Jev：${status.jev?'設定済み（通信はプレイ中に行います）':'未設定（このPCの中だけで魔法を決めます）'}\n音声認識：${status.speechProvider==='local'?status.localSpeech?.message??'このPCでの認識を準備してください':status.speechProvider==='google'?'Google Cloudで認識':'使わない設定'}\n${status.speechProvider==='local'?`認識モデル：Kotoba-Whisper v2.0 / このPCの${status.localSpeech?.device==='cpu'?'CPU（遅れることがあります）':'GPU'}\n`:''}手の認識：${status.handModel?'ファイルを準備済み':'npm run setup:assets で準備してください'}\n\nローカル音声認識の準備は npm run setup:speech です。GoogleのAPIキーや課金設定は不要です。変更後はアプリを起動し直します。\n\n${el('privacy').textContent}\n\n詳しくは README.md をご覧ください。これは60秒の試作です。三つの魔法まで遊べます。魔導書とQRは作っている途中です。`);});
+el('settings').addEventListener('click',async()=>{await readStatus();sheet('接続の確認',`Jev：${status.jev?'設定済み（通信はプレイ中に行います）':'未設定（このPCの中だけで魔法を決めます）'}\n音声認識：${status.speechProvider==='local'?status.localSpeech?.message??'このPCでの認識を準備してください':status.speechProvider==='google'?'Google Cloudで認識':'使わない設定'}\n${status.speechProvider==='local'?`認識モデル：Kotoba-Whisper v2.0 / このPCの${status.localSpeech?.device==='cpu'?'CPU（遅れることがあります）':'GPU'}\n`:''}手の認識：${status.handModel?'ファイルを準備済み':'npm run setup:assets で準備してください'}\n\nローカル音声認識の準備は npm run setup:speech です。GoogleのAPIキーや課金設定は不要です。変更後はアプリを起動し直します。\n\n${el('privacy').textContent}\n\n詳しくは README.md をご覧ください。これは90秒の試作です。三つの魔法まで遊べます。魔導書とQRは作っている途中です。`);});
 el('record').addEventListener('click',()=>{
   // まず手元の記録をすぐ出し、サーバー側の記録が届いたら同じ画面を差し替える。
   const base=report();sheet('今回の確認用記録',JSON.stringify(base,null,2));

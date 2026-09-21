@@ -21,7 +21,7 @@ export const arrivalOf = (f: Frame) => f.beat.impact - f.beat.release;
 
 /**
  * 連弾の i 発目が届くまでの遅れ（秒）。80ms間隔で数発届き、最後の1発だけ200ms空けて落とす。
- * 単発は0で、今までと同じ18.5秒ちょうどに届く。
+ * 単発は0で、命中の23.5秒ちょうどに届く。
  */
 export function hitDelay(i: number, count: number) {
   if (count <= 1) return 0;
@@ -72,7 +72,7 @@ export function drawBody(f: Frame, x: number, y: number, size: number, element: 
   } else edged(f, 2, alpha, () => c.arc(x, y, size * .7, 0, Math.PI * 2), pal.main, pal.core);
 }
 
-/** 放出（17秒）。閃光、衝撃波の輪、放射状の線、飛び出す粒。 */
+/** 放出（22秒）。閃光、衝撃波の輪、放射状の線、飛び出す粒。 */
 export function drawRelease(f: Frame) {
   const { c, t, origin: o, target: g, preset, intensity, recipe: r } = f;
   const time = t - f.beat.release;
@@ -121,7 +121,7 @@ export function drawRelease(f: Frame) {
 }
 
 /**
- * 飛翔（17〜18.5秒）と持続する本体。球は尾を引き、光線は帯、壁と結界は面、拘束は輪。
+ * 飛翔（22〜23.5秒）と持続する本体。球は尾を引き、光線は帯、壁と結界は面、拘束は輪。
  * boost はとどめの回だけ渡す。道のりの進み具合（travel）を差し替え、本体を size 倍にする。
  */
 export function drawTravel(f: Frame, boost?: { travel: number; size: number }) {
