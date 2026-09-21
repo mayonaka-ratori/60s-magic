@@ -226,8 +226,11 @@ describe('輪をくぐって奥へ伸びる', () => {
 describe('多段命中', () => {
   it('当たるのは固定の4回', () => {
     expect(FINISH_HIT_OFFSETS_MS).toEqual([0, 160, 320, 500]);
-    const 予定 = FINISH_HIT_MS.map(ms => ms / 1000);
+    // 当たるのは77.60、77.76、77.92、78.10秒。1回目は最初の到達（77.6秒）と同じ時刻。
+    const 予定 = [77.60, 77.76, 77.92, 78.10];
     finishHitTimes(finishBeat).forEach((at, i) => expect(at).toBeCloseTo(予定[i], 6));
+    expect(予定[0]).toBe(finishBeat.impact);
+    expect(FINISH_HIT_MS).toEqual([77600, 77760, 77920, 78100]);
   });
   it('弾の数を4回へ散らす。1発は1回目だけ、5発は1回目が2発', () => {
     expect(finishHitPlan(1)).toEqual([1, 0, 0, 0]);
@@ -367,6 +370,8 @@ describe('とどめの見せ方を通しで描く', () => {
     // 同じ実際の時刻でも、世界の時刻で数えるほうが濃く残る（スローのぶんだけ遅れているため）。
     const いま = 消える - .5 + .725;
     expect(afterglowFade(いま, いま - .725, finishBeat)).toBeGreaterThan(afterglowFade(いま, いま, finishBeat));
+    // とどめだけは、描くのをやめるのが90.0秒。魔導書へ移る時刻（回の終わり）と同じ。
+    expect(stopAtOf(finishBeat)).toBe(90);
     expect(stopAtOf(finishBeat)).toBe(finishBeat.end);
   });
   it('一回目と防御の消え際と切る時刻は、今までと完全に同じ', () => {

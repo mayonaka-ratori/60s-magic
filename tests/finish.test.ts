@@ -158,9 +158,14 @@ describe('とどめの回の部品',()=>{
     expect(postHeavyActive(直撃,finishBeat)).toBe(true);
     expect(postHeavyActive(切る-.1,finishBeat)).toBe(true);
     expect(postHeavyActive(切る,finishBeat)).toBe(false);
-    // 一回目と防御は今までどおり、命中の2.5秒後まで。
-    expect(postToOf(BEATS[0])).toBeCloseTo(BEATS[0].impact+2.5,6);
-    expect(postToOf(BEATS[1])).toBeCloseTo(BEATS[1].impact+2.5,6);
+    // 一回目と防御は今までどおり、命中の2.5秒後まで。一回目は26.0秒、防御は52.9秒。
+    expect(postToOf(BEATS[0])).toBeCloseTo(26,6);
+    expect(postToOf(BEATS[1])).toBeCloseTo(52.9,6);
+    // どちらも命中より後で、回の終わりより前に切る。
+    for(const beat of [BEATS[0],BEATS[1]]){
+      expect(postToOf(beat)).toBeGreaterThan(beat.impact);
+      expect(postToOf(beat)).toBeLessThan(beat.end);
+    }
   });
   it('とどめの回の音が回の表から作られる',()=>{
     const 前後=(at:number)=>dueSounds(at-10,at+10,false).map(c=>c.name);

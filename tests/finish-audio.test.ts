@@ -12,6 +12,14 @@ const names = (from: number, to: number) => dueSounds(from, to, false).map(cue =
 /** その並びの中で、その音が鳴る時刻（ms）。 */
 const 至 = (cues: typeof soundCues, name: string) => cues.find(cue => cue.name === name)!.at;
 
+/**
+ * とどめの回で実際に鳴る時刻（ms）。世界の時刻に、止めとスローの遅れを足した位置。
+ * とどめの一撃は世界の78.5秒＋命中の止め0.1秒。崩れ落ちは世界の時刻＋遅れ0.725秒（止め2回とスロー）。
+ */
+const 直撃の実際 = 78600, 剣の実際 = 79825, 膝の実際 = 80525, 倒れの実際 = 81625;
+/** 控えめモードの時刻（ms）。止めが無いので、残るのはスローの0.375秒だけ。とどめの一撃は世界の時刻のまま。 */
+const 控えめの直撃 = 78500, 控えめの剣 = 79475, 控えめの膝 = 80175, 控えめの倒れ = 81275;
+
 describe('世界の時刻から実際の時刻を出す', () => {
   it('ゆがみを行き来しても同じ時刻に戻る', () => {
     const warp = warpOf(finishBeat, HIT_STOPS.strong);
@@ -40,7 +48,6 @@ describe('世界の時刻から実際の時刻を出す', () => {
 describe('とどめの回の音の合図', () => {
   it('とどめの一撃は命中と別の合図で、余韻と魔導書の音まで並ぶ', () => {
     const 前後 = (at: number) => names(at - 10, at + 10);
-    const 直撃の実際 = Math.round(世界から実際へ(finish.finalBlow! / 1000) * 1000);
     expect(前後(finish.release)).toEqual(['release']);
     expect(前後(finish.impact)).toEqual(['impact']);
     // とどめの一撃も世界の時刻で置いてあるので、鳴るのは止めの分だけ遅れた実際の時刻。
@@ -48,28 +55,47 @@ describe('とどめの回の音の合図', () => {
     expect(前後(直撃の実際)).toEqual(['finish']);
     expect(前後(finish.handoff)).toEqual(['settle']);
     expect(前後(finish.end - 600)).toEqual(['book']);
+    // 静かな音は余韻の始まりの84.0秒、魔導書の一音は回の終わりの0.6秒前の89.4秒。
+    expect(前後(84000)).toEqual(['settle']);
+    expect(前後(89400)).toEqual(['book']);
     // 一回目と防御には、とどめの音も崩れの音も混ざらない。
     const 前半 = soundCues.filter(cue => cue.round !== 'finish').map(cue => cue.name);
     for (const name of ['finish', 'collapse-sword', 'collapse-knee', 'collapse-fall', 'book']) expect(前半).not.toContain(name);
   });
   it('崩れる音は、世界の時刻を実際の時刻に直した位置で鳴る', () => {
-    const 実際 = (world: number) => Math.round(世界から実際へ(world) * 1000);
-    expect(names(実際(剣) - 10, 実際(剣) + 10)).toEqual(['collapse-sword']);
-    expect(names(実際(膝) - 10, 実際(膝) + 10)).toEqual(['collapse-knee']);
-    expect(names(実際(倒れ) - 10, 実際(倒れ) + 10)).toEqual(['collapse-fall']);
-    // 音の並びも、騎士の動きと同じ世界の時刻から作る。
-    expect(至(soundCues, 'collapse-sword')).toBe(実際(剣));
-    expect(至(soundCues, 'collapse-knee')).toBe(実際(膝));
-    expect(至(soundCues, 'collapse-fall')).toBe(実際(倒れ));
+    // 世界の時刻は剣79.1秒、膝79.8秒、倒れ80.9秒。鳴るのは遅れ0.725秒ぶん後ろ。
+    expect(至(soundCues, 'collapse-sword')).toBe(剣の実際);
+    expect(至(soundCues, 'collapse-knee')).toBe(膝の実際);
+    expect(至(soundCues, 'collapse-fall')).toBe(倒れの実際);
+    expect(names(剣の実際 - 10, 剣の実際 + 10)).toEqual(['collapse-sword']);
+    expect(names(膝の実際 - 10, 膝の実際 + 10)).toEqual(['collapse-knee']);
+    expect(names(倒れの実際 - 10, 倒れの実際 + 10)).toEqual(['collapse-fall']);
+    // 固定した値は、騎士が動く世界の時刻に遅れ0.725秒を足した位置になっている。
+    expect(剣の実際 - FINISH_SWORD_DROP_MS).toBe(725);
+    expect(膝の実際 - FINISH_COLLAPSE_MS).toBe(725);
+    expect(倒れの実際 - FINISH_FALL_FROM_MS).toBe(725);
+    // とどめの一撃のあと、剣、膝、倒れの順で、回の終わりより前に鳴る。
+    expect(剣の実際).toBeGreaterThan(直撃の実際);
+    expect(膝の実際).toBeGreaterThan(剣の実際);
+    expect(倒れの実際).toBeGreaterThan(膝の実際);
+    expect(倒れの実際).toBeLessThan(finish.end);
   });
   it('控えめモードは世界を止めないので、崩れる音ととどめの一撃が早く来る', () => {
     // 控えめでは止めが無く、スローだけ残る。とどめの一撃は世界の時刻そのままに鳴る。
-    const 控えめの実際 = (world: number) => Math.round(warpReal(world, warpOf(finishBeat, 0)) * 1000);
-    expect(至(calmSoundCues, 'finish')).toBe(finish.finalBlow!);
-    expect(至(calmSoundCues, 'collapse-sword')).toBe(控えめの実際(剣));
-    expect(至(calmSoundCues, 'collapse-knee')).toBe(控えめの実際(膝));
-    expect(至(calmSoundCues, 'collapse-fall')).toBe(控えめの実際(倒れ));
-    const 控えめの剣 = Math.round(warpReal(剣, warpOf(finishBeat, 0)) * 1000);
+    expect(至(calmSoundCues, 'finish')).toBe(控えめの直撃);
+    expect(控えめの直撃).toBe(finish.finalBlow!);
+    expect(至(calmSoundCues, 'collapse-sword')).toBe(控えめの剣);
+    expect(至(calmSoundCues, 'collapse-knee')).toBe(控えめの膝);
+    expect(至(calmSoundCues, 'collapse-fall')).toBe(控えめの倒れ);
+    // 固定した値は、世界の時刻にスローの遅れ0.375秒を足した位置になっている。
+    expect(控えめの剣 - FINISH_SWORD_DROP_MS).toBe(375);
+    expect(控えめの膝 - FINISH_COLLAPSE_MS).toBe(375);
+    expect(控えめの倒れ - FINISH_FALL_FROM_MS).toBe(375);
+    // 通常より、止め2回のぶんだけ早い。とどめの一撃は0.1秒、崩れ落ちは0.35秒。
+    expect(直撃の実際 - 控えめの直撃).toBe(100);
+    expect(剣の実際 - 控えめの剣).toBe(350);
+    expect(膝の実際 - 控えめの膝).toBe(350);
+    expect(倒れの実際 - 控えめの倒れ).toBe(350);
     expect(dueSounds(控えめの剣 - 10, 控えめの剣 + 10, false, true).map(cue => cue.name)).toEqual(['collapse-sword']);
     // 通常の並びでは、その時刻にはまだ鳴らない。
     expect(names(控えめの剣 - 10, 控えめの剣 + 10)).toEqual([]);
@@ -97,7 +123,8 @@ describe('とどめの回の音の合図', () => {
     expect(finishCues.map(cue => cue.name)).toEqual([
       'chant', 'build', 'complete', 'release', 'impact', 'finish',
       'collapse-sword', 'collapse-knee', 'collapse-fall', 'settle', 'book']);
-    expect(至(soundCues, 'finish')).toBe(Math.round(世界から実際へ(finish.finalBlow! / 1000) * 1000));
+    // とどめの一撃は、世界の78.5秒に命中の止め0.1秒を足した78.6秒に鳴る。
+    expect(至(soundCues, 'finish')).toBe(直撃の実際);
     for (let i = 1; i < soundCues.length; i++) expect(soundCues[i].at).toBeGreaterThanOrEqual(soundCues[i - 1].at);
   });
   it('マイクを使う回は、録音の終わりを待つまで鳴らさない', () => {
@@ -123,8 +150,8 @@ describe('音を抜く間', () => {
     expect(hushAt(発動)).toBe(1);
   });
   it('直撃の直前だけ短く弱め、直撃の0.05秒前から戻し始める', () => {
-    // 直撃の実際の時刻の0.2秒前から弱める。
-    const 直撃 = Math.round(世界から実際へ(finish.finalBlow! / 1000) * 1000);
+    // 直撃の実際の時刻（78.6秒）の0.2秒前から弱める。
+    const 直撃 = 直撃の実際;
     expect(hushAt(直撃 - 210)).toBe(1);
     expect(hushAt(直撃 - 200)).toBeLessThan(.5);
     expect(hushAt(直撃 - 51)).toBeLessThan(.5);

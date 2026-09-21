@@ -103,8 +103,10 @@ describe('見せ始めと切り際の重なり', () => {
     expect(postFadeAt(POST_TO + 1)).toBe(0);
   });
   it('重なりは重い後処理が始まる前に終わる', () => {
-    // 見せ始めは一回目の確定の0.5秒前。
-    expect(SHOW_FROM).toBe(BEATS[0].lock + .5);
+    // 見せ始めは21.5秒。一回目の確定（21秒）より後で、発動（22秒）より前。
+    expect(SHOW_FROM).toBe(21.5);
+    expect(SHOW_FROM).toBeGreaterThan(BEATS[0].lock);
+    expect(SHOW_FROM).toBeLessThan(BEATS[0].release);
     expect(SHOW_FROM).toBeLessThan(POST_FROM);
     expect(SHOW_FROM + FADE_SECONDS).toBeLessThanOrEqual(POST_FROM);
   });

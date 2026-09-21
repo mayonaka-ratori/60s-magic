@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { planHealthSteps, healthAt, healthSteps, FINAL_BLOW_MS, HEALTH_HIDE_MS } from '../src/render/health-bar';
-import { FINISH_HIT_MS, FINISH_COLLAPSE_MS, ROUNDS } from '../src/game/rounds';
+import { FINISH_HIT_MS, FINISH_COLLAPSE_MS, FINISH_FALL_FROM_MS, ROUNDS } from '../src/game/rounds';
 import { KNEEL_AT } from '../src/render/knight';
 import { hitDelay } from '../src/render/effects/release';
 import { effectTime, HIT_STOPS } from '../src/render/effects/screen';
@@ -154,8 +154,10 @@ describe('とどめの体力', () => {
   it('とどめの時刻は回の表から取る', () => {
     expect(FINAL_BLOW_MS).toBe(ROUNDS[2].finalBlow);
     expect(FINISH_HIT_MS).toEqual([77600, 77760, 77920, 78100]);
-    // 枠を消し始めるのは、とどめの一撃の1.3秒後。
-    expect(HEALTH_HIDE_MS).toBe(ROUNDS[2].finalBlow! + 1300);
+    // 枠を消し始めるのは79800。とどめの一撃（78500）の1.3秒後で、倒れ始め（80900）より前。
+    expect(HEALTH_HIDE_MS).toBe(79800);
+    expect(HEALTH_HIDE_MS).toBeGreaterThan(FINAL_BLOW_MS);
+    expect(HEALTH_HIDE_MS).toBeLessThan(FINISH_FALL_FROM_MS);
     // 枠が消え始める時刻と、騎士が膝をつき始める時刻は同じ一つの値から作る。
     expect(HEALTH_HIDE_MS).toBe(FINISH_COLLAPSE_MS);
     expect(HEALTH_HIDE_MS).toBe(KNEEL_AT * 1000);
