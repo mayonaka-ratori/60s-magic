@@ -343,7 +343,8 @@ describe('防御の回の言葉と配置',()=>{
   });
   it('重い後処理は、回ごとに発動の前後だけ出す',()=>{
     const beat=beatOf(defend);
-    expect(postHeavyActive(33.8,beat)).toBe(false);
+    // 防御の回は、敵の一撃が床を打つ33.55秒の0.1秒前から入れる（合成の試験で確かめる）。その前は出さない。
+    expect(postHeavyActive(33.4,beat)).toBe(false);
     expect(postHeavyActive(34.5,beat)).toBe(true);
     expect(postHeavyActive(38.5,beat)).toBe(false);
     // 一回目の時間帯は今までどおり。
