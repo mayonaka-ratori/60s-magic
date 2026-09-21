@@ -15,7 +15,7 @@ import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPi
 import '@babylonjs/core/Rendering/depthRendererSceneComponent';
 import type { ScreenState } from './effects/screen';
 import { IMPACT_AT, RELEASE_AT } from './effects/screen';
-import { BEATS, type Beat } from '../game/rounds';
+import { BEATS, ENEMY_SLAM_MS, type Beat } from '../game/rounds';
 import { LAYER_FRAGMENT, LAYER_VERTEX, SHOCKWAVE_SHADER, registerCompositeShaders } from './composite-shaders';
 
 /**
@@ -63,8 +63,16 @@ const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
  */
 export const POST_FINISH_TAIL = 1.5;
 
-/** その回で重い後処理を入れる時刻と切る時刻（秒）。一回目は 21.9 と 26 になる。 */
-export const postFromOf = (beat: Beat = BEATS[0]) => beat.release - (RELEASE_AT - POST_FROM);
+/** 敵が振り下ろした剣が床を打つ時刻（秒）。防御の回だけ。衝撃波の歪みと、重い後処理の始まりがここに揃う。 */
+export const SLAM_AT = ENEMY_SLAM_MS / 1000;
+/** 床を打つ衝撃波の中心の高さ（画面の上を0とした0〜1）。騎士の足元のあたり。横は命中の位置と同じ x を使う。 */
+export const SLAM_RIPPLE_Y = .72;
+
+/**
+ * その回で重い後処理を入れる時刻と切る時刻（秒）。一回目は 21.9 と 26 になる。
+ * 防御の回は、発動より先に敵の一撃が床を打つ（確定の0.55秒後）ので、その0.1秒前から入れる。
+ */
+export const postFromOf = (beat: Beat = BEATS[0]) => (beat.defend ? Math.min(beat.release, SLAM_AT) : beat.release) - (RELEASE_AT - POST_FROM);
 /** とどめの回だけは命中の2.5秒後では余韻の途中で切れてしまうので、余韻の始まりから測る。 */
 export const postToOf = (beat: Beat = BEATS[0]) => beat.finish ? beat.handoff + POST_FINISH_TAIL : beat.impact + (POST_TO - IMPACT_AT);
 
@@ -80,6 +88,18 @@ export function rippleAt(t: number, impactAt = IMPACT_AT, life = RIPPLE_SECONDS)
   if (age < 0 || age >= life) return null;
   const p = age / life;
   return { radius: .06 + p * .82, width: .18 * (1 - p * .62), strength: .028 * (1 - p) * (1 - p) };
+}
+
+/**
+ * その時刻に出す衝撃波の輪と、その中心。命中の輪は命中の位置から、防御の回で敵の一撃が床を打つ輪は
+ * 騎士の足元（横は命中の位置と同じ、縦は SLAM_RIPPLE_Y）から広がる。二つは時刻が離れているので同時には出ない。
+ */
+export function shockRippleAt(t: number, beat: Beat = BEATS[0], target: { x: number; y: number } = { x: .5, y: .5 }): { ripple: Ripple; center: { x: number; y: number } } | null {
+  const hit = rippleAt(t, beat.impact);
+  if (hit) return { ripple: hit, center: target };
+  if (!beat.defend) return null;
+  const slam = rippleAt(t, SLAM_AT);
+  return slam ? { ripple: slam, center: { x: target.x, y: SLAM_RIPPLE_Y } } : null;
 }
 
 /**
@@ -532,8 +552,10 @@ export class Composite {
       const chromatic = frame.calm ? 0 : frame.screen.chromatic;
       this.pipeline.chromaticAberration.aberrationAmount = chromatic * 6;
       this.pipeline.chromaticAberration.radialIntensity = 1.4;
-      this.center = frame.target;
-      this.ripple = frame.calm ? null : rippleAt(frame.t, frame.beat?.impact);
+      // 歪みの中心は輪ごとに違う。命中の輪は命中の位置、敵の一撃が床を打つ輪は騎士の足元。
+      const shock = frame.calm ? null : shockRippleAt(frame.t, frame.beat, frame.target);
+      this.center = shock?.center ?? frame.target;
+      this.ripple = shock?.ripple ?? null;
       this.canvas.dataset.ripple = this.ripple ? `${this.ripple.radius.toFixed(3)}:${this.shockwave.isReady() ? '出ている' : '準備中'}` : '';
     } else {
       this.ripple = null;

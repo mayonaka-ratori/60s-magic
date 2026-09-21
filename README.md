@@ -98,7 +98,11 @@ PC内の音声認識だけなら `.env` は不要です。JevやGoogleを使う�
 | 回ごとの場面の時刻（一回目0〜30秒、防御30〜56秒、とどめ56〜90秒）。騎士と体力の時刻もこの表から作る | `src/game/rounds.ts` の `ROUNDS` |
 | 最後の声を待つ時間（2秒）、待ちの打ち切り、Jevの打ち切り、確定 | `src/game/rounds.ts` の先頭 |
 | 狙いの印の位置と大きさ、囲みの判定、盾の作り方、止め方の言葉 | `src/game/guard.ts` |
-| 敵の一撃と盾の見た目 | `src/render/effects/guard.ts` |
+| 敵の一撃と盾の見た目、床の亀裂と塵 | `src/render/effects/guard.ts` |
+| 完成した術式を置ける範囲と、小さく描いたときに広げる下限 | `src/render/spell-layout.ts` の `SPELL_BOUNDS` と `SPELL_MIN` |
+| 弾が画面の端へ膨らむ大きさ、光線の口の幅 | `src/render/effects/release.ts` の `SWELL` と `BEAM_MOUTH` |
+| 命中で止める長さと三段の時刻、寄り、傾き、敵の圧の揺れ | `src/render/effects/screen.ts` の先頭 |
+| 騎士が自分から動く時刻（足踏み、盾打ち、溜め、床の一撃） | `src/game/rounds.ts` の `ENEMY_MOVES` ほか |
 | 騎士の10の姿勢と、角が折れる・胸当てが外れる時刻 | `src/render/knight.ts` |
 | 終了直前に途中の認識を始めない境目（受付の終わりの2秒前） | `server/local-speech-session.ts` |
 | サーバー側のJevの打ち切り（900ms） | `server/jev.ts` |

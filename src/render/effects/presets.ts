@@ -59,7 +59,8 @@ const palettes: Record<Element, Palette> = {
 
 const base: Omit<EffectPreset, 'name' | 'label' | 'gain' | 'lift'> = {
   palettes, glowScale: 1, chargeParticles: 60, magicCircle: true, darken: .35, flash: .55, releaseRings: 3, radialLines: 24,
-  shake: 8, hitStop: .07, impactParticles: 120, impactRings: 3, cracks: 6, trail: .22, afterglowParticles: 50, chromatic: 3, maxParticles: 700,
+  // 揺れは派手さ1.9で約1.6倍、3で約2.8倍になる。大型の敵を打つので文書の「強」（6〜12px）より上に置き、控えめだけ2に抑える。
+  shake: 14, hitStop: .07, impactParticles: 120, impactRings: 3, cracks: 6, trail: .22, afterglowParticles: 50, chromatic: 3, maxParticles: 700,
 };
 
 export const presets: Record<string, EffectPreset> = {
@@ -67,7 +68,7 @@ export const presets: Record<string, EffectPreset> = {
     shake: 2, hitStop: 0, impactParticles: 40, impactRings: 1, cracks: 0, trail: .1, afterglowParticles: 16, chromatic: 0, maxParticles: 250 },
   vivid: { ...base, name: 'vivid', label: '派手', gain: .85, lift: .88, maxParticles: 900 },
   max: { ...base, name: 'max', label: '最大', gain: .9, lift: 1, glowScale: 1.3, chargeParticles: 140, darken: .6, flash: .85, releaseRings: 4, radialLines: 48,
-    shake: 18, hitStop: .14, impactParticles: 220, impactRings: 5, cracks: 10, trail: .35, afterglowParticles: 120, chromatic: 6, maxParticles: 1500 },
+    shake: 22, hitStop: .14, impactParticles: 220, impactRings: 5, cracks: 10, trail: .35, afterglowParticles: 120, chromatic: 6, maxParticles: 1500 },
 };
 export const defaultPresetName = 'vivid';
 export function getPreset(name: string | null | undefined): EffectPreset { return presets[name ?? ''] ?? presets[defaultPresetName]; }

@@ -1,8 +1,8 @@
-import type { ScreenState } from './effects/screen';
+import { INVERT_SECONDS, type ScreenState } from './effects/screen';
 import type { Palette } from './effects/presets';
 
 /**
- * 画面全体にかかる効果のうち、HTMLの層で足りるもの（閃光、ビネット、グレイン、放出直前の暗転、背景の彩度）。
+ * 画面全体にかかる効果のうち、HTMLの層で足りるもの（閃光、命中の反転、ビネット、グレイン、放出直前の暗転、背景の彩度）。
  * 演出canvasの塗りをやめ、全層の上のdivの透明度だけを毎コマ変える。
  *
  * このファイルの前半は画面を使わない計算だけにしてある（tests/overlay.test.ts で確かめる）。
@@ -12,8 +12,8 @@ import type { Palette } from './effects/presets';
 export const FLASH_RISE = .035;
 /** 閃光の戻り（秒）。約10コマかけて0へ。 */
 export const FLASH_FALL = .17;
-/** 閃光の濃さの上限。これ以上白くしない。 */
-export const FLASH_MAX = .7;
+/** 閃光の濃さの上限。これ以上白くしない。文書の0.6〜0.85の上限いっぱい。 */
+export const FLASH_MAX = .85;
 /** 新しい閃光を始められる間隔（秒）。1秒に3回を超えないようにする。 */
 export const FLASH_GAP = .34;
 /** ビネットの常時の濃さ。 */
@@ -40,7 +40,7 @@ export function newFlashMemory(): FlashMemory { return { value: 0, startedAt: -9
 const clamp01 = (v: number) => v < 0 ? 0 : v > 1 ? 1 : v;
 
 /**
- * 閃光の目標の濃さ。上限0.7で頭打ちにする。
+ * 閃光の目標の濃さ。上限（FLASH_MAX）で頭打ちにする。
  * 控えめモードでは上限そのものを3分の1に下げる。screen.ts 側でも濃さを3分の1にしているので、
  * ここで割り算をするとさらに薄くなってしまう。上限だけを下げれば、どちらの場合も3分の1に収まる。
  */
@@ -79,6 +79,17 @@ export function vignetteOpacity(darken: number, calm: boolean) {
 
 /** グレインの濃さ。控えめモードでは出さない。 */
 export function grainOpacity(calm: boolean) { return calm ? 0 : GRAIN_OPACITY; }
+
+/**
+ * 命中の反転の濃さ。0か1。
+ * screen.ts が命中の最初の INVERT_SECONDS だけ invert を1にし、こちらは「閃光がその直前に光り始めた」ときだけ出す。
+ * 反転は命中の閃光の一部で、間隔が近すぎて閃光を始められなかったなら反転もしない（閃光の回数を増やさない）。
+ * 控えめモードでは出さない。
+ */
+export function invertOpacity(invert: number | undefined, memory: FlashMemory, calm: boolean, now: number) {
+  if (calm || !invert || invert <= 0) return 0;
+  return now - memory.startedAt < INVERT_SECONDS ? 1 : 0;
+}
 
 /** 背景の彩度。1に近ければ指定しない（filterを空にする）。 */
 export function saturateFilter(saturate: number) {
@@ -122,15 +133,16 @@ function makeNoiseUrl(size = 64) {
  */
 type Layers = { world: HTMLElement; knight?: HTMLElement; spell?: HTMLElement };
 /** 画面に今出している透明度。まだ一度も書いていないものは null。 */
-type Shown = { flash: number | null; vignette: number | null; grain: number | null; black: number | null };
+type Shown = { flash: number | null; invert: number | null; vignette: number | null; grain: number | null; black: number | null };
 
 export class ScreenOverlay {
   private flash: HTMLDivElement;
+  private invert: HTMLDivElement;
   private vignette: HTMLDivElement;
   private grain: HTMLDivElement;
   private black: HTMLDivElement;
   private memory = newFlashMemory();
-  private shown: Shown = { flash: null, vignette: null, grain: null, black: null };
+  private shown: Shown = { flash: null, invert: null, vignette: null, grain: null, black: null };
   private core = '';
   private filter = '';
   private last = -1;
@@ -145,11 +157,12 @@ export class ScreenOverlay {
     this.vignette = make('fx-vignette');
     this.grain = make('fx-grain');
     this.flash = make('fx-flash');
+    this.invert = make('fx-invert');
     const url = noiseImage();
     if (url) this.grain.style.backgroundImage = `url(${url})`;
-    // 演出canvasより上、HUDや見出しより下に入れる。
+    // 演出canvasより上、HUDや見出しより下に入れる。反転は閃光の上（一番上）。
     const before = root.querySelector('header');
-    for (const layer of [this.black, this.vignette, this.grain, this.flash]) root.insertBefore(layer, before);
+    for (const layer of [this.black, this.vignette, this.grain, this.flash, this.invert]) root.insertBefore(layer, before);
     this.write();
   }
 
@@ -159,6 +172,8 @@ export class ScreenOverlay {
     this.last = now;
     if (palette.core !== this.core) { this.core = palette.core; this.flash.style.setProperty('--fx-core', `${palette.core}80`); }
     this.value('flash', this.flash, stepFlash(this.memory, state.flash, calm, dt, now));
+    // 閃光を進めたあとに見る。今のコマで光り始めたなら startedAt が now になっている。
+    this.value('invert', this.invert, invertOpacity(state.invert, this.memory, calm, now));
     this.value('vignette', this.vignette, vignetteOpacity(state.darken, calm));
     this.value('grain', this.grain, grainOpacity(calm));
     this.value('black', this.black, clamp01(state.blackout));
@@ -181,7 +196,7 @@ export class ScreenOverlay {
   }
 
   dispose() {
-    for (const layer of [this.black, this.vignette, this.grain, this.flash]) layer.remove();
+    for (const layer of [this.black, this.vignette, this.grain, this.flash, this.invert]) layer.remove();
     if (this.filter) { this.world.style.filter = ''; this.filter = ''; }
   }
 }

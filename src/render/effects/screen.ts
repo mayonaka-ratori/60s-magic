@@ -2,7 +2,7 @@ import { clamp } from '../../game/motion';
 import type { EffectPreset } from './presets';
 import { increase } from './presets';
 import { smooth } from './frame';
-import { BEATS, type Beat } from '../../game/rounds';
+import { BEATS, ENEMY_CHARGE_FROM_MS, ENEMY_MOVES, ENEMY_SLAM_MS, ROUNDS, type Beat } from '../../game/rounds';
 
 export type ScreenState = {
   shakeX: number; shakeY: number; flash: number; darken: number; chromatic: number; hitStop: number;
@@ -14,11 +14,29 @@ export type ScreenState = {
   blackout: number;
   /** 背景の彩度。1が通常、0で白黒 */
   saturate: number;
+  /** 命中の最初の一瞬（INVERT_SECONDS）だけ画面を反転する。0か1。控えめモードでは0。古い呼び出しのために省略できる */
+  invert?: number;
 };
 /** 一回目の発動と命中の時刻（秒）。回ごとの値は rounds.ts の表から来る。 */
 export const RELEASE_AT = BEATS[0].release, IMPACT_AT = BEATS[0].impact;
-/** 命中で世界を止める長さ（秒）。弱、強、とどめの三段。 */
-export const HIT_STOPS = { weak: .06, strong: .09, finish: .2 };
+/** 命中で世界を止める長さ（秒）。弱、強、とどめの三段。文書の「強」（80〜130ms）の上のほうに置き、大型の敵を打つ重さを出す。 */
+export const HIT_STOPS = { weak: .10, strong: .14, finish: .2 };
+/**
+ * 一回目の命中の止め直し。命中の止めのあと、世界の時刻で命中+0.08秒と+0.2秒にもう一度短く止め、揺れを小さく押す。
+ * 一発の命中が「当たった、めり込んだ、抜けた」の三段に見えるようにするため。連弾の80ms間隔と200msの間にも合う。
+ * 止めは命中と合わせて3回（WARP_LIMITS.stops）で、遅れの合計は最大でも 0.14+0.03+0.04=0.21秒。
+ * kick は揺れの最大（shakeMax）に対する押しの割合。2段目は少し戻し、3段目は抜ける向き（騎士のいる右）へ大きめに押す。
+ */
+export const HIT_STAGES: ReadonlyArray<{ after: number; hold: number; kick: { x: number; y: number } }> = [
+  { after: .08, hold: .03, kick: { x: -.3, y: .12 } },
+  { after: .2, hold: .04, kick: { x: .4, y: .2 } },
+];
+/** 命中の寄り。0.3秒で戻す。文書の1.05〜1.2倍の上のほう。 */
+export const HIT_ZOOM = 1.18;
+/** 揺れに混ぜる傾きの最大（度）。 */
+export const SHAKE_TILT = 2;
+/** 命中の最初に画面を反転する長さ（秒）。閃光の立ち上がり（overlay.ts の FLASH_RISE）と同じ約2コマ。 */
+export const INVERT_SECONDS = .035;
 /** とどめの回で世界を止める長さ（秒）。一発目の命中と、とどめの一撃の2回だけ。本人の魔法では変えない。 */
 export const FINISH_STOPS = { impact: .10, finalBlow: .25 };
 /** とどめの一撃のあとのスロー。一撃から0.3秒後（世界の時刻）に、実際の0.5秒を0.25倍の速さで見せる。 */
@@ -38,6 +56,22 @@ export const BLACKOUT_FROM = RELEASE_AT - BLACKOUT_SECONDS, BLACKOUT_TO = RELEAS
 const SHOCK_FADE = 1.6;
 /** 揺れの速さ（1秒あたりの波の数）。 */
 const SHAKE_HZ = 19;
+
+/**
+ * 敵の圧。騎士が自分から動く場面で画面を揺らす数値。閃光は出さない（全画面の白は放出と命中の2回だけのまま）。
+ * step は足を踏み替える（下向きの押しと小さな衝撃）、clang は盾を打ち鳴らす（横の鋭い震え）。
+ * charge は剣を振り上げて溜める9秒の低い震え（画素は始めと終わり）と、じわじわ進む寄り。
+ * slam は振り下ろした剣が床を打つ（下向きの強い押しは揺れの最大に対する割合、衝撃、傾きの度、寄り、戻るまでの秒数）。
+ */
+export const ENEMY_PRESSURE = {
+  step: { push: 4, seconds: .12, shock: .25 },
+  clang: { amplitude: 3, seconds: .15, hz: 30 },
+  charge: { from: .5, to: 2, hz: 9, zoom: .02 },
+  slam: { push: .9, shock: .8, tilt: 1.5, zoom: .06, seconds: .3 },
+};
+/** 敵が自分から動く時刻（秒）。rounds.ts の表を秒に直しただけで、ここに数字は埋め込まない。 */
+const ENEMY_MOVES_AT = ENEMY_MOVES.map(move => ({ at: move.at / 1000, kind: move.kind }));
+export const ENEMY_CHARGE_FROM = ENEMY_CHARGE_FROM_MS / 1000, ENEMY_CHARGE_TO = ROUNDS[1].lock / 1000, ENEMY_SLAM_AT = ENEMY_SLAM_MS / 1000;
 
 /** 種と番号から決まる0〜1の値。時刻が同じなら必ず同じ。 */
 const spot = (i: number, seed: number) => { const s = Math.sin(i * 12.9898 + seed * 78.233 + 1.7) * 43758.5453; return s - Math.floor(s); };
@@ -67,41 +101,107 @@ export function shockAt(t: number, release: number, impact: number, beat: Beat =
   return clamp(value);
 }
 
-/** 画面全体にかかる効果。時刻と設定から決まる純粋な計算。攻撃以外は揺らさない。
+/** 敵の圧の一コマ分。x, y は画素、shock は衝撃（0〜1、揺れの元）、rotate は度、zoom は倍率。 */
+export type EnemyPressure = { x: number; y: number; shock: number; rotate: number; zoom: number };
+const NO_PRESSURE: EnemyPressure = { x: 0, y: 0, shock: 0, rotate: 0, zoom: 1 };
+
+/**
+ * 敵の圧。騎士が自分から動く時刻に合わせた揺れ、衝撃、傾き、寄り。時刻だけで決まる純粋な計算。
+ * 一回目は足の踏み替えと盾の打ち鳴らし、防御の回は溜めの震えと剣が床を打つ一撃。とどめの回では動かない。
+ * 作った魔法の用途は見ない（揺らすのは敵なので）。控えめモードと「動きを減らす」（calm）ではすべて0。
+ * shakeMax は揺れの最大（画素）。床を打つ一撃の押しはこれに対する割合で出す。
+ */
+export function enemyPressure(t: number, shakeMax: number, beat: Beat = BEATS[0], calm = false): EnemyPressure {
+  if (calm) return NO_PRESSURE;
+  if (beat.defend) {
+    if (t < ENEMY_CHARGE_FROM) return NO_PRESSURE;
+    const { charge, slam } = ENEMY_PRESSURE;
+    // 溜め。振り上げの始まりから振り下ろし（lock）まで、低い震えが大きくなり、寄りがじわじわ進む。
+    const ramp = clamp((t - ENEMY_CHARGE_FROM) / (ENEMY_CHARGE_TO - ENEMY_CHARGE_FROM));
+    const tremor = t < ENEMY_CHARGE_TO ? charge.from + (charge.to - charge.from) * ramp : 0;
+    const phase = (t - ENEMY_CHARGE_FROM) * Math.PI * 2 * charge.hz;
+    // 床を打つ一撃。押しは他の押しと同じ0.06秒、傾きと寄りは0.3秒で戻る。
+    const since = t - ENEMY_SLAM_AT;
+    const hit = since >= 0 ? Math.max(0, 1 - since / slam.seconds) : 0;
+    const push = since >= 0 ? shakeMax * slam.push * Math.max(0, 1 - since / .06) : 0;
+    const shock = since >= 0 ? Math.max(0, slam.shock - since * SHOCK_FADE) : 0;
+    // 溜めの寄りは振り下ろしのあとも保ち、床を打つ一撃と一緒に0.3秒で戻す。途中で急に戻すと絵が跳ねるため。
+    const lean = since >= 0 ? hit : ramp;
+    // 0 に掛けたときに符号（-0）が残らないよう、0 を足しておく。
+    return {
+      x: tremor * .5 * Math.cos(phase * .77) + 0, y: tremor * Math.sin(phase) + push + 0,
+      shock, rotate: slam.tilt * hit, zoom: 1 + charge.zoom * lean + (slam.zoom - charge.zoom) * hit,
+    };
+  }
+  if (beat.finish) return NO_PRESSURE;
+  const { step, clang } = ENEMY_PRESSURE;
+  let x = 0, y = 0, shock = 0;
+  for (const move of ENEMY_MOVES_AT) {
+    const since = t - move.at;
+    if (since < 0) continue;
+    if (move.kind === 'step') {
+      y += step.push * Math.max(0, 1 - since / step.seconds);
+      shock += Math.max(0, step.shock - since * SHOCK_FADE);
+    } else {
+      x += clang.amplitude * Math.sin(since * Math.PI * 2 * clang.hz) * Math.max(0, 1 - since / clang.seconds);
+    }
+  }
+  if (!x && !y && !shock) return NO_PRESSURE;
+  return { x, y, shock, rotate: 0, zoom: 1 };
+}
+
+/** 打撃の向きへ押す長さ（秒）。放出、命中、止め直し、敵の一撃、どの押しも同じ速さで抜く。 */
+const KICK_SECONDS = .06;
+
+/** 画面全体にかかる効果。時刻と設定から決まる純粋な計算。攻撃以外は揺らさない（敵の圧だけは用途を見ない）。
  *  入力の量は派手さ（intensityOf）に入っているので、ここでは見ない。6番目の引数は昔の呼び出しのために残してあるだけ。
- *  calm は控えめモード。揺れ、傾き、寄り、停止をなくし、閃光を3分の1にする。 */
+ *  calm は控えめモード。揺れ、傾き、寄り、停止、反転、敵の圧をなくし、閃光を3分の1にする。 */
 export function screenState(t: number, intensity: number, preset: EffectPreset, purpose: string | null, seed = 0, _amount = 0, calm = false, beat: Beat = BEATS[0]): ScreenState {
   const violent = purpose === 'attack' || purpose === null;
   // 攻撃は全部、守りは弱く、それ以外は揺らさない。
   // 防御の回だけは、揺らすのが敵の一撃なので、作った魔法の用途にかかわらず揺らす。
   // とどめの回も、揺らすのが自分の一撃そのものなので、作った魔法の用途にかかわらず揺らす。
   const weight = calm ? 0 : beat.defend || beat.finish ? 1 : violent ? 1 : purpose === 'defend' ? .3 : 0;
-  const shakeMax = increase(preset.shake, intensity, .6) * weight;
+  // 揺れの最大（画素）。用途を掛ける前の値は敵の圧に使う（揺らすのが敵なので、用途で弱めない）。
+  const baseMax = increase(preset.shake, intensity, .6), shakeMax = baseMax * weight;
+  // 命中で世界を止める長さ。止め直しの時刻と、下のとどめの時刻を実際の時刻へ直すのにも使う。
+  const hitStop = hitStopOf(preset, intensity, calm, beat), warp = warpOf(beat, hitStop);
   // 放出は小さく、命中は大きい。強さは時間とともに減り、その二乗で揺らす。
   const shock = shockAt(t, .55, 1, beat);
   const power = shock * shock;
+  // 敵の圧。騎士が自分から動く時刻の揺れ。衝撃は自分の魔法のものと別に二乗して足す（重なる時間はほぼ無い）。
+  const enemy = enemyPressure(t, baseMax, beat, calm);
+  const drive = weight * power + enemy.shock * enemy.shock;
   // 最初の一瞬だけ打撃の向きへ押す。放出は上へ、命中は騎士のいる右へ。
   // 防御の回は、奥から手前へ押されるので下向きにする。
-  const kickY = (t >= beat.release ? -shakeMax * .45 * Math.max(0, 1 - (t - beat.release) / .06) : 0)
-    + (beat.defend && t >= beat.impact ? shakeMax * .55 * Math.max(0, 1 - (t - beat.impact) / .06) : 0);
-  const kickX = !beat.defend && t >= beat.impact ? shakeMax * .6 * Math.max(0, 1 - (t - beat.impact) / .06) : 0;
+  let kickY = (t >= beat.release ? -shakeMax * .45 * Math.max(0, 1 - (t - beat.release) / KICK_SECONDS) : 0)
+    + (beat.defend && t >= beat.impact ? shakeMax * .55 * Math.max(0, 1 - (t - beat.impact) / KICK_SECONDS) : 0);
+  let kickX = !beat.defend && t >= beat.impact ? shakeMax * .6 * Math.max(0, 1 - (t - beat.impact) / KICK_SECONDS) : 0;
+  // 一回目の止め直し（HIT_STAGES）に合わせた小さな押し。段の時刻は世界の時刻なので、実際の時刻へ直してから比べる。
+  if (!beat.defend && !beat.finish && hitStop > 0)
+    for (const stage of HIT_STAGES) {
+      const since = t - warpReal(beat.impact + stage.after, warp);
+      if (since < 0 || since >= KICK_SECONDS) continue;
+      const push = shakeMax * (1 - since / KICK_SECONDS);
+      kickX += stage.kick.x * push; kickY += stage.kick.y * push;
+    }
   // 0 に丸めるときに符号が残らないよう、0 を足しておく。
-  const shakeX = Math.round(wobble(t * SHAKE_HZ, seed + 1) * shakeMax * power + kickX) + 0;
-  const shakeY = Math.round(wobble(t * SHAKE_HZ * 1.13, seed + 2) * shakeMax * .8 * power + kickY) + 0;
-  // 傾きは最大1度、揺れの拡大は最大1.03倍。どちらも揺れと同じ強さで動く。
-  const rotate = wobble(t * SHAKE_HZ * .7, seed + 3) * weight * power;
-  const shakeZoom = 1 + (wobble(t * SHAKE_HZ * .8, seed + 4) * .5 + .5) * .03 * weight * power;
+  const shakeX = Math.round(wobble(t * SHAKE_HZ, seed + 1) * baseMax * drive + kickX + enemy.x) + 0;
+  const shakeY = Math.round(wobble(t * SHAKE_HZ * 1.13, seed + 2) * baseMax * .8 * drive + kickY + enemy.y) + 0;
+  // 傾きは最大 SHAKE_TILT 度、揺れの拡大は最大1.03倍。どちらも揺れと同じ強さで動く。
+  const rotate = wobble(t * SHAKE_HZ * .7, seed + 3) * SHAKE_TILT * drive;
+  const shakeZoom = 1 + (wobble(t * SHAKE_HZ * .8, seed + 4) * .5 + .5) * .03 * drive;
 
-  // 命中で世界を止める長さ。下のとどめの時刻を実際の時刻へ直すのにも使う。
-  const hitStop = hitStopOf(preset, intensity, calm, beat);
   // とどめの一撃の時刻。t は実際の時刻なので、世界の時刻で置いた78.5秒を実際の時刻（78.6秒）へ直してから比べる。
   // ほかの回は null なので、ここから下の足し算は何も起こらない（値は今までと同じまま）。
-  const finalBlow = beat.finish && beat.finalBlow !== null ? warpReal(beat.finalBlow, warpOf(beat, hitStop)) : null;
+  const finalBlow = beat.finish && beat.finalBlow !== null ? warpReal(beat.finalBlow, warp) : null;
   // 一撃からの強さ。0.3秒で0へ戻る。傾きと寄りに使う。
   const blow = finalBlow !== null && t >= finalBlow ? Math.max(0, 1 - (t - finalBlow) / .3) : 0;
-  const flashMax = preset.flash * clamp(.4 + intensity * .25, 0, 1) * (calm ? 1 / 3 : 1);
+  // 閃光の濃さの元。派手（既定）のふつうの魔法（派手さ1.9）で命中が約0.75、放出が約0.45になる。
+  // 上限は overlay.ts の FLASH_MAX（0.85）で頭打ちにするので、ここでは1を超えてもよい。
+  const flashMax = preset.flash * (.7 + intensity * .35) * (calm ? 1 / 3 : 1);
   let flash = 0;
-  if (t >= beat.release) flash = Math.max(flash, flashMax * .55 * Math.max(0, 1 - (t - beat.release) / .16));
+  if (t >= beat.release) flash = Math.max(flash, flashMax * .6 * Math.max(0, 1 - (t - beat.release) / .16));
   if (t >= beat.impact) flash = Math.max(flash, flashMax * (beat.defend ? .85 : violent || beat.finish ? 1 : .5) * Math.max(0, 1 - (t - beat.impact) / .16));
   // とどめの発動だけは、術式が通り抜けるぶん白を濃くする。ほかの回はここを通らない。
   if (beat.finish && t >= beat.release)
@@ -109,6 +209,9 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   // とどめの一撃だけは、全画面の白をいっぱいまで出す。
   if (finalBlow !== null && t >= finalBlow)
     flash = Math.max(flash, Math.max(flashMax, FINISH_BLOW_FLASH.level * (calm ? 1 / 3 : 1)) * Math.max(0, 1 - (t - finalBlow) / FINISH_BLOW_FLASH.seconds));
+  // 命中の最初の一瞬だけ画面を反転する。閃光の立ち上がりと同じ長さで、その閃光の一部（overlay.ts が閃光の始まりに合わせて出す）。
+  // 揺らす一撃（攻撃、防御の受け止め、とどめ）だけ。控えめモードでは出さない。
+  const invert = !calm && (violent || beat.defend || beat.finish) && t >= beat.impact && t < beat.impact + INVERT_SECONDS ? 1 : 0;
   const darkenMax = preset.darken * clamp(.5 + intensity * .2, 0, 1);
   // 締め切りから暗くなり、放出で一度抜け、命中の後にゆっくり戻る。
   const charge = clamp((t - beat.inputEnd) / 1.2), back = clamp((t - beat.impact - .8) / 1.6);
@@ -118,11 +221,11 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   if (finalBlow !== null && t >= finalBlow && !calm)
     chromatic = Math.max(chromatic, increase(preset.chromatic, intensity, .4) * Math.max(0, 1 - (t - finalBlow) / .5));
 
-  // 溜めの後半でゆっくり1.03倍まで寄り、放出で戻る。命中では1.1倍を0.3秒かけて戻す。
+  // 溜めの後半でゆっくり1.03倍まで寄り、放出で戻る。命中では HIT_ZOOM 倍を0.3秒かけて戻す。
   const closeIn = smooth(clamp((t - (beat.release - 1.5)) / 1.5)) * Math.max(0, 1 - clamp((t - beat.release) / .3));
   const hit = t >= beat.impact ? 1 - clamp((t - beat.impact) / .3) : 0;
-  // とどめの一撃では、傾き2度と寄り1.2倍を足す。控えめモードでは足さない。
-  const zoom = calm ? 1 : (1 + .03 * closeIn) * (1 + .1 * hit * hit * (weight ? 1 : .5)) * shakeZoom * (1 + (FINISH_ZOOM - 1) * blow);
+  // とどめの一撃では、傾き2度と寄り1.2倍を足す。敵の圧の寄り（溜めと床を打つ一撃）も掛ける。控えめモードでは足さない。
+  const zoom = calm ? 1 : (1 + .03 * closeIn) * (1 + (HIT_ZOOM - 1) * hit * hit * (weight ? 1 : .5)) * shakeZoom * (1 + (FINISH_ZOOM - 1) * blow) * enemy.zoom;
   // 放出の直前だけ全部を消して暗くする。発動の時刻でそのまま閃光へつなぐ。
   const blackout = t >= beat.release - BLACKOUT_SECONDS && t < beat.release ? clamp((t - (beat.release - BLACKOUT_SECONDS)) / .04) : 0;
   // 溜めの後半で背景の色を抜き、命中の後にゆっくり戻す。
@@ -130,7 +233,7 @@ export function screenState(t: number, intensity: number, preset: EffectPreset, 
   const saturate = 1 - .4 * pale;
 
   return { shakeX, shakeY, flash: clamp(flash), darken: clamp(darken), chromatic,
-    hitStop, rotate: rotate + (calm ? 0 : FINISH_TILT * blow), zoom, blackout, saturate };
+    hitStop, rotate: rotate + (calm ? 0 : FINISH_TILT * blow) + enemy.rotate, zoom, blackout, saturate, invert };
 }
 
 /**
@@ -198,7 +301,7 @@ export function warpReal(world: number, warp: TimeWarp) {
 /** 同じ回と同じ停止の長さなら、作ったゆがみを使い回す。毎コマ作り直さないため。 */
 const warpCache = new Map<string, TimeWarp>();
 /**
- * その回のゆがみ。一回目と防御は命中の一回だけ止める。
+ * その回のゆがみ。一回目は命中で止めたあと二度止め直す三段（HIT_STAGES）、防御は命中の一回だけ止める。
  * とどめは一発目の命中ととどめの一撃で止め、そのあとスローにする。中身は本人の魔法では変えない。
  * 控えめモードでは hitStop が0で来るので、そのときだけ止めをなくす（スローは残す）。
  * 同じ組み合わせでは同じものを返すので、返ってきたゆがみは書き換えない。
@@ -219,7 +322,10 @@ function buildWarp(beat: Beat, hitStop: number): TimeWarp {
       slow: { from: beat.finalBlow + FINISH_SLOW.after, seconds: FINISH_SLOW.seconds, rate: FINISH_SLOW.rate },
     };
   }
-  return { stops: [{ at: beat.impact, hold: hitStop }], slow: null };
+  // 防御は敵の一撃を受け止める一回だけ止める。止めが無い（控えめモードや控えめの設定）ときは一回目も何もしない。
+  if (beat.defend || hitStop <= 0) return { stops: [{ at: beat.impact, hold: hitStop }], slow: null };
+  // 一回目は命中の止めのあとに二度止め直す三段。単発か連弾かは引数から分からないので、どちらも同じ三段にする。
+  return { stops: [{ at: beat.impact, hold: hitStop }, ...HIT_STAGES.map(stage => ({ at: beat.impact + stage.after, hold: stage.hold }))], slow: null };
 }
 
 /** 実際の時刻から世界の時刻を出す。演出も騎士も術式も同じこの時刻を見る。 */

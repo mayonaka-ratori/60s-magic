@@ -1,7 +1,7 @@
 import { describe,it,expect } from 'vitest';
 import { BATTLE_END,BEATS,ROUNDS,beatAt,beatOf,phaseAt,roundAt,replyLimitOf,speechLimitOf } from '../src/game/rounds';
 import { Battle } from '../src/game/battle';
-import { FINISH_SLOW,FINISH_STOPS,FINISH_TILT,FINISH_ZOOM,HIT_STOPS,WARP_LIMITS,effectTime,screenState,warpOf,warpReal,warpTime } from '../src/render/effects/screen';
+import { FINISH_SLOW,FINISH_STOPS,FINISH_TILT,FINISH_ZOOM,HIT_STOPS,HIT_ZOOM,SHAKE_TILT,WARP_LIMITS,effectTime,screenState,warpOf,warpReal,warpTime } from '../src/render/effects/screen';
 import { postHeavyActive,postToOf } from '../src/render/composite';
 import { presets } from '../src/render/effects/presets';
 import { dueSounds } from '../src/audio/cues';
@@ -44,8 +44,10 @@ describe('とどめの回の時刻表',()=>{
 describe('世界の時計のゆがみ',()=>{
   /** 前までの式。命中で hitStop 秒だけ止めるだけのもの。 */
   const before=(t:number,hitStop:number,impact:number)=>t<impact||hitStop<=0?t:impact+Math.max(0,t-impact-hitStop);
-  it('一回目と防御の世界の時刻は、今までと1ミリ秒刻みで完全に同じ',()=>{
-    for(const beat of [BEATS[0],BEATS[1]])for(const hitStop of [0,HIT_STOPS.weak,HIT_STOPS.strong,HIT_STOPS.finish]){
+  it('防御の世界の時刻は今までと1ミリ秒刻みで完全に同じ。一回目も止めが無ければ同じ',()=>{
+    // 一回目の止めがあるときは、命中のあとに二度止め直す三段になる（tests/screen.test.ts）。
+    const 組=[[BEATS[0],[0]],[BEATS[1],[0,HIT_STOPS.weak,HIT_STOPS.strong,HIT_STOPS.finish]]] as const;
+    for(const [beat,止め] of 組)for(const hitStop of 止め){
       let 違い=0;
       for(let ms=0;ms<=defend.end;ms++){const t=ms/1000;if(effectTime(t,hitStop,beat)!==before(t,hitStop,beat.impact))違い++;}
       expect(違い,`停止${hitStop}秒`).toBe(0);
@@ -138,11 +140,11 @@ describe('とどめの回の画面',()=>{
     expect(state(finishBeat.release-.01).blackout).toBe(1);
     expect(state(finishBeat.release).blackout).toBe(0);
   });
-  it('一回目の画面は、とどめの足し算を入れても今までのまま',()=>{
+  it('一回目の画面は、とどめの足し算を入れても一回目の決まり（傾き2度、寄り1.18倍）のまま',()=>{
     for(let t=BEATS[0].release;t<BEATS[0].end;t+=.01){
       const s=screenState(t,3,presets.max,'attack');
-      expect(Math.abs(s.rotate)).toBeLessThanOrEqual(1);
-      expect(s.zoom).toBeLessThan(1.2);
+      expect(Math.abs(s.rotate)).toBeLessThanOrEqual(SHAKE_TILT);
+      expect(s.zoom).toBeLessThan(HIT_ZOOM*1.03+.001);
     }
   });
 });

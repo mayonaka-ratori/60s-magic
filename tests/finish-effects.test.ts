@@ -8,10 +8,10 @@ import { MagicCanvas, afterglowEnd, afterglowFade, stopAtOf } from '../src/rende
 import type { Frame } from '../src/render/effects/frame';
 import type { Point, Recipe } from '../src/game/types';
 import {
-  FINISH_HOLD, FINISH_INHERITED, FINISH_PASS, FINISH_RING, FINISH_SETTLE, SPELL_LINE_WIDTH,
+  FINISH_HOLD, FINISH_INHERITED, FINISH_PASS, FINISH_RING, FINISH_SETTLE, FINISH_STREAK, SPELL_LINE_WIDTH,
   drawFinish, finishBoost, finishHitPlan, finishHitTimes, finishTravel, holdTime,
   inheritedSpot, passExitScale, passStrokeWidth, passThrough, ringLayout, ringPassAt, ringStrokeWidth,
-  settleFade, spellRadius,
+  settleFade, spellRadius, streakAt, streakSide, streakStart,
 } from '../src/render/effects/finish';
 
 const finishBeat = beatOf(ROUNDS[2]);
@@ -102,7 +102,8 @@ describe('術式が視界を通り抜ける', () => {
     expect(白(finishBeat.release)).toBeCloseTo(FINISH_PASS_FLASH.level, 6);
     expect(白(finishBeat.release + FINISH_PASS_FLASH.seconds)).toBeLessThan(.2);
     expect(白(finishBeat.release, finishBeat, true)).toBeCloseTo(FINISH_PASS_FLASH.level / 3, 6);
-    for (const beat of [BEATS[0], BEATS[1]]) expect(白(beat.release, beat)).toBeLessThan(.3);
+    // ほかの回の放出の白は約0.45（派手さ1.9で。ここは2なので少し上）で、とどめの0.85には届かない。
+    for (const beat of [BEATS[0], BEATS[1]]) expect(白(beat.release, beat)).toBeLessThan(.6);
   });
 });
 
@@ -219,6 +220,68 @@ describe('多段命中', () => {
     expect(finishHitPlan(5)).toEqual([2, 1, 1, 1]);
     expect(finishHitPlan(8)).toEqual([2, 2, 2, 2]);
     for (let count = 1; count <= 8; count++) expect(finishHitPlan(count).reduce((a, b) => a + b, 0)).toBe(count);
+  });
+});
+
+describe('四方向から走り込む光の筋', () => {
+  const w = 1280, h = 720, g = { x: 900, y: 360 }, times = finishHitTimes(finishBeat);
+  it('左、右、上、正面の順で、どれも画面の外から出る', () => {
+    expect([0, 1, 2, 3].map(streakSide)).toEqual(['left', 'right', 'top', 'front']);
+    expect(streakStart(0, w, h, g).x).toBeLessThan(0);
+    expect(streakStart(1, w, h, g).x).toBeGreaterThan(w);
+    expect(streakStart(2, w, h, g).y).toBeLessThan(0);
+    expect(streakStart(2, w, h, g).x).toBe(g.x);
+    expect(streakStart(3, w, h, g).y).toBeGreaterThan(h);
+    expect(streakStart(3, w, h, g).x).toBe(w / 2);
+  });
+  it('命中の0.12秒前から走り、命中の時刻にちょうど届く', () => {
+    expect(FINISH_STREAK.seconds).toBeCloseTo(.12, 6);
+    expect(streakAt(0, -FINISH_STREAK.seconds - .001, w, h, g)).toBeNull();
+    expect(streakAt(0, FINISH_STREAK.linger, w, h, g)).toBeNull();
+    const from = streakStart(0, w, h, g), begin = streakAt(0, -FINISH_STREAK.seconds, w, h, g)!;
+    expect(begin.head.x).toBeCloseTo(from.x, 6); expect(begin.arrived).toBe(false);
+    const arrived = streakAt(0, 0, w, h, g)!;
+    expect(arrived.head).toEqual(g); expect(arrived.arrived).toBe(true);
+    // 頭は騎士へ向かって進み続け、後半ほど速い。
+    let last = begin.head.x, gain = 0;
+    for (let since = -FINISH_STREAK.seconds + .01; since < 0; since += .01) {
+      const now = streakAt(0, since, w, h, g)!.head.x;
+      expect(now).toBeGreaterThan(last); expect(now - last).toBeGreaterThanOrEqual(gain - 1e-9); gain = now - last; last = now;
+    }
+    // 届いたあとの名残は薄れていく。
+    expect(streakAt(0, .05, w, h, g)!.alpha).toBeLessThan(arrived.alpha);
+  });
+  it('4回の命中の時刻それぞれに、その方向からの筋が描かれる', () => {
+    const 筋 = (t: number) => {
+      const log: string[] = [];
+      drawFinish(frame(t, { c: stubContext(log), once: () => {} }));
+      const point = (name: string) => log.filter(line => line.startsWith(name + ':')).map(line => line.slice(name.length + 1).split(',').map(Number));
+      return { tail: point('moveTo'), head: point('lineTo') };
+    };
+    for (let j = 0; j < times.length; j++) {
+      const { tail, head } = 筋(times[j] - .05);
+      expect(tail.length, `${j + 1}回目`).toBe(1); expect(head.length, `${j + 1}回目`).toBe(1);
+      const [[tx, ty]] = tail, [[hx, hy]] = head;
+      // 尾より頭が騎士に近く、頭はまだ騎士に届いていない。
+      expect(Math.hypot(hx - g.x, hy - g.y)).toBeLessThan(Math.hypot(tx - g.x, ty - g.y));
+      expect(Math.hypot(hx - g.x, hy - g.y)).toBeGreaterThan(1);
+      if (j === 0) expect(hx).toBeLessThan(g.x);
+      if (j === 1) expect(hx).toBeGreaterThan(g.x);
+      if (j === 2) expect(hy).toBeLessThan(g.y);
+      if (j === 3) expect(hy).toBeGreaterThan(g.y);
+    }
+    // 最後の筋の名残が消えたあとは線を引かない（輪が並ぶ53.5秒までは輪の目盛りの線があるので、その前では見ない）。
+    expect(筋(times[3] + FINISH_STREAK.linger + .01).tail.length).toBe(0);
+  });
+  it('届いた瞬間に、来た方向へ火花を返す', () => {
+    for (const [j, check] of [[0, (p: { vx: number }) => p.vx < 0], [1, (p: { vx: number }) => p.vx > 0], [2, (p: { vy: number }) => p.vy < 0], [3, (p: { vy: number }) => p.vy > 0]] as const) {
+      const pool = new ParticlePool(700), fired: string[] = [];
+      // 筋の火花だけを見る。ほかの一度きりの発生（部品の破片など）はここでは起こさない。
+      drawFinish(frame(times[j] + .001, { pool, once: (key, run) => { fired.push(key); if (key.startsWith('finish-streak')) run(); } }));
+      expect(fired).toContain('finish-streak-' + j);
+      expect(pool.count).toBeGreaterThan(0);
+      for (const p of pool.items) if (p.alive) { expect(p.kind).toBe(1); expect(check(p), `${j + 1}回目`).toBe(true); }
+    }
   });
 });
 

@@ -73,19 +73,20 @@ describe('時刻ごとの体力', () => {
  */
 describe('命中の停止と体力', () => {
   const steps = planHealthSteps(recipe({ count: 7 }));
-  // 世界の時計は一回目の命中から0.09秒だけ止まる。
+  // 世界の時計は命中から0.14秒止まり、そのあと世界の命中+0.08秒と+0.2秒でもう一度短く止まる（三段）。
   const world = (ms: number) => effectTime(ms / 1000, HIT_STOPS.strong) * 1000;
   it('止まっている間は時刻も体力も動かない', () => {
     for (const ms of [命中 + 20, 命中 + 50, 命中 + 80]) expect(world(ms)).toBeCloseTo(命中, 10);
     expect(healthAt(world(命中 + 80), steps)).toEqual(healthAt(world(命中 + 20), steps));
   });
   it('止まった分だけ次の段が遅れる', () => {
-    // 2段目は命中の0.08秒後。本編の0.12秒後は、世界の時計ではまだ0.03秒後なので減っていない。
+    // 2段目は命中の0.08秒後。本編の0.17秒後は、世界の時計ではまだ0.03秒後なので減っていない。
     expect(steps[1].at).toBeCloseTo(命中 + 80);
-    expect(world(命中 + 120)).toBeCloseTo(命中 + 30, 10);
-    expect(healthAt(world(命中 + 120), steps).left).toBeGreaterThan(healthAt(命中 + 120, steps).left);
-    // 止まりが終われば、遅れたまま同じように減る。
-    expect(healthAt(world(命中 + 180), steps).left).toBe(healthAt(命中 + 90, steps).left);
+    expect(world(命中 + 170)).toBeCloseTo(命中 + 30, 10);
+    expect(healthAt(world(命中 + 170), steps).left).toBeGreaterThan(healthAt(命中 + 170, steps).left);
+    // 止まりが終われば、遅れたまま同じように減る。本編の0.26秒後は、二度目の止め直し（世界の+0.08秒、0.03秒）を抜けた世界の+0.09秒。
+    expect(world(命中 + 260)).toBeCloseTo(命中 + 90, 10);
+    expect(healthAt(world(命中 + 260), steps).left).toBe(healthAt(命中 + 90, steps).left);
   });
 });
 

@@ -6,6 +6,7 @@ import { AIM,AIM_RADIUS,DEFAULT_ASPECT,ENCLOSE_TURN,GUARD_REACH,coversAim,dropNe
 import { aimMark } from '../src/render/effects/guard';
 import { GUARD_DAMAGE,healthSteps } from '../src/render/health-bar';
 import { hitDelay } from '../src/render/effects/release';
+import { SLAM_AT } from '../src/render/composite';
 import { liveWords } from '../src/game/live-words';
 import { beatOf } from '../src/game/rounds';
 import { spellPose,completedSpellFrame } from '../src/render/spell-layout';
@@ -307,9 +308,9 @@ describe('防御の回の画面と姿勢',()=>{
     const gentle=screenState(一.impact+.05,2,presets.vivid,'defend',0,.5);
     expect(Math.hypot(gentle.shakeX,gentle.shakeY)).toBeLessThan(Math.hypot(hit.shakeX,hit.shakeY));
   });
-  it('防御の停止は常に0.09秒。控えめモードでは止めない',()=>{
+  it('防御の停止は常に0.14秒（強）。控えめモードでは止めない',()=>{
     const beat=防;
-    expect(hitStopOf(presets.vivid,0,false,beat)).toBe(.09);
+    expect(hitStopOf(presets.vivid,0,false,beat)).toBe(.14);
     expect(hitStopOf(presets.vivid,3,false,beat)).toBe(HIT_STOPS.strong);
     expect(hitStopOf(presets.vivid,3,true,beat)).toBe(0);
   });
@@ -475,20 +476,23 @@ describe('防御の回の言葉と配置',()=>{
     expect(liveWords([entry])[0].atMs).toBe(6500);
     expect(liveWords([entry],defend.start)[0].atMs).toBe(defend.start+6500);
   });
-  it('防御の回は、術式を狙いの印の高さへ寄せる',()=>{
+  it('防御の回は、何も描いていないときだけ狙いの印の高さに置き、描いた形は描いた場所に残す',()=>{
     const wide=1600,high=900;
     expect(completedSpellFrame(wide,high,beatOf(first)).y).toBeCloseTo(high*.66);
     expect(completedSpellFrame(wide,high,beatOf(defend)).y).toBeCloseTo(high*AIM.y);
-    // 締め切りまでは入力した位置のまま。発動で印の前に収まる。
-    const points=[{x:.3,y:.3,t:defend.start,hand:0,stroke:1},{x:.4,y:.4,t:defend.start+500,hand:0,stroke:1}];
+    // 締め切りまでは入力した位置のまま。発動でも描いた場所に残る（盾は描いた線からそのまま作るので、術式も同じ場所にある方が合う）。
+    const points=[{x:.3,y:.3,t:defend.start,hand:0,stroke:1},{x:.4,y:.4,t:defend.start+500,hand:0,stroke:1},{x:.6,y:.5,t:defend.start+1000,hand:0,stroke:1}];
     expect(spellPose(points,wide,high,defend.inputEnd,beatOf(defend)).progress).toBe(0);
     expect(spellPose(points,wide,high,defend.release,beatOf(defend)).progress).toBe(1);
+    expect(spellPose(points,wide,high,defend.release,beatOf(defend)).center).toEqual({x:wide*.45,y:high*.4});
+    expect(spellPose(points,wide,high,defend.release,beatOf(defend)).scale).toBeCloseTo(1);
     // 余韻は回の終わりより前に消えきる。
     expect(spellPose(points,wide,high,defend.end,beatOf(defend)).opacity).toBe(0);
   });
   it('重い後処理は、回ごとに発動の前後だけ出す',()=>{
     const beat=防;
-    expect(postHeavyActive(防.release-.2,beat)).toBe(false);
+    // 防御の回は、敵の一撃が床を打つ時刻の0.1秒前から入れる（合成の試験で確かめる）。その前は出さない。
+    expect(postHeavyActive(SLAM_AT-.15,beat)).toBe(false);
     expect(postHeavyActive(防.release+.5,beat)).toBe(true);
     expect(postHeavyActive(防.impact+3,beat)).toBe(false);
     // 一回目も同じ作りで、発動の直前から命中の2.5秒後まで。

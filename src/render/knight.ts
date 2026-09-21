@@ -17,11 +17,10 @@ import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { clamp } from '../game/motion';
-import { BATTLE_END, FINAL_BLOW_MS, FINISH_COLLAPSE_MS, GUARD_STAGGER_MS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS, FINISH_KNEEL_MS, FINISH_SWORD_DROP_MS, ROUNDS } from '../game/rounds';
+import { BATTLE_END, ENEMY_CHARGE_FROM_MS, ENEMY_MOVES, ENEMY_SLAM_MS, FINAL_BLOW_MS, FINISH_COLLAPSE_MS, GUARD_STAGGER_MS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS, FINISH_KNEEL_MS, FINISH_SWORD_DROP_MS, ROUNDS } from '../game/rounds';
 import { colors } from './magic';
 import { getPreset, type EffectPreset } from './effects/presets';
 import { smooth } from './effects/frame';
-import { IMPACT_AT } from './effects/screen';
 import type { Recipe } from '../game/types';
 
 /** 画面の中の点を出すときに使う単位行列。毎コマ作らず、この一つを使い回す。 */
@@ -30,6 +29,11 @@ const IDENTITY=Matrix.Identity();
 const BASE_PRESET = getPreset(null);
 /** 立体を描く面の粗さ。背景の一枚絵より少しだけ粗く描き、拡大で輪郭をなまらせる。描く点が減るので速さにも効く。 */
 const COARSE = 1.3;
+/**
+ * since が from 以上 to 未満か。時刻を秒に直すときの丸めで、終わりの時刻がごくわずかに手前へずれることがある
+ * （0.4が0.3999…になる）。端は外として扱い、終わったはずの動きが1e-16だけ残らないようにする。
+ */
+const within=(since:number,from:number,to:number)=>since>=from-1e-9&&since<to-1e-9;
 
 const mix=(a:string,b:string,r:number)=>{
   const read=(hex:string)=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
@@ -51,6 +55,36 @@ export function reactionPower(recipe:Recipe|null|undefined,amount=0,preset:Effec
   return clamp((.16+many*.42+wide*.22+focus*.26)*gain+fromInput);
 }
 
+/**
+ * 一回目の受付中に騎士が自分から動く時刻（秒）。回の表（rounds.ts）の ENEMY_MOVES を見る。
+ * 画面の揺れと音も同じ表を見るので、足が床を打つ瞬間と剣が盾を打つ瞬間をこの時刻に合わせる。
+ */
+const STEP_AT=ENEMY_MOVES.find(move=>move.kind==='step')!.at/1000;
+const CLANG_AT=ENEMY_MOVES.find(move=>move.kind==='clang')!.at/1000;
+/** 足の踏み替え。着地の前に脚を浮かせる秒数と、着地で体が沈む秒数。着地の瞬間が STEP_AT。 */
+export const STEP_LIFT=.2,STEP_SINK=.4;
+/** 盾打ち。打つ前に腕を内へ振る秒数、打ってから戻す秒数、盾の面が光る秒数。打つ瞬間が CLANG_AT。 */
+export const CLANG_IN=.12,CLANG_OUT=.18,CLANG_FLASH=.08;
+/**
+ * 足の踏み替えの進み具合。lift は脚が浮いている量、sink は着地で体が沈む量（どちらも0〜1）。
+ * 揺れと音は着地の時刻に鳴るので、脚は着地の0.2秒前から浮かせ、着地から0.4秒で沈んで戻る。
+ */
+export function stepAt(t:number) {
+  const since=t-STEP_AT;
+  const lift=within(since,-STEP_LIFT,0)?Math.sin((since+STEP_LIFT)/STEP_LIFT*Math.PI):0;
+  const sink=within(since,0,STEP_SINK)?Math.sin(since/STEP_SINK*Math.PI):0;
+  return {lift,sink};
+}
+/**
+ * 盾打ちの進み具合。swing は盾の腕を内へ振り剣を当てる量（0〜1）、flash は打った瞬間の盾の光（0〜1）。
+ * 打つ前の0.12秒で振り、打ってから0.18秒で戻す。合わせて0.3秒。
+ */
+export function clangAt(t:number) {
+  const since=t-CLANG_AT;
+  const swing=within(since,-CLANG_IN,0)?smooth((since+CLANG_IN)/CLANG_IN):within(since,0,CLANG_OUT)?1-smooth(since/CLANG_OUT):0;
+  const flash=within(since,0,CLANG_FLASH)?1-since/CLANG_FLASH:0;
+  return {swing,flash};
+}
 /** 待機の息づかいの周期（秒）。剣を上げてから下ろすまでを一回とする。 */
 export const IDLE_BREATH_SECONDS=5.6;
 /** 息づかいで、上げた構え（姿勢9）へどれだけ寄せるか。1にすると上げきったまま止まって見える。 */
@@ -65,6 +99,8 @@ export const idleSway=(ms:number,reduced=false)=>
 
 export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe['purpose']='attack',power=.45,calm=false,impactMs=ROUNDS[0].impact) {
   const t=(ms-impactMs)/1000;
+  // 自分から動く足踏みと盾打ち。遊んでいる間だけで、動きを減らす設定では止める。
+  const moving=active&&!reduced,stomp=moving?stepAt(ms/1000):{lift:0,sink:0},bang=moving?clangAt(ms/1000):{swing:0,flash:0};
   const hit=active?smooth(t/.09)*(1-smooth((t-.62)/.2)):0;
   const recover=active?smooth((t-.62)/.2)*(1-smooth((t-1.65)/.65)):0;
   const force=purpose==='bind'?.35:purpose==='enhance'?.5:1;
@@ -98,7 +134,9 @@ export function knightPose(ms:number,active:boolean,reduced=false,purpose:Recipe
     spin:reduced?0:push*(1.4+strength*2.6)+collapse*3.4,
     // 控えめモードでは白飛びを出さず、残像と輪郭の発光を3分の1にする。
     flashAlpha:calm||step<0?0:(.85-step*.2)*(.5+strength*.5),flashTint:step===1?1:0,
-    ghost:(struck&&t<.3?1-t/.3:0)*(calm?1/3:1),rim:(struck&&t<.6?1-smooth(t/.6):0)*(calm?1/3:1)};
+    ghost:(struck&&t<.3?1-t/.3:0)*(calm?1/3:1),rim:(struck&&t<.6?1-smooth(t/.6):0)*(calm?1/3:1),
+    // 自分から動く分。足踏み（脚を浮かせる量と着地で沈む量）、盾打ち（腕を振る量と盾の光）、溜めの震え。
+    stepLift:stomp.lift,stepSink:stomp.sink,clang:bang.swing,clangFlash:bang.flash,tremor:0};
 }
 
 // 姿勢の表。角度だけを並べ、weightsで混ぜる。body と head は、正の値で後ろへ反る。
@@ -146,8 +184,10 @@ export const FALL_FROM=FINISH_FALL_FROM_MS/1000,FALL_TO=FINISH_FALL_TO_MS/1000;
  * 設計の初めの案は1.2ラジアンと0.6だったが、0.6まで寄せると兜の上面だけが画面いっぱいの
  * 黒い形になり、何が映っているか分からなくなる。回す角も1.0で十分に倒れて見えるので浅くした。
  * 倒れた体の一番上が画面の縦の真ん中より下へ来る程度に抑える。
+ * 見上げる視点にして視点が騎士から4mまで近づいたので、近づく距離は0.25から0.15へ縮めた（距離の比で同じ寄り方）。
+ * それでも倒れた頭は以前より近く大きく映る。実機での見え方は未確認。
  */
-export const FALL_TURN=1,FALL_NEAR=.25;
+export const FALL_TURN=1,FALL_NEAR=.15;
 /** 防御の姿勢へ移り始める時刻（秒）。一回目の受け渡しの始まり。 */
 export const GUARD_FROM=FIRST.handoff/1000;
 /**
@@ -340,6 +380,8 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
   const fall=fallAt(t),still=1-fall;
   // とどめの4回の命中と直撃の白飛び。防御の弾き返しとは時刻が離れているが、念のため濃いほうを使う。
   const blast=finishFlashAt(t);
+  // 溜めの間、掲げた剣の腕が溜まるほど震える。振り下ろしで止まる。動きを減らす設定では出さない。
+  const tremor=reduced?0:chargeTremorAt(t);
   return {weights,lean:reduced?0:repel*.35,bladeHeat,aura,auraBurst,smear,
     // 0に丸めるときに符号が残らないよう、0を足しておく。
     breath:reduced?0:(Math.sin(ms*.0016)*.003+charging*Math.sin(t*Math.PI*2)*.004)*still+0,
@@ -353,7 +395,20 @@ export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase
     flashAlpha:Math.max(stepIndex<0?0:(.85-stepIndex*.2)*.75*soft,blast.alpha*soft),flashTint:stepIndex===1||blast.tint?1:0,
     ghost:reduced||!struck?0:back<.3?1-back/.3:0,
     // 弱点の輪郭の光は、回の終わりまでに0へ戻す。結果を出したまま待つ間、毎コマ形を塗り直さないため。
-    rim:t>=weak?smooth((t-weak)/.5)*(1-smooth((t-weak-.5)/.5))*.5:struck?1-smooth(back/.6):0};
+    rim:t>=weak?smooth((t-weak)/.5)*(1-smooth((t-weak-.5)/.5))*.5:struck?1-smooth(back/.6):0,
+    // 足踏みと盾打ちは一回目だけ。防御の回は溜めの震えを持つ。
+    stepLift:0,stepSink:0,clang:0,clangFlash:0,tremor};
+}
+/** 溜めの震えの最大の振れ（ラジアン）。剣の腕にかける。 */
+export const TREMOR_MAX=.035;
+/**
+ * 溜めの震えの振れ（ラジアン）。溜め始め（ENEMY_CHARGE_FROM_MS）から振り下ろし（lock）まで、
+ * 溜まるほど強くなる。二乗にして、初めはほとんど震えず終わり際に強く震えるようにする。
+ */
+export function chargeTremorAt(t:number) {
+  const from=ENEMY_CHARGE_FROM_MS/1000,until=DEFEND.lock/1000;
+  if(!within(t-from,0,until-from))return 0;
+  return clamp((t-from)/(until-from))**2*TREMOR_MAX;
 }
 const POSE_KEYS=Object.keys(POSES[0]) as Array<keyof Pose>;
 /** 重みから実際の角度を出す。描くときと、試験で姿勢を確かめるときに使う。 */
@@ -363,9 +418,99 @@ export const blendPose=(weights:number[]):Pose=>{
   return result;
 };
 
-// 一枚絵の騎士と同じ位置に立たせる。角の先まで2.93mとし、足元を画面の高さの71.4%、頭の先を5.2%へ置く。
-const HEIGHT=2.93,FOOT=.714,CROWN=.052,TAN=.3205,BACKDROP_RATIO=1672/941;
-const DEPTH=HEIGHT/((FOOT-.5)*2+(.5-CROWN)*2),CAMERA_Y=(FOOT-.5)*2*DEPTH,CAMERA_Z=-DEPTH/TAN;
+// 一枚絵の騎士と同じ場所に立たせたまま、見上げる。角の先まで2.93mとし、足元を画面の高さの71.4%、兜の先を2%へ置く。
+// 背景は一枚絵なので足元の位置は動かせない。兜の先を上端まで寄せて背を高く見せ、視点は膝の高さまで下げて近づき、
+// 少し上を向く。近い足元ほど大きく、遠い頭ほど小さく映るので、見上げる大きな相手に見える。
+// 以前は高さ0.95m、距離6.9mの真正面から見て、兜の先を5.2%に置いていた。
+export const HEIGHT=2.93,FOOT=.714,CROWN=.02,BACKDROP_RATIO=1672/941;
+/** 視点の高さ（m）と、騎士までの距離（m）。 */
+export const EYE=.5,DIST=4;
+
+/** 見上げる視点。上を向く角（pitch、ラジアン）と縦の視野の半分の正接（tan）は、足元と兜の先の位置から決める。 */
+export type KnightView={eye:number;dist:number;pitch:number;tan:number;look:number};
+/**
+ * 視点の高さと距離から、足元が foot、兜の先が crown に来る上向きの角と視野を出す。
+ * 高さ y の点は視点から見て奥行き d=(y-eye)sinθ+dist cosθ、上向き u=(y-eye)cosθ-dist sinθ にあり、
+ * 画面の上からの位置は 0.5-0.5*u/(d*tan)。足元と兜の先の u/d の比は tan によらないので、
+ * その比から tanθ の二次方程式 D(kb-a)τ²+(ab-D²)(1-k)τ+D(b-ka)=0 が出る（a=-eye、b=height-eye、k は位置の比）。
+ * look は注視点の高さ（m）。確認のための値で、描くときは pitch を使う。
+ */
+export function knightView(eye=EYE,dist=DIST,foot=FOOT,crown=CROWN,height=HEIGHT):KnightView {
+  const a=-eye,b=height-eye,k=-(1-2*crown)/(2*foot-1);
+  const A=dist*(k*b-a),B=(a*b-dist*dist)*(1-k),C=dist*(b-k*a);
+  const root=Math.sqrt(Math.max(0,B*B-4*A*C));
+  // 0〜1にある小さいほうの根が上を向く角の正接。真正面（0）も見下ろし（負）も使わない。
+  const candidates=[(-B-root)/(2*A),(-B+root)/(2*A)].filter(v=>v>0&&v<1);
+  const tau=candidates.length?Math.min(...candidates):0;
+  const ratio=(y:number)=>((y-eye)-dist*tau)/((y-eye)*tau+dist);
+  return {eye,dist,pitch:Math.atan(tau),tan:ratio(height)/(1-2*crown),look:eye+dist*tau};
+}
+export const KNIGHT_VIEW=knightView();
+/**
+ * 視点から見た点の、画面の上からの位置（0〜1）と、その奥行きでの1mの大きさ（画面の縦の高さを1として）。
+ * 点は騎士の中心の縦の面（x=0）にあるものとし、y は高さ、z は奥行き（負が視点の側）。
+ * cover は横長の画面で背景が広がる分の寄り。1より大きいと画面の中央を軸に全体が広がる。
+ */
+export function projectView(point:{y:number;z?:number},view:KnightView=KNIGHT_VIEW,cover=1) {
+  const sin=Math.sin(view.pitch),cos=Math.cos(view.pitch),dz=(point.z??0)+view.dist,dy=point.y-view.eye;
+  const depth=dy*sin+dz*cos,up=dy*cos-dz*sin,tan=view.tan/cover;
+  return {y:.5-.5*up/(depth*tan),scale:1/(2*depth*tan)};
+}
+
+/** 視点の動き。後ろへ引く距離（m）、上へ振る角（ラジアン）、下へ沈む距離（m）。 */
+export type ViewKick={back:number;up:number;down:number};
+/**
+ * 視点が動く時刻の表（秒、世界の時刻）。一回目の命中で後ろへ引いて上へ振り、敵の一撃が床を打つときに沈み、
+ * とどめの一撃でいちばん大きく引く。seconds は戻りきるまでの長さ。
+ * 画面の平行移動だけでは視点が動いたように見えないので、立体の視点そのものを動かす。
+ */
+export const VIEW_KICKS:Array<{at:number;seconds:number}&ViewKick>=[
+  {at:FIRST.impact/1000,seconds:.25,back:.35,up:1.5*Math.PI/180,down:0},
+  {at:ENEMY_SLAM_MS/1000,seconds:.3,back:0,up:0,down:.12},
+  {at:FINAL_BLOW_AT,seconds:.35,back:.6,up:2.5*Math.PI/180,down:0},
+];
+const NO_KICK:ViewKick={back:0,up:0,down:0};
+/**
+ * その時刻の視点の動き。動いた瞬間がいちばん大きく、最初速く後ゆっくり戻る（残りの二乗）。
+ * 控えめモードと動きを減らす設定では動かさない。足元の位置が少しずれるのは意図した揺れ。
+ */
+export function viewKick(ms:number,active:boolean,calm=false):ViewKick {
+  if(!active||calm)return NO_KICK;
+  const t=ms/1000;
+  for(const kick of VIEW_KICKS) {
+    const since=t-kick.at;
+    if(!within(since,0,kick.seconds))continue;
+    const left=(1-since/kick.seconds)**2;
+    return {back:kick.back*left,up:kick.up*left,down:kick.down*left};
+  }
+  return NO_KICK;
+}
+
+/** 傷あとの濃さの曲線。付いてから0.9秒で0.38まで薄まり、その後は0.38のまま残る。 */
+export const scarCurve=(since:number)=>Math.max(.38,1.15-since/.9);
+/**
+ * 一回目と防御の回の、命中の跡が残る時刻の表（秒、世界の時刻）。at で付き、end の1秒前から薄れて end で消える。
+ * 一回目は魔法が届いた胸に付く。防御は「返せ」で弾き返したときだけ、戻ってきた一撃を受けた胸に付く。
+ * 輪郭の光と白飛びは0.6秒で終わるので、効いたことがその回の間ずっと分かるように跡を残す。
+ */
+export const HIT_SCARS:Array<{at:number;end:number;reflectOnly:boolean}>=[
+  {at:FIRST.impact/1000,end:FIRST.end/1000,reflectOnly:false},
+  {at:REFLECT_BACK_AT,end:DEFEND.end/1000,reflectOnly:true},
+];
+/** 命中の跡が消えるまでにかける長さ（秒）。回の終わりの手前。 */
+export const SCAR_FADE=1;
+/** その時刻の、胸に残る命中の跡の濃さ（0〜1）。回の終わりまで残り、最後の1秒で薄れる。とどめの傷あとは別に持つ。 */
+export function hitScarAt(ms:number,active:boolean,style:'block'|'reflect'|'erase'|null=null) {
+  if(!active)return 0;
+  const t=ms/1000;
+  let strength=0;
+  for(const scar of HIT_SCARS) {
+    if(scar.reflectOnly&&style!=='reflect')continue;
+    if(!within(t-scar.at,0,scar.end-scar.at))continue;
+    strength=Math.max(strength,scarCurve(t-scar.at)*clamp((scar.end-t)/SCAR_FADE));
+  }
+  return strength;
+}
 
 /** 騎士をどこへどう置くか。足元の位置、吹き飛びのずれ、縮み、回りを一つにまとめたもの。 */
 export type KnightTransform={x:number;y:number;scale:number;rot:number;footX:number;footY:number};
@@ -413,6 +558,11 @@ export class Knight {
   private coreMaterial:StandardMaterial;
   private bladeMaterial:StandardMaterial;
   private eyes:StandardMaterial;
+  /** 盾の面と、そのふだんの縁の光の色。盾打ちの瞬間に面全体を短く光らせ、終わったらこの色へ戻す。 */
+  private shieldFace:StandardMaterial;
+  private shieldGlow:Color3;
+  /** 左右の脚。足の踏み替えで盾側の脚を浮かせる。 */
+  private legs:TransformNode[]=[];
   private burst:PointLight;
   readonly ready:Promise<void>;
   // 立体の騎士は画面に出さないcanvasへ描き、その絵を表に出すcanvasへ重ねて仕上げる。
@@ -433,7 +583,7 @@ export class Knight {
   /** 今落ちている部品。毎コマの分岐で使う。 */
   private down=new Set<DropKey>();
   private cssSize='';
-  target={x:.5,y:.32};
+  target={x:.5,y:.24};
   /** 控えめモード。このPCの「動きを減らす」設定を始めの値にし、あとは setCalm で切り替える。 */
   private calm=matchMedia('(prefers-reduced-motion: reduce)').matches;
   /** 見た目の設定（控えめ・派手・最大）。演出canvasと同じものを外から渡す。 */
@@ -447,8 +597,9 @@ export class Knight {
     this.scene=new Scene(this.engine);
     // 背景の一枚絵を透かすため、描画面は透明のままにする。
     this.scene.clearColor=new Color4(0,0,0,0);
-    this.camera=new FreeCamera('固定視点',new Vector3(0,CAMERA_Y,CAMERA_Z),this.scene);
-    this.camera.setTarget(new Vector3(0,CAMERA_Y,0));
+    // 見上げる視点。rotation.x は負で上を向く。毎コマ、視点の動き（viewKick）の分を足してから描く。
+    this.camera=new FreeCamera('見上げる視点',new Vector3(0,KNIGHT_VIEW.eye,-KNIGHT_VIEW.dist),this.scene);
+    this.camera.rotation.x=-KNIGHT_VIEW.pitch;
 
     const sky=new HemisphericLight('空の光',new Vector3(.15,1,-.4),this.scene);
     sky.intensity=.42;sky.diffuse=new Color3(.54,.62,.74);sky.groundColor=new Color3(.09,.11,.15);sky.specular=new Color3(.15,.17,.21);
@@ -464,7 +615,8 @@ export class Knight {
     shadows.darkness=.24;shadows.bias=.0009;
     // 遠い面ほど空気の色を混ぜる。背中側と裾が背景へ溶け、貼り付けたように見えなくなる。
     this.scene.fogMode=Scene.FOGMODE_LINEAR;this.scene.fogColor=new Color3(.42,.45,.5);
-    this.scene.fogStart=6.2;this.scene.fogEnd=13;
+    // 視点から測るので、騎士までの距離を基準に置く。手前の面の少し奥から掛かり始め、背中側と裾へ強く掛かる。
+    this.scene.fogStart=KNIGHT_VIEW.dist-.7;this.scene.fogEnd=KNIGHT_VIEW.dist+6.1;
     // 蓄積と命中のときだけ胸の前から照らす。色は魔法の属性に合わせる。
     this.burst=new PointLight('魔法の光',new Vector3(0,2,-1.5),this.scene);this.burst.intensity=0;this.burst.range=5;
 
@@ -660,6 +812,7 @@ export class Knight {
     // 刃だけは別の材質にして、溜めの間に赤く脈打たせる。
     this.bladeMaterial=worn(metal(material('刃',...STEEL),1.3));
     const shieldPlate=worn(metal(material('盾の面',...STEEL),1.3),true,emblem,emblemDents);
+    this.shieldFace=shieldPlate;this.shieldGlow=shieldPlate.emissiveColor.clone();
     this.coreMaterial=material('胸の核','#2a2418',.1);this.coreMaterial.emissiveColor=Color3.FromHexString('#6f542e');
 
     this.root=new TransformNode('遺跡の騎士',this.scene);
@@ -687,6 +840,7 @@ export class Knight {
     for(const side of [-1,1]) {
       const back=side<0?-.07:.09,open=side*.05;
       const leg=new TransformNode('脚',this.scene);leg.parent=this.root;leg.position.set(side*.22,0,back);leg.rotation.z=open;
+      this.legs.push(leg);
       cone('腿',leg,0,.98,0,.32,.26,.78);
       const knee=MeshBuilder.CreateSphere('膝当て',{diameter:.31,segments:12},this.scene);
       knee.parent=leg;knee.position.set(0,.57,-.03);knee.scaling.set(1,.75,1.1);knee.material=plate;
@@ -888,7 +1042,7 @@ export class Knight {
     this.stencil.width=Math.max(1,Math.round(width/2));this.stencil.height=Math.max(1,Math.round(height/2));
     // 背景の一枚絵と同じ拡大率で騎士を見せる。横長の画面では背景が広がる分だけ寄る。
     const cover=Math.max(1,cssWidth/cssHeight/BACKDROP_RATIO);
-    this.camera.fov=2*Math.atan(TAN/cover);
+    this.camera.fov=2*Math.atan(KNIGHT_VIEW.tan/cover);
   }
   /** 騎士の形だけを一色で塗った絵を作る。使い回しのcanvasに毎回上書きする。 */
   private paintStencil(color:string) {
@@ -1007,6 +1161,19 @@ export class Knight {
     c.globalAlpha=Math.min(1,scar*.9);c.strokeStyle=color;c.lineWidth=2.4*Math.max(w/1672,h/941);c.lineCap='round';
     c.beginPath();c.moveTo(x-r*.44,y-r*.34);c.lineTo(x+r*.32,y+r*.36);
     c.moveTo(x-r*.12,y+r*.42);c.lineTo(x+r*.4,y-r*.24);c.stroke();
+    // 属性ごとの印。火は焦げの黒ずみ、氷は霜の棘、雷は帯電のぎざぎざ。それ以外は傷の二本線だけ。
+    const element=recipe?.element;
+    if(element==='fire') {
+      c.globalCompositeOperation='source-over';c.globalAlpha=Math.min(1,scar*.45);
+      c.strokeStyle='rgba(12,8,4,1)';c.lineWidth=r*.2;c.beginPath();c.arc(x,y,r*.5,0,Math.PI*2);c.stroke();
+    } else if(element==='ice') {
+      for(let i=0;i<6;i++) {
+        const a=i*Math.PI/3+.4;
+        c.beginPath();c.moveTo(x+Math.cos(a)*r*.3,y+Math.sin(a)*r*.3);c.lineTo(x+Math.cos(a)*r*.95,y+Math.sin(a)*r*.95);c.stroke();
+      }
+    } else if(element==='lightning') {
+      c.beginPath();c.moveTo(x-r*.5,y-r*.62);c.lineTo(x-r*.08,y-r*.12);c.lineTo(x-r*.3,y+r*.04);c.lineTo(x+r*.46,y+r*.66);c.stroke();
+    }
     c.restore();
   }
   /** 控えめモード。動きを小さくし、白飛びを消し、残像と輪郭の発光を弱める。画面のボタンから切り替える。 */
@@ -1040,10 +1207,16 @@ export class Knight {
     // 倒れきった後は、この揺れも呼吸も止める。
     const live=(this.calm?0:1)*pose.still;
     const shake=pose.shake;
+    // 視点の動き。命中で後ろへ引いて上へ振り、敵の一撃で沈み、とどめで大きく引く。控えめと動きを減らす設定では止める。
+    const kick=viewKick(ms,active,this.calm);
+    this.camera.position.set(0,KNIGHT_VIEW.eye-kick.down,-(KNIGHT_VIEW.dist+kick.back));
+    this.camera.rotation.x=-(KNIGHT_VIEW.pitch+kick.up);
     // 崩れ落ち。足元を軸に手前へ回し、同時に視点へ近づける。控えめモードでも減らさない。
     this.root.rotation.x=-pose.fall*FALL_TURN;
     this.root.position.z=pose.lean*(recipe?.purpose==='defend'?1.1:.7)-pose.fall*FALL_NEAR;
-    this.root.position.y=p.crouch+pose.breath*4;
+    // 足の踏み替え。盾側の脚を少し浮かせて膝を前へ出し、着地で体が一瞬沈む。脚の節は足元が原点なので、浮かせるのは持ち上げで作る。
+    this.root.position.y=p.crouch+pose.breath*4-pose.stepSink*.06;
+    for(let i=0;i<this.legs.length;i++){const lift=i===1?pose.stepLift:0;this.legs[i].position.y=lift*.12;this.legs[i].rotation.x=-lift*.1;}
     this.root.position.x=Math.sin(t*62)*shake;
     this.root.rotation.z=Math.sin(t*44)*shake;
     this.body.rotation.x=p.body+Math.sin(t*.42+1)*.008*live;
@@ -1054,8 +1227,17 @@ export class Knight {
     // 体をひねっても、兜はこちらを向いたままにする。
     this.head.rotation.y=-p.turn*.7+Math.sin(t*.31)*.06*live;
     // 腕は最後まで体に残るので、盾と剣を落とした後も姿勢を当て続ける。
-    this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live,0,-p.swordOut);
-    this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live,0,p.shieldOut);
+    // 盾打ちでは盾の腕を前へ上げて盾の面を胸の前に立て、剣の腕を内へ振って刃を盾の面へ当てる。
+    // 盾の腕を内へ振りすぎると盾が体の陰に入り、面が横を向いて光が見えないので、内へは少しだけにする。
+    this.swordArm.rotation.set(p.swordSwing+Math.sin(t*.5)*.03*live-pose.clang*.3,0,-p.swordOut+pose.clang*.55);
+    this.shieldArm.rotation.set(p.shieldSwing+Math.sin(t*.5+2)*.024*live-pose.clang*.5,0,p.shieldOut-pose.clang*.22);
+    // 溜めの震え。体の震え（shake）と同じ作りで、掲げた剣の腕だけを細かく揺らす。
+    if(pose.tremor){this.swordArm.rotation.x+=Math.sin(t*62)*pose.tremor;this.swordArm.rotation.z+=Math.sin(t*44)*pose.tremor*.7;}
+    // 盾打ちの瞬間だけ、盾の面が短く光る。ふだんの光は縁だけ（正面を向いた所は rightColor の黒で消している）なので、
+    // 光る間だけ rightColor も白へ寄せて面全体に広げる。色は毎コマ渡る値で、切り替えても描き直しは起きない。
+    const flare=pose.clangFlash;
+    this.shieldFace.emissiveColor.set(this.shieldGlow.r+flare*.55,this.shieldGlow.g+flare*.55,this.shieldGlow.b+flare*.5);
+    this.shieldFace.emissiveFresnelParameters?.rightColor.set(flare,flare,flare);
     // 一回目の締め切りからの蓄積で核が明るくなり、命中では前から強く照らす。弱点が出たら脈打つ。
     // とどめの回は、明滅の速さを回の表から作った corePulse に任せる。56秒の境目もここでつなぐ。
     const charge=coreCharge(ms,active);
@@ -1080,14 +1262,14 @@ export class Knight {
     const spot=knightTransform(pose,w,h,unit);
     this.compose(pose,recipe,spot,unit,ms);
     const hit=knightPoint(spot,projected.x*w/rw,projected.y*h/rh);
-    // 命中から0.9秒かけて薄くなり、その後は残り続ける傷あと。倒れ始めたら0.5秒で全部消す。
-    const wipe=active?1-clamp((t-FALL_FROM)/.5):1;
-    const scar=active&&ms>=IMPACT_AT*1000?Math.max(.38,1.15-(ms-IMPACT_AT*1000)/900)*wipe:0;
+    // 胸に残る命中の跡。一回目は回の終わりまで、防御は弾き返したときだけ回の終わりまで残り、最後の1秒で薄れる。
+    const scar=hitScarAt(ms,active,guardStyle);
     if(scar>0)this.paintScar(scar,recipe,hit.x,hit.y);
-    // とどめの4回の命中と直撃の傷あと。当たった部品の場所にそれぞれ残る。
+    // とどめの4回の命中と直撃の傷あと。当たった部品の場所にそれぞれ残り、倒れ始めたら0.5秒で全部消す。
+    const wipe=active?1-clamp((t-FALL_FROM)/.5):1;
     if(active&&wipe>0)for(const mark of SCAR_MARKS) {
       if(t<mark.at)continue;
-      const strength=Math.max(.38,1.15-(t-mark.at)/.9)*wipe;
+      const strength=scarCurve(t-mark.at)*wipe;
       const at=this.scarSpot(mark.key,rw,rh,w,h);
       if(at){const point=knightPoint(spot,at.x,at.y);this.paintScar(strength,recipe,point.x,point.y);}
     }

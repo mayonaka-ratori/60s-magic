@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { FINISH_COLLAPSE_MS, FINISH_FALL_FROM_MS, FINISH_SWORD_DROP_MS, ROUNDS, beatOf } from '../src/game/rounds';
 import { calmSoundCues, dueSounds, hushAt, soundCues } from '../src/audio/cues';
-import { HIT_STOPS, warpOf, warpReal, warpTime } from '../src/render/effects/screen';
+import { HIT_STAGES, HIT_STOPS, warpOf, warpReal, warpTime } from '../src/render/effects/screen';
 
 const first = ROUNDS[0], finish = ROUNDS[2], finishBeat = beatOf(finish);
 /** 崩れ落ちの世界の時刻（秒）。剣、膝、倒れ始め。 */
@@ -41,7 +41,8 @@ describe('世界の時刻から実際の時刻を出す', () => {
     const 命中 = first.impact / 1000;
     expect(warpReal(10, warp)).toBe(10);
     expect(warpReal(命中, warp)).toBeCloseTo(命中, 6);
-    expect(warpReal(命中 + 1.5, warp)).toBeCloseTo(命中 + 1.5 + HIT_STOPS.weak, 6);
+    // 一回目は命中の止めのあとに二度止め直すので、遅れはその三つの合計。
+    expect(warpReal(命中 + 1.5, warp)).toBeCloseTo(命中 + 1.5 + HIT_STOPS.weak + HIT_STAGES.reduce((sum, stage) => sum + stage.hold, 0), 6);
   });
 });
 

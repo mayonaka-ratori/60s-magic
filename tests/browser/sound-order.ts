@@ -5,10 +5,10 @@
  * 二つの通し（knight-audio、sample-audio）が同じ並びを見るので、写しを作らずここから読む。
  */
 export const 鳴る音=[
-  // 一回目（0〜30秒）
-  'trace','chant','build','complete','release','impact','settle',
-  // 防御（30〜56秒）。命中ではなく、盾で受ける音になる。
-  'chant','build','complete','release','block','settle',
+  // 一回目（0〜30秒）。マウスで遊ぶので、騎士の足踏み（3.5秒）と盾打ち（9.5秒）も鳴る。
+  'step','trace','clang','chant','build','complete','release','impact','settle',
+  // 防御（30〜56秒）。命中ではなく、盾で受ける音になる。48秒の完成と同時に剣の風切り、0.55秒後に床を打つ。
+  'chant','build','complete','swing','slam','release','block','settle',
   // とどめ（56〜90秒）
   'chant','build','complete','release','impact','finish',
   'collapse-sword','collapse-knee','collapse-fall','settle','book',

@@ -2,7 +2,7 @@ import './look.css';
 import { CompletedSpell } from './render/completed-spell';
 import { Knight } from './render/knight';
 import { completedSpellFrame, fitSpell } from './render/spell-layout';
-import { ROUNDS } from './game/rounds';
+import { BEATS, ROUNDS } from './game/rounds';
 import type { Point } from './game/types';
 
 document.title = '背景・騎士・術式の確認 | はじまりの魔法';
@@ -83,7 +83,8 @@ function redraw() {
   renderer.resize(); knight.resize();
   const { width, height } = canvas.getBoundingClientRect();
   const normalized = points.map(p => ({ ...p, x: p.x * sourceWidth / width, y: p.y * sourceHeight / height }));
-  const shown = drawing ? normalized : fitSpell(normalized, width, height, completedSpellFrame(width, height));
+  // 本編と同じく、描いた場所と大きさのまま落ち着く先に置く（点列を渡さないと、小さく描いたときの箱へ縮めてしまう）。
+  const shown = drawing ? normalized : fitSpell(normalized, width, height, completedSpellFrame(width, height, BEATS[0], normalized));
   renderer.setShape(shown, !drawing);
   el('reflection').hidden = drawing || !points.length;
   canvas.dataset.points = String(points.length);

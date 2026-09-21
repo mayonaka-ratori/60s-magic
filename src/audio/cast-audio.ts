@@ -1,5 +1,6 @@
 import { dueSounds, hushAt, shouldDuck, type SoundCue } from './cues';
-import { SampleBank } from './sample-bank';
+import { SampleBank, dbToGain } from './sample-bank';
+import { ENEMY_CHARGE_FROM_MS, ROUNDS } from '../game/rounds';
 import type { Recipe } from '../game/types';
 import { intensityOf, getPreset, type EffectPreset } from '../render/effects/presets';
 
@@ -14,6 +15,35 @@ export function soundIntensity(recipe:Recipe|null,preset:EffectPreset=getPreset(
 }
 
 /**
+ * 防御の回の溜めのうなり。騎士が溜めの姿勢に入る時刻（30.2秒）から振り下ろし（48秒）まで、低く続く。
+ * 曲と同じ段（music）を通すので、録音中に曲を下げる処理がそのまま効く。効果音の段には入れない。
+ */
+export const HUM={
+  /** 始まりと終わり（ms）。回の表から取るので、ここに秒数は書かない。 */ from:ENEMY_CHARGE_FROM_MS,to:ROUNDS[1].lock,
+  /** 二つの低い正弦波（Hz）。倍音の関係にしない方が、うなりに聞こえる。 */ tones:[38,55],
+  /** ゆっくりした揺らぎ。毎秒0.4回、音量を3割だけ上下させる。光に弱い人への配慮と同じ理由で速くしない。 */ wobbleHz:.4,wobbleDepth:.3,
+  /** いちばん大きいとき、曲の音量の何割か。 */ ratio:.3,
+  /** 曲の素材が無いときに「曲の音量」とみなすdB。音素材の入れ方で勧めている曲の値と同じ。 */ musicDbWithoutBgm:-9,
+  /** 上げるときのなめらかさ（秒）と、33秒で切るときの長さ（秒）。切るのは速く、ただし音が割れない程度に。 */ riseSeconds:.1,cutSeconds:.03,
+};
+/**
+ * 溜めのうなりの大きさ（0〜1）。溜めの始まりで0から始め、振り下ろしに向けてだんだん速く上がり、振り下ろしの時刻ちょうどで0になる。
+ * 二乗で上げるのは、前半を控えめにして「溜めが強まる」28秒以降で伸びるようにするため。純粋な計算なので試験から呼べる。
+ */
+export function enemyHumLevel(ms:number) {
+  if(ms<HUM.from||ms>=HUM.to)return 0;
+  const u=(ms-HUM.from)/(HUM.to-HUM.from);
+  return u*u;
+}
+/**
+ * その時刻のうなりの状態。level は大きさ（0〜1）、ducked は録音中の下げが掛かっているか。
+ * 下げそのものは曲と共通の段で掛かるので、ここでは「掛かるべきか」だけを返す。
+ */
+export function enemyHum(ms:number,microphone:boolean) {
+  return {level:enemyHumLevel(ms),ducked:microphone&&shouldDuck(ms)};
+}
+
+/**
  * 用意した音素材があればそれを鳴らし、無ければ短い音と雑音を合成する。
  * 曲と効果音は別の経路にまとめ、どちらも一つの音量で制御する。録音用の接続とは独立。
  */
@@ -25,6 +55,11 @@ export class CastAudio {
   private duck:GainNode|null=null;
   private bank=new SampleBank();
   private bgm:{source:AudioBufferSourceNode;gain:GainNode}|null=null;
+  /** 溜めのうなり。鳴っている間だけ持つ。level が音量の段、tremolo が揺らぎの段。 */
+  private hum:{oscillators:OscillatorNode[];nodes:AudioNode[];level:GainNode}|null=null;
+  /** うなりの大きさ（0〜1）と、いま段に指示している音量。毎コマ同じ値を指示し直さないために持つ。 */
+  private humLevel=0;
+  private humGain=0;
   private bgmStarted=false;
   private bgmStartedAtMs:number|null=null;
   private sources=new Set<AudioScheduledSourceNode>();
@@ -91,7 +126,7 @@ export class CastAudio {
     this.clearSources();const version=++this.previewVersion;await this.prepare();
     if(version===this.previewVersion&&!this.running&&this.enabled&&this.context?.state==='running')this.play('complete',null);
   }
-  private clearSources(){for(const source of this.sources){try{source.stop();}catch{/* 既に終了した音 */}source.disconnect();}this.sources.clear();}
+  private clearSources(){this.stopHum(0);for(const source of this.sources){try{source.stop();}catch{/* 既に終了した音 */}source.disconnect();}this.sources.clear();}
   update(ms:number,recipe:Recipe|null,preset:EffectPreset=getPreset(null),amount=0) {
     if(!this.running)return;
     const cues=dueSounds(this.lastMs,ms,this.microphone,this.calm);this.lastMs=ms;
@@ -101,9 +136,13 @@ export class CastAudio {
     // とどめの発動前の「間」と直撃の直前だけ、全体の音を抜く。抜くのは速く、戻すのは0.05秒で直線に。
     const hush=hushAt(ms,this.calm);
     if(hush!==this.hush){const down=hush<this.hush;this.hush=hush;this.applyVolume(down?.02:.05,!down);}
+    // 溜めのうなりの終わり（33秒）は、音を出せない状態でも見る。止め忘れて次の回まで残さない。
+    this.humLevel=enemyHumLevel(ms);
+    if(this.humLevel<=0&&this.hum)this.stopHum(HUM.cutSeconds);
     if(!this.enabled||!this.volume||this.context?.state!=='running'||!this.master)return;
     // 素材の読み込みや音の許可が開始より遅れても、そのときの進み具合の位置から曲を始める。
     if(!this.bgmStarted&&this.bank.bgm){this.startBgm(ms/1000);this.bgmStartedAtMs=ms;}
+    if(this.humLevel>0)this.updateHum(this.humLevel);
     const intensity=soundIntensity(recipe,preset,amount);
     for(const cue of cues){const sample=this.play(cue.name,recipe,intensity);this.events.push({name:cue.name,atMs:ms,sample});}
   }
@@ -126,6 +165,51 @@ export class CastAudio {
     const ctx=this.context,bgm=this.bgm;if(!ctx||!bgm)return;this.bgm=null;
     const at=ctx.currentTime;bgm.gain.gain.setTargetAtTime(0,at,seconds/3);
     try{bgm.source.stop(at+seconds);}catch{/* 既に終了した曲 */}
+  }
+  /** 曲の音量（倍率）。うなりの上限はこれの3割にする。曲の素材が無いときは勧めている値で代える。 */
+  private musicGain() {
+    const bgm=this.bank.bgm;
+    return dbToGain(bgm?bgm.entry.gainDb:HUM.musicDbWithoutBgm);
+  }
+  /**
+   * 溜めのうなりを始める。低い正弦波二つ → 揺らぎの段 → 音量の段 → 曲の段、の順につなぐ。
+   * 効果音の段ではなく曲の段へつなぐのは、録音中の下げを曲と同じように受けるため。
+   */
+  private startHum() {
+    const ctx=this.context,bus=this.music;if(!ctx||!bus||this.hum)return;
+    const at=ctx.currentTime;
+    const level=ctx.createGain();level.gain.setValueAtTime(0,at);
+    // 揺らぎ：1を中心に±3割だけ動く段。低周波の発振器を「揺らぎの深さ」の段を通して音量へ足す。
+    const tremolo=ctx.createGain();tremolo.gain.setValueAtTime(1,at);
+    const wobble=ctx.createOscillator(),depth=ctx.createGain();
+    wobble.type='sine';wobble.frequency.setValueAtTime(HUM.wobbleHz,at);depth.gain.setValueAtTime(HUM.wobbleDepth,at);
+    wobble.connect(depth);depth.connect(tremolo.gain);
+    const oscillators=HUM.tones.map(hz=>{
+      const osc=ctx.createOscillator();osc.type='sine';osc.frequency.setValueAtTime(hz,at);osc.connect(tremolo);return osc;
+    });
+    tremolo.connect(level);level.connect(bus);
+    oscillators.push(wobble);
+    const nodes:AudioNode[]=[depth,tremolo,level];
+    // 最後の発振器が止まったら、段をすべて外す。
+    oscillators[0].onended=()=>{oscillators.forEach(osc=>osc.disconnect());nodes.forEach(node=>node.disconnect());};
+    oscillators.forEach(osc=>osc.start(at));
+    this.hum={oscillators,nodes,level};this.humGain=0;
+  }
+  /** うなりの音量を、その時刻の大きさへ寄せる。小さな変化のたびに指示し直さない。 */
+  private updateHum(level:number) {
+    if(!this.hum)this.startHum();
+    const ctx=this.context,hum=this.hum;if(!ctx||!hum)return;
+    const target=level*HUM.ratio*this.musicGain();
+    if(Math.abs(target-this.humGain)<.001)return;
+    this.humGain=target;hum.level.gain.setTargetAtTime(target,ctx.currentTime,HUM.riseSeconds);
+  }
+  /** うなりを止める。33秒の切り、停止、消音、中止、画面を隠す、のすべてがここを通る。 */
+  private stopHum(seconds:number) {
+    const ctx=this.context,hum=this.hum;if(!hum)return;this.hum=null;this.humGain=0;
+    if(!ctx){hum.oscillators.forEach(osc=>osc.disconnect());hum.nodes.forEach(node=>node.disconnect());return;}
+    const at=ctx.currentTime,gain=hum.level.gain;
+    gain.cancelScheduledValues(at);gain.setValueAtTime(gain.value,at);gain.linearRampToValueAtTime(0,at+seconds);
+    for(const osc of hum.oscillators){try{osc.stop(at+seconds+.02);}catch{/* 既に止めた発振器 */}}
   }
   private track(source:AudioScheduledSourceNode,nodes:AudioNode[],duration:number) {
     const ctx=this.context!;this.sources.add(source);
@@ -153,10 +237,11 @@ export class CastAudio {
     let seed=12345;for(let i=0;i<data.length;i++){seed=(Math.imul(seed,1664525)+1013904223)|0;data[i]=(seed/2147483648)*.65;}
     this.noiseBuffer=buffer;return buffer;
   }
-  private noise(duration:number,level:number,startFrequency:number,endFrequency:number) {
+  /** 帯域を通した雑音。q を大きくするほど帯域が狭くなり、風切りのような音になる。 */
+  private noise(duration:number,level:number,startFrequency:number,endFrequency:number,q=.65) {
     const ctx=this.context!,buffer=this.noiseSource();
     const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),at=ctx.currentTime;
-    source.buffer=buffer;filter.type='bandpass';filter.Q.value=.65;filter.frequency.setValueAtTime(startFrequency,at);filter.frequency.exponentialRampToValueAtTime(endFrequency,at+duration);
+    source.buffer=buffer;filter.type='bandpass';filter.Q.value=q;filter.frequency.setValueAtTime(startFrequency,at);filter.frequency.exponentialRampToValueAtTime(endFrequency,at+duration);
     gain.gain.setValueAtTime(0,at);gain.gain.linearRampToValueAtTime(level,at+.008);gain.gain.exponentialRampToValueAtTime(.0001,at+duration);
     source.connect(filter);filter.connect(gain);gain.connect(this.sfx!);this.track(source,[filter,gain],duration);
   }
@@ -168,9 +253,29 @@ export class CastAudio {
     this.synth(cue,element,pitch,intensity);
     return !!picked;
   }
-  /** 派手さ（0〜3）で合成音の厚みを変える。時刻は変えない。 */
+  /** 派手さ（0〜3）で合成音の厚みを変える。時刻は変えない。敵の側の音は属性や派手さで変えない。 */
   private synth(cue:SoundCue,element:string,pitch:number,intensity:number) {
     const big=Math.min(1,intensity/3);
+    if(cue==='step') {
+      // 足を踏み替える。低い足音（60→35Hz）と、砂利を踏む短い雑音。
+      this.tone(60,35,.3,.38,'triangle');this.noise(.22,.14,1600,320,1.2);
+      return;
+    }
+    if(cue==='clang') {
+      // 盾を打ち鳴らす。倍音の関係にない二つの金属の鳴り（900Hzと1400Hz）と、打った瞬間の短い雑音。
+      this.tone(900,870,.4,.09);this.tone(1400,1360,.4,.06);this.noise(.07,.18,3600,1400);
+      return;
+    }
+    if(cue==='swing') {
+      // 剣を振り下ろす風切り。帯域を絞った雑音を高い方から下げる。
+      this.noise(.4,.6,2400,260,4);
+      return;
+    }
+    if(cue==='slam') {
+      // 剣が床を打つ。重い低い衝撃（70→24Hz）、石が割れる雑音、1秒の低い残り。
+      this.tone(70,24,1,.55,'triangle');this.noise(.12,.4,4200,900);this.noise(.5,.5,1300,90);this.tone(40,22,1,.32);
+      return;
+    }
     if(cue==='trace'||cue==='chant') {this.tone(cue==='trace'?260:390,520,.65,.035);return;}
     if(cue==='build') {this.tone(100,340,1.9,.12);this.tone(150,510,1.65,.045);this.noise(1.5,.065,400,1900);if(big>.3)this.tone(55,110,2.2,.08*big);return;}
     if(cue==='complete') {for(const ratio of [1,1.5,2])this.tone(440*ratio,440*ratio,.8,.045);return;}
@@ -236,6 +341,7 @@ export class CastAudio {
     return {
       enabled:this.enabled,volume:this.volume,state:this.unavailable?'unavailable':this.context?.state??'not-started',
       activeSources:this.sources.size,recordingQuiet:this.microphone,ducked:this.ducked,bgm:this.bgm?'playing':'none',bgmStartedAtMs:this.bgmStartedAtMs,
+      enemyHum:{playing:this.hum!==null,level:this.humLevel,gain:this.humGain},
       samples:this.bank.report,credits:this.bank.manifest.credits,events:[...this.events],
     };
   }

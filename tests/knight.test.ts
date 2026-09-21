@@ -469,9 +469,9 @@ describe('倒れ込みの深さ', () => {
     expect(FALL_TURN).toBeGreaterThan(.8);
     expect(FALL_NEAR).toBeGreaterThan(.1);
   });
-  it('倒れた体の一番上が視点より下へ来る', () => {
+  it('倒れた体の一番上は、以前の視点の高さより下に収まる', () => {
     // 足元を軸に回した後、膝をついた分（crouch）だけ下がる。
-    // 騎士の高さは2.93m、視点の高さは約0.95m。
+    // 騎士の高さは2.93m、以前の視点の高さは約0.95m。見上げる視点（高さ0.5m）での映り方は knight-view の試験で見る。
     const top = 2.93 * Math.cos(FALL_TURN) - .92;
     expect(top).toBeLessThan(.95);
   });
