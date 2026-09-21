@@ -270,7 +270,9 @@ export class Composite {
   }
 
   /** WebGLの文脈が失われたときの受け口。復帰は狙わず、そのまま元のHTMLの層へ戻す。 */
-  private onContextLost = () => this.stop();
+  /** WebGLの文脈が失われた。こちらは戻せないので、遊びごとの立て直しでも戻さない。 */
+  private contextLost = false;
+  private onContextLost = () => { this.contextLost = true; this.stop(); };
 
   private constructor(private canvas: HTMLCanvasElement, private sources: CompositeSources, settings: CompositeSettings) {
     registerCompositeShaders();
@@ -339,6 +341,17 @@ export class Composite {
     this.allowed = false;
     this.hide();
     this.canvas.dataset.gaveUp = 'true';
+  }
+
+  /**
+   * 遊びを始めるたびに、速さの測りと「諦めた」印を戻す。
+   * 前の人の回で重かっただけで、次の人まで合成なしにならないようにする。文脈が失われたときは戻さない。
+   */
+  resetForPlay() {
+    this.frames = 0; this.lastFrameAt = 0; this.fps = 60; this.lowFrames = 0; this.bloomOn = true;
+    if (this.contextLost || !this.gaveUp) return;
+    this.gaveUp = false;
+    delete this.canvas.dataset.gaveUp;
   }
 
   /** 板を一枚作る。z が小さいほど手前。order は重ねる順（小さいほど奥）。 */

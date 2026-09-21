@@ -26,7 +26,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
     <fieldset class="mode-options"><legend>描き方を選ぶ</legend><label class="mode-option"><input type="radio" name="mode" value="camera"><strong>手で描く</strong><small>カメラに手を映す（片手でも大丈夫）</small></label><label class="mode-option"><input type="radio" name="mode" value="pointer" checked><strong>マウスで試す</strong><small>画面を押したまま動かす</small></label></fieldset>
     <label class="voice-option"><input type="checkbox" id="use-voice">マイクで唱える <span id="voice-availability"></span></label>
     <details class="sound-settings"><summary>音と演出の設定</summary><div class="sound-options"><label><input id="use-sound" type="checkbox" checked>効果音</label><label for="sound-volume">音量</label><input id="sound-volume" type="range" min="0" max="100" value="25" aria-label="効果音の音量"><output id="sound-volume-value">25%</output><button id="test-sound" type="button">音を試す</button></div></details>
-    <button class="primary" id="start">魔法をつくる <span class="arrow" aria-hidden="true">↗</span></button><div class="welcome-actions"><button class="text-button" id="demo">見本の動きを見る</button><button class="text-button" id="chant-words">詠唱の言葉を見る</button><button class="text-button dev-only" id="settings">接続の確認</button><button class="text-button" id="last-record" hidden>前回の記録を保存する</button></div>
+    <button class="primary" id="start">魔法をつくる <span class="arrow" aria-hidden="true">↗</span></button><div class="welcome-actions"><button class="text-button" id="demo">見本の動きを見る</button><button class="text-button" id="chant-words">詠唱の言葉を見る</button><button class="text-button dev-only" id="settings">接続の確認</button><button class="text-button dev-only" id="last-record" hidden>前回の記録を保存する</button></div>
     <p class="dev-only"><a class="text-button" href="/?view=look">新しい背景・騎士・術式を見る ↗</a></p>
     <p class="notice" id="notice" role="status"></p><p class="privacy" id="privacy">カメラの映像はこのPC内で処理します。音声認識の設定を確認しています。</p>
   </section>
@@ -230,6 +230,7 @@ async function begin(isDemo=false) {
     countingDown=false;show('countdown',false);
   }
   resetLiveWords();resetInputAmount();liveKey='';liveBase=emptyLive;
+  stage.resetForPlay();
   session=new Battle(undefined,id);diag?.rebase(session.startMs);diag?.log('90秒を開始');
   // 確認番号を先に決める。保存済みの番号を読むので少し待つが、使うのは90秒後なので間に合う。
   recorder=null;savedRounds=0;
@@ -332,7 +333,7 @@ function updateUi() {
         :guard&&(guard.shield.enclosed||guard.shield.covering)?'描いた線が、そのまま盾の縁になります'
         :'形になる線が無いので、小さな光の玉で受けます'],
     release:[t<round.impact/1000?'騎士の一撃が来る':GUARD_LABELS[guard?.style??'block'],'あなたの魔法が、一撃を受け止めます'],
-    handoff:['騎士の胸が開いた','弱点が現れました。ここまでが今回の試作です'],
+    handoff:['騎士の胸が開いた','弱点が現れました。次は、胸の核へ最後の術式を'],
   };
   const lastRound:Partial<Record<Phase,[string,string]>>={
     draw:['弱点へ、最後の術式を描け','前の二回の光が、あなたの手元へ集まります'],
@@ -364,6 +365,7 @@ function updateUi() {
   el('step-complete').classList.toggle('active',!drawing&&t<round.release/1000);
   el('step-release').classList.toggle('active',t>=round.release/1000);
   // 声を使えない回（マイクなし、またはつなぎ直せなかったとき）は、文字で入れられるようにする。
+  if(voice?.lost&&!voiceLost){voiceLost=true;diag?.log('声の接続が切れた',{round:round.id});}
   const typing=(!voice||voiceLost)&&!demo;
   el<HTMLInputElement>('chant').disabled=!drawing;show('input-panel',typing&&drawing);
   show('meter',!!voice&&!voiceLost);
@@ -441,7 +443,7 @@ function prepareRoundVoice(battle:Battle,round:Round) {
     voicePrepared.add(round.id);
     const input=voice;
     void input.connect(`${battle.id}-${round.id}`,windowMsOf(round))
-      .then(()=>{if(session===battle&&voice===input)voiceReadyFor=round.id;})
+      .then(()=>{if(session===battle&&voice===input){voiceReadyFor=round.id;voiceLost=false;}})
       .catch(()=>{if(session===battle){voiceLost=true;serviceNotice='声の受付を再開できませんでした。文字で入れるか、描いた線で続けられます。';diag?.log('声を受付できず',{round:round.id});}});
   }
   // つながっていて回が始まっていれば、そこから録音する。遅れてつながったときは、その遅れを offset で渡す。
@@ -584,7 +586,7 @@ el('record').addEventListener('click',()=>{
 function closeSheet(){show('sheet',false);sheetReturnFocus?.focus();}
 el('sheet-close').addEventListener('click',closeSheet);
 el('sheet').addEventListener('click',event=>{if(event.target===el('sheet'))closeSheet();});
-window.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!el('sheet').hidden)closeSheet();else if(session||preparing)toReady('中止しました');}if(event.key==='Tab'&&!el('sheet').hidden){event.preventDefault();el('sheet-close').focus();}});
+window.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!el('sheet').hidden)closeSheet();else if((session||preparing)&&!resultShown&&document.activeElement!==el('chant'))toReady('中止しました');}if(event.key==='Tab'&&!el('sheet').hidden){event.preventDefault();el('sheet-close').focus();}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&(preparing||session&&!resultShown))toReady('画面が隠れたため中止しました。最初から始められます。');});
 window.addEventListener('resize',()=>{stage.resize();magic.resize();if(resultShown)drawResult();});
 window.addEventListener('pagehide',()=>{clearInterval(statusTimer);cleanup();});

@@ -50,6 +50,8 @@ export class CastScene {
     this.ready=Promise.all([backdrop.decode(),this.spell.ready(),this.knight.ready]).then(()=>{});
   }
   resize(){this.spell.resize();this.knight.resize();this.composite?.resize();this.revision++;}
+  /** 遊びを始めるたびに呼ぶ。合成の速さの測りと「諦めた」印を戻す。 */
+  resetForPlay(){this.composite?.resetForPlay();}
   get impactTarget(){return this.knight.target;}
   /** 控えめモード。揺れと閃光と停止を抑える。騎士の白飛びも消し、合成では色収差と歪みも切る。 */
   setCalm(calm:boolean){this.calm=calm;this.effects.setCalm(calm);this.knight.setCalm(calm);}

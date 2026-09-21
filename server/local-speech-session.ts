@@ -8,10 +8,10 @@ export type LocalRecognizer = {
   recognize:(pcm:Buffer)=>Promise<LocalSpeechResult>;
 };
 
-type RequestRecord = {requestedAtAudioMs:number;startMs:number;endMs:number;audioMs:number;final:boolean;roundTripMs?:number;processingMs?:number;text?:string;stability?:number;outcome:'sent'|'deadline'|'closed'|'error'|'pending'};
+type RequestRecord = {requestedAtAudioMs:number;startMs:number;endMs:number;audioMs:number;final:boolean;roundTripMs?:number;processingMs?:number;textLength?:number;stability?:number;outcome:'sent'|'deadline'|'closed'|'error'|'pending'};
 type SessionRecord = {sessionId:string;startedAt:string;requests:RequestRecord[];audioChunks:number;droppedChunks:number;lastAudioMs:number|null;endedAtAudioMs:number|null;waitMs:number|null;finalDelivered:boolean;closeReason:string|null};
 const recentSessions:SessionRecord[]=[];
-/** 確認用の記録。直近の受付の要求と結果の時刻。音声は含まない。 */
+/** 確認用の記録。直近の受付の要求と結果の時刻。音声も、聞き取った言葉も含まない（文字数だけ）。 */
 export function speechSessionDiagnostics(){return recentSessions.map(s=>({...s,requests:[...s.requests]}));}
 
 /** いちばん長い受付（一回目の18秒）を上限に最新の音を保持。古い認識要求を積み上げない。 */
@@ -53,7 +53,7 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
     if(record.requests.length<40)record.requests.push(entry);
     try {
       const result=await recognizer.recognize(audio);
-      entry.roundTripMs=Math.round(performance.now()-now);entry.processingMs=result.processingMs;entry.text=result.text;
+      entry.roundTripMs=Math.round(performance.now()-now);entry.processingMs=result.processingMs;entry.textLength=result.text.length;
       lastProcessingMs=result.processingMs;
       if(closed||performance.now()>=deadline){entry.outcome=closed?'closed':'deadline';finish();return;}
       processedVersion=requestVersion;
