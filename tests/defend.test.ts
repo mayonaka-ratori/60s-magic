@@ -328,14 +328,16 @@ describe('防御の回の言葉と配置',()=>{
     expect(liveWords([entry])[0].atMs).toBe(6500);
     expect(liveWords([entry],defend.start)[0].atMs).toBe(30500);
   });
-  it('防御の回は、術式を狙いの印の高さへ寄せる',()=>{
+  it('防御の回は、何も描いていないときだけ狙いの印の高さに置き、描いた形は描いた場所に残す',()=>{
     const wide=1600,high=900;
     expect(completedSpellFrame(wide,high,beatOf(first)).y).toBeCloseTo(high*.66);
     expect(completedSpellFrame(wide,high,beatOf(defend)).y).toBeCloseTo(high*AIM.y);
-    // 締め切りまでは入力した位置のまま。発動で印の前に収まる。
-    const points=[{x:.3,y:.3,t:24000,hand:0,stroke:1},{x:.4,y:.4,t:24500,hand:0,stroke:1}];
+    // 締め切りまでは入力した位置のまま。発動でも描いた場所に残る（盾は描いた線からそのまま作るので、術式も同じ場所にある方が合う）。
+    const points=[{x:.3,y:.3,t:24000,hand:0,stroke:1},{x:.4,y:.4,t:24500,hand:0,stroke:1},{x:.6,y:.5,t:25000,hand:0,stroke:1}];
     expect(spellPose(points,wide,high,30000,beatOf(defend)).progress).toBe(0);
     expect(spellPose(points,wide,high,34000,beatOf(defend)).progress).toBe(1);
+    expect(spellPose(points,wide,high,34000,beatOf(defend)).center).toEqual({x:wide*.45,y:high*.4});
+    expect(spellPose(points,wide,high,34000,beatOf(defend)).scale).toBeCloseTo(1);
     // 余韻は回の終わりより前に消えきる。
     expect(spellPose(points,wide,high,40000,beatOf(defend)).opacity).toBe(0);
   });
