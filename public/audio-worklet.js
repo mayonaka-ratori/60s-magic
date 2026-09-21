@@ -1,9 +1,11 @@
 class VoiceCapture extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.active=false;this.samples=[];this.pre=[];this.index=0;this.phase=0;this.sum=0;this.count=0;this.tail=0;this.offset=0;
+    this.active=false;this.samples=[];this.pre=[];this.index=0;this.phase=0;this.sum=0;this.count=0;this.tail=0;this.offset=0;this.windowMs=Infinity;
     this.port.onmessage=({data})=>{
-      if(data.type==='start'){this.active=true;this.samples=[];this.pre=[];this.index=0;this.phase=0;this.sum=0;this.count=0;this.tail=0;this.offset=data.offset??0;}
+      // windowMs はその回の受付の長さ。画面側（src/input/voice.ts）が rounds.ts の表から渡す。
+      // 届かなかったときは自分では打ち切らず、stop の指示だけで止める。
+      if(data.type==='start'){this.active=true;this.samples=[];this.pre=[];this.index=0;this.phase=0;this.sum=0;this.count=0;this.tail=0;this.offset=data.offset??0;this.windowMs=data.windowMs>0?data.windowMs:Infinity;}
       if(data.type==='stop'){this.active=false;this.flush();this.port.postMessage({type:'stopped'});}
     };
   }
@@ -30,7 +32,7 @@ class VoiceCapture extends AudioWorkletProcessor {
       this.sum+=value;this.count++;this.phase+=16000;
       if(this.phase>=sampleRate){
         this.phase-=sampleRate;
-        if(this.offset+(this.index+this.samples.length)/16>=14000){this.active=false;this.flush();break;}
+        if(this.offset+(this.index+this.samples.length)/16>=this.windowMs){this.active=false;this.flush();break;}
         this.samples.push(this.sum/this.count);this.sum=0;this.count=0;
         if(this.samples.length>=1600)this.flush();
       }

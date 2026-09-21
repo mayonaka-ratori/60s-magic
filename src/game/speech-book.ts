@@ -1,8 +1,9 @@
 import type { SpeechEntry } from './types';
+import { ROUNDS, windowMsOf } from './rounds';
 
 export class SpeechBook {
   /** 受け付ける長さ（ms）。声は回ごとに0から数え直す（一回目は18秒、防御は15秒）。 */
-  constructor(private windowMs=14000) {}
+  constructor(private windowMs=windowMsOf(ROUNDS[0])) {}
   private entries=new Map<number,SpeechEntry>();
   private locked=false;
   private latestEntry:SpeechEntry|null=null;

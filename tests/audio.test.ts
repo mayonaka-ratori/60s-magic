@@ -4,15 +4,16 @@ import { soundIntensity } from '../src/audio/cast-audio';
 import { presets } from '../src/render/effects/presets';
 import type { Recipe } from '../src/game/types';
 import { runInNewContext } from 'node:vm';
+import { MAX_INPUT_SAMPLES, ROUNDS, windowMsOf } from '../src/game/rounds';
 
 type Packet={type:string;pcm?:Int16Array;startMs?:number;value?:number};
 type Processor={port:{onmessage:(event:{data:object})=>void};process:(inputs:Float32Array[][])=>boolean};
-function processor(rate:number) {
+function processor(rate:number,windowMs?:number) {
   const packets:Packet[]=[];let Constructor:new()=>Processor;
   class Base {port={postMessage:(data:Packet)=>packets.push(data),onmessage:()=>{}};}
   runInNewContext(readFileSync('public/audio-worklet.js','utf8'),{sampleRate:rate,AudioWorkletProcessor:Base,registerProcessor:(_name:string,c:new()=>Processor)=>{Constructor=c;}});
   const instance=new Constructor!();
-  instance.port.onmessage({data:{type:'start',offset:0}});
+  instance.port.onmessage({data:{type:'start',offset:0,windowMs}});
   let sample=0;
   const feed=(seconds:number,amplitude:number)=>{
     for(let frame=0;frame<rate*seconds;frame+=128){const chunk=new Float32Array(Math.min(128,Math.round(rate*seconds)-frame));for(let i=0;i<chunk.length;i++)chunk[i]=Math.sin((sample++)/rate*Math.PI*2*440)*amplitude;instance.process([[chunk]]);}
@@ -26,10 +27,16 @@ describe('実際の音の取り込み',()=>{
     const samples=audio.reduce((n,p)=>n+p.pcm!.length,0);expect(samples).toBeGreaterThan(22000);expect(samples).toBeLessThan(23500);
     expect(audio.every(p=>p.pcm!.length<=1600)).toBe(true);expect(packets.at(-1)?.type).toBe('stopped');
   });
-  it('14秒より後の音声を送らず、無音だけなら送らない',()=>{
-    const silent=processor(48000);silent.feed(14,0);expect(silent.packets.filter(p=>p.type==='audio')).toHaveLength(0);
-    const voiced=processor(48000);voiced.feed(16,.1);const audio=voiced.packets.filter(p=>p.type==='audio');
-    expect(audio.reduce((n,p)=>n+p.pcm!.length,0)).toBe(224000);expect(audio.at(-1)!.startMs!+audio.at(-1)!.pcm!.length/16).toBe(14000);
+  it('受付の長さを過ぎた音声を送らず、無音だけなら送らない',()=>{
+    // 打ち切りは回ごとの受付の長さで決まる。一回目は18秒、防御は15秒。
+    const first=windowMsOf(ROUNDS[0]),defend=windowMsOf(ROUNDS[1]);
+    const silent=processor(48000,first);silent.feed(first/1000,0);expect(silent.packets.filter(p=>p.type==='audio')).toHaveLength(0);
+    const voiced=processor(48000,first);voiced.feed(first/1000+2,.1);const audio=voiced.packets.filter(p=>p.type==='audio');
+    expect(audio.reduce((n,p)=>n+p.pcm!.length,0)).toBe(MAX_INPUT_SAMPLES);
+    expect(audio.at(-1)!.startMs!+audio.at(-1)!.pcm!.length/16).toBe(first);
+    // 短い回では、その回の長さで止まる。一回目の長さまで録り続けない。
+    const short=processor(48000,defend);short.feed(first/1000,.1);const shortAudio=short.packets.filter(p=>p.type==='audio');
+    expect(shortAudio.at(-1)!.startMs!+shortAudio.at(-1)!.pcm!.length/16).toBe(defend);
   });
 });
 

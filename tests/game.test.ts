@@ -4,7 +4,7 @@ import { MotionRecorder,summarizeMotion } from '../src/game/motion';
 import { makeRecipe } from '../src/game/recipe';
 import { SpeechBook } from '../src/game/speech-book';
 import type { JevReply,SpellState } from '../src/game/types';
-import { ROUNDS,replyLimitOf } from '../src/game/rounds';
+import { ROUNDS,replyLimitOf,windowMsOf } from '../src/game/rounds';
 
 // 秒数は回の表から作る。表を直したら、この試験も一緒に動く。
 const first=ROUNDS[0];
@@ -47,6 +47,26 @@ describe('最初の30秒',()=>{
     const other=new CastSession(()=>0),o=other.freeze();other.cancel();expect(other.receive(reply(o,{}))).toBe(false);expect(other.accepting).toBe(false);
   });
 });
+describe('Jevへ渡す回ごとの説明',()=>{
+  it('三回とも、その回で何をするのかを書き分ける',()=>{
+    const task=(index:number)=>new CastSession(()=>0,'test',ROUNDS[index],0).freeze().currentTask;
+    expect(task(0)).toContain('最初の魔法');
+    expect(task(1)).toContain('守る魔法');
+    // とどめの回が「最初の魔法」のまま送られていた。回ごとに違う説明になっていることを押さえる。
+    expect(task(2)).toContain('とどめの魔法');
+    expect(task(2)).toContain('核');
+    expect(new Set([task(0),task(1),task(2)]).size).toBe(3);
+  });
+  it('回ごとの受付の時刻を、そのまま渡す',()=>{
+    for(const round of ROUNDS) {
+      const state=new CastSession(()=>0,'test',round,0).freeze();
+      expect(state.inputWindow.startSessionMs).toBe(round.start);
+      expect(state.inputWindow.endSessionMs).toBe(round.inputEnd);
+      expect(state.castId).toBe(round.castId);
+    }
+  });
+});
+
 describe('本人の線を残す',()=>{
   it('静止・認識の途切れから再開しても離れた点へ線を引かない',()=>{
     const m=new MotionRecorder();m.add(.2,.3,0);m.add(.21,.3,33);m.add(.22,.3,2033);m.add(.9,.8,2066);
@@ -69,7 +89,11 @@ describe('詠唱の受付',()=>{
     expect(text(book)).toBe('雷よ、七つに分かれろ');book.freeze();book.add({...base,id:3,final:true});expect(book.snapshot()).toHaveLength(2);
   });
   it('受付外に話した文字は使わない',()=>{
-    const b=new SpeechBook();b.add({id:1,revision:1,startMs:14000,endMs:15000,text:'氷',final:true,stability:1,source:'google'});expect(text(b)).toBe('');
+    // 受付の長さは回の表から来る（一回目は18秒）。締め切りちょうどから後の声は使わない。
+    const 受付=windowMsOf(first);
+    const b=new SpeechBook();b.add({id:1,revision:1,startMs:受付,endMs:受付+1000,text:'氷',final:true,stability:1,source:'google'});expect(text(b)).toBe('');
+    // 締め切りの直前はまだ受け付ける。14秒で切れていたころは、ここが落ちていた。
+    const c=new SpeechBook();c.add({id:1,revision:1,startMs:受付-2000,endMs:受付-1,text:'氷',final:true,stability:1,source:'google'});expect(text(c)).toBe('氷');
   });
 });
 describe('形と言葉を魔法へ反映する',()=>{

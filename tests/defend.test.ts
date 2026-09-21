@@ -2,7 +2,7 @@ import { describe,it,expect } from 'vitest';
 import { ROUNDS,BATTLE_END,beatAt,phaseAt,roundAt,speechLimitOf,replyLimitOf } from '../src/game/rounds';
 import { Battle } from '../src/game/battle';
 import { CastSession } from '../src/game/session';
-import { AIM,ENCLOSE_TURN,coversAim,dropNegated,enclosingStrokes,guardStyleOf,shieldOf,strokeEncloses,strokesOf,windingAround } from '../src/game/guard';
+import { AIM,AIM_RADIUS,DEFAULT_ASPECT,ENCLOSE_TURN,GUARD_REACH,coversAim,dropNegated,enclosingStrokes,guardStyleOf,shieldOf,strokeEncloses,strokesOf,windingAround } from '../src/game/guard';
 import { GUARD_DAMAGE,GUARD_STEP_MS,healthSteps } from '../src/render/health-bar';
 import { hitDelay } from '../src/render/effects/release';
 import { liveWords } from '../src/game/live-words';
@@ -181,10 +181,36 @@ describe('盾を作る',()=>{
     expect(shield.offset).toEqual({x:0,y:0});
     // 盾の真ん中は、運んだからではなく描いた場所そのものとして、印のそばにある。
     expect(Math.abs(shield.center.x-AIM.x)).toBeLessThan(.02);expect(Math.abs(shield.center.y-AIM.y)).toBeLessThan(.02);
-    expect(coversAim(inside)).toBe(true);
+    expect(coversAim(inside)).toBe(true);expect(shield.covering).toBe(true);
     // 印から離れた線は、掛かっていることにしない。
     expect(coversAim(seg({x:.7,y:.2},{x:.8,y:.3},1,10))).toBe(false);
     expect(shieldOf(bar(.9),null).moved).toBe(true);
+  });
+  it('掛かって作った盾だけ covering を立てる。運んだ盾と光の玉は立てない',()=>{
+    // 何も描かなかったときの光の玉。印の色を「守れている」に変えないための目印。
+    expect(shieldOf([],null).covering).toBe(false);
+    expect(shieldOf([],null).kind).toBe('orb');
+    // 印から離れた線を運んだ盾も、その場で守れたわけではない。
+    expect(shieldOf(bar(.9),null).covering).toBe(false);
+    // 囲めた盾は enclosed の側で見るので、covering は立てない。
+    const 囲い=shieldOf(ring(.1),null);
+    expect(囲い.enclosed).toBe(true);expect(囲い.covering).toBe(false);
+  });
+  it('守れる範囲を、画面に描く輪と同じ形で測る',()=>{
+    // 印の輪は画面の高さを基準に描く。判定も同じ基準にそろえ、横の差には画面の比を掛ける。
+    const 横線=(dx:number)=>seg({x:AIM.x+dx,y:AIM.y-.02},{x:AIM.x+dx+.04,y:AIM.y+.06},1,8);
+    // 16対9の画面。高さの基準に直すと .06*16/9=.107 で範囲の中、.09*16/9=.16 で範囲の外。
+    expect(GUARD_REACH).toBeCloseTo(AIM_RADIUS*1.2,6);
+    expect(coversAim(横線(.06),AIM,DEFAULT_ASPECT)).toBe(true);
+    expect(coversAim(横線(.09),AIM,DEFAULT_ASPECT)).toBe(false);
+    // 縦長の画面（390×844）。同じ .09 でも、見た目では輪の内側なので守れたことにする。
+    const 縦長=390/844;
+    expect(coversAim(横線(.09),AIM,縦長)).toBe(true);
+    // 画面の比を渡さないと、横長でも縦長でも同じ答えになってしまう（直す前の動き）。
+    expect(coversAim(横線(.09),AIM,1)).toBe(true);
+    // 盾の作られ方も同じ基準で変わる。横長では運び、縦長ではその場で盾にする。
+    expect(shieldOf(横線(.09),null,AIM,DEFAULT_ASPECT).moved).toBe(true);
+    expect(shieldOf(横線(.09),null,AIM,縦長).covering).toBe(true);
   });
   it('言った数が、囲った数より優先される。層は5枚まで',()=>{
     expect(shieldOf(ring(.1),7).layers).toBe(5);

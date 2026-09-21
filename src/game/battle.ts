@@ -34,6 +34,12 @@ export class Battle {
   get finished() {return this.elapsed>=BATTLE_END;}
   /** 狙いの印。防御の回の間だけ出す。 */
   get aim():XY {return AIM;}
+  /** 画面の横と縦の比。盾の判定を、実際に見えている輪と同じ形にする。画面側が大きさを知らせる。 */
+  get aspect() {return this.casts[0].aspect;}
+  setAspect(aspect:number) {
+    if(!Number.isFinite(aspect)||aspect<=0)return;
+    for(const cast of this.casts)cast.aspect=aspect;
+  }
   tick() {
     if(this.cancelled)return;
     this.elapsed=Math.max(0,this.clock()-this.startMs);

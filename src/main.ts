@@ -1,7 +1,7 @@
 import './style.css';
 import { Battle } from './game/battle';
 import type { CastSession } from './game/session';
-import { BATTLE_END, ROUNDS, SPEECH_WAIT_MS, replyLimitOf, speechLimitOf, type Round } from './game/rounds';
+import { BATTLE_END, COUNTDOWN_MS, ROUNDS, SPEECH_WAIT_MS, VOICE_RECONNECT_MS, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
 import { GUARD_LABELS } from './game/guard';
 import { ELEMENT_LABELS, PURPOSE_LABELS, FORM_LABELS, type Phase } from './game/types';
 import { HandCamera } from './input/camera';
@@ -149,10 +149,8 @@ function playContext():PlayContext {
   return {coordinates:'normalized-0-1',mirrored:demo?null:mode==='camera',
     viewport:{width:innerWidth,height:innerHeight},inputMode:demo?'demo':mode==='camera'?'camera':'pointer'};
 }
-/** 回が始まる何ミリ秒前に、声の受付をつなぎ直すか。 */
-const VOICE_RECONNECT_MS=2500;
 /** 本編の前に置く準備の秒数。手や声の位置を決める時間で、90秒には含めない。 */
-const COUNTDOWN_SECONDS=3;let countingDown=false;
+const COUNTDOWN_SECONDS=COUNTDOWN_MS/1000;let countingDown=false;
 
 async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json());}catch{serviceNotice='接続を確認できません。このPCの中だけで魔法を決めます。';status.speech=false;}
   el('voice-availability').textContent=status.speech?(status.speechProvider==='local'?'（このPCで聞き取ります）':'（Googleで聞き取ります）'):status.localSpeech?.state==='loading'?'（準備中です）':'（いまは使えません）';
@@ -208,7 +206,7 @@ async function begin(isDemo=false) {
     if(el<HTMLInputElement>('use-voice').checked&&!demo) {
       const record=diag;
       const input=new VoiceInput(entry=>{if(version!==prepareVersion)return;record?.transcript(entry);session?.active.speech.add(entry);},message=>{serviceNotice=message;record?.log('音声の知らせ',{message});},{audio:(bytes,startMs)=>record?.audio(bytes,startMs),event:(kind,detail)=>record?.log(kind,detail)});voice=input;
-      await input.prepare();await input.connect(id,ROUNDS[0].inputEnd-ROUNDS[0].start);
+      await input.prepare();await input.connect(id,windowMsOf(ROUNDS[0]));
       if(version!==prepareVersion){input.dispose();return;}
     }
   }catch(error){
@@ -329,7 +327,10 @@ function updateUi() {
   const defend:Partial<Record<Phase,[string,string]>>={
     draw:['左の輪の中に、守る形を描け',rings?`囲えた。${rings>1?`${rings}重の盾になります`:'そのまま唱えてもいい'}`:covered?'その線が、そのまま盾になります':'輪から離れていても大丈夫。一番近い線が輪の前へ動きます'],
     chant:[voice?'描きながら、詠唱せよ':'描きながら、言葉を添えて','「氷よ」で色が、「弾き返せ」「かき消せ」で止め方が変わります'],
-    complete:[t<round.lock/1000?'描いた線が、盾になる':'あなたの盾が、輪の前に立つ',guard?.shield.moved?'描いた線を、輪の前へ運びました':'描いた線が、そのまま盾の縁になります'],
+    complete:[t<round.lock/1000?'描いた線が、盾になる':'あなたの盾が、輪の前に立つ',
+      guard?.shield.moved?'描いた線を、輪の前へ運びました'
+        :guard&&(guard.shield.enclosed||guard.shield.covering)?'描いた線が、そのまま盾の縁になります'
+        :'形になる線が無いので、小さな光の玉で受けます'],
     release:[t<round.impact/1000?'騎士の一撃が来る':GUARD_LABELS[guard?.style??'block'],'あなたの魔法が、一撃を受け止めます'],
     handoff:['騎士の胸が開いた','弱点が現れました。ここまでが今回の試作です'],
   };
@@ -439,7 +440,7 @@ function prepareRoundVoice(battle:Battle,round:Round) {
   if(voice&&!demo&&!voicePrepared.has(round.id)&&voiceRound===null) {
     voicePrepared.add(round.id);
     const input=voice;
-    void input.connect(`${battle.id}-${round.id}`,round.inputEnd-round.start)
+    void input.connect(`${battle.id}-${round.id}`,windowMsOf(round))
       .then(()=>{if(session===battle&&voice===input)voiceReadyFor=round.id;})
       .catch(()=>{if(session===battle){voiceLost=true;serviceNotice='声の受付を再開できませんでした。文字で入れるか、描いた線で続けられます。';diag?.log('声を受付できず',{round:round.id});}});
   }
@@ -600,7 +601,12 @@ function animate(now:number) {
   if(session&&!resultShown){frameIntervals.push(now-lastFrame);if(frameIntervals.length>4000)frameIntervals.shift();diag?.frame(now-lastFrame);}
   lastFrame=now;
   if(session) {
-    const battle=session;battle.tick();
+    const battle=session;
+    // 盾の判定を、実際に見えている輪と同じ形にするため、画面の横と縦の比を先に知らせる。
+    // まだ大きさが決まっていないときは知らせない（既定の比のまま使う）。
+    const canvasWidth=magic.canvas.clientWidth,canvasHeight=magic.canvas.clientHeight;
+    if(canvasWidth>0&&canvasHeight>0)battle.setAspect(canvasWidth/canvasHeight);
+    battle.tick();
     if(demo)demoInput(battle);
     for(const cast of battle.casts)driveRound(battle,cast);
     // 魔法が確定するたび（16、33、51秒）に、このPCの中へ保存し直す。増えたときだけ書く。
@@ -621,7 +627,7 @@ function animate(now:number) {
     const defending=cast.round.id==='defend';
     const entries=cast.speech.live(),key=`${cast.round.id}:${cast.motion.raw.length}:${speechKey(entries)}`;
     // 声の時刻は回ごとに0から数えるので、回の始まりを足して戦いの時刻へそろえる。
-    if(key!==liveKey){liveKey=key;liveBase=liveInput(cast.motion.raw,entries,0,defending&&cast.accepting?session!.aim:null,cast.speechOffset);}
+    if(key!==liveKey){liveKey=key;liveBase=liveInput(cast.motion.raw,entries,0,defending&&cast.accepting?session!.aim:null,cast.speechOffset,session!.aspect);}
     // 発動より後は言葉を使わないので空にする。入力の量はそのまま残す。声の大きさは毎コマ入れ直す。
     const base=ms>=cast.round.release?wordless(liveBase):liveBase;
     live={...base,voice:voice?.level??0};

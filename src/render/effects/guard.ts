@@ -40,7 +40,8 @@ function drawAim(f: Frame) {
   // 確定前は今の入力を、確定後は決まった盾を見る。
   const held = shield ? shield.enclosed : f.live.rings > 0;
   // 囲めていなくても、印の範囲に線があれば「ここは守れる」と色で返す。
-  const covered = held || (shield ? !shield.moved : f.live.covered);
+  // 何も描いていないときに出る光の玉（covering も enclosed も false）は、守れたことにしない。
+  const covered = held || (shield ? shield.covering : f.live.covered);
   const appear = smooth(clamp((t - beat.start) / 1.2));
   const gone = 1 - clamp((t - beat.impact) / .5);
   // 脈は毎秒1回まで。光に弱い人への配慮で、これより速くしない。

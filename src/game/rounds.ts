@@ -76,6 +76,29 @@ export const FINISH_FALL_TO_MS = FINISH_FALL_FROM_MS + 1100;
  * MacのGPUでの認識一回分（13秒の声で約1.25秒）に余裕を足した長さ。実機で測って決め直す。
  */
 export const SPEECH_WAIT_MS = 2000;
+/**
+ * サーバーが受け付ける、声を待つ時間の上限（ms）。画面側の値より少しだけ広く取る。
+ * 画面側が長すぎる値を送ってきても、ここで頭を押さえる。
+ */
+export const SPEECH_WAIT_MAX_MS = SPEECH_WAIT_MS + 1000;
+/** その回の受付の長さ（ms）。マイクの打ち切りも音の受け皿の大きさも、この値から作る。 */
+export const windowMsOf = (round: Round) => round.inputEnd - round.start;
+/** いちばん長い受付（ms）。一回目の18秒。受け皿の大きさと接続の上限はここから作る。 */
+export const MAX_INPUT_MS = Math.max(...ROUNDS.map(windowMsOf));
+/** 16kHzで受け取るので、1msあたり16点。受け皿の大きさを点の数で書くときに使う。 */
+export const SAMPLES_PER_MS = 16;
+/** 音の受け皿に入る点の数の上限。いちばん長い受付の分だけ持つ。 */
+export const MAX_INPUT_SAMPLES = MAX_INPUT_MS * SAMPLES_PER_MS;
+/** 準備の合図の長さ（ms）。90秒には含めない。一回目はこの前に音声認識へつなぐ。 */
+export const COUNTDOWN_MS = 3000;
+/** 二回目からの回で、声の受付を作り直し始める時刻（回の始まりより前、ms）。 */
+export const VOICE_RECONNECT_MS = 2500;
+/**
+ * 音声認識の接続を保てる上限（ms）。画面側が閉じ忘れたときの受け皿で、
+ * 受付が終わる前に切れてはいけない。受付の前につなぐ分と、最後の声を待つ分に余裕を足す。
+ */
+export const speechSocketMsOf = (windowMs: number = MAX_INPUT_MS) =>
+  Math.max(COUNTDOWN_MS, VOICE_RECONNECT_MS) + windowMs + SPEECH_WAIT_MS + 5000;
 /** 声を待つのをやめ、Jevへ送る時刻。声が先に届けばもっと早く送る。 */
 export const speechLimitOf = (round: Round) => round.inputEnd + SPEECH_WAIT_MS;
 /** Jevの返事を受け取れる最後の時刻。確定の手前で必ず打ち切る。 */

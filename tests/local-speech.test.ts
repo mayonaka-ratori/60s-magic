@@ -5,6 +5,7 @@ import { connectLocalSpeech, type LocalRecognizer } from '../server/local-speech
 import { speechModelName } from '../server/local-speech';
 import { SpeechBook } from '../src/game/speech-book';
 import { CastSession } from '../src/game/session';
+import { COUNTDOWN_MS,MAX_INPUT_MS,ROUNDS,SPEECH_WAIT_MS,VOICE_RECONNECT_MS,speechSocketMsOf,windowMsOf } from '../src/game/rounds';
 
 class Socket extends EventEmitter {
   OPEN=1;readyState=1;messages:any[]=[];
@@ -22,6 +23,23 @@ function setup(recognize=vi.fn(async()=>({text:'氷よ壁となれ',processingMs
 }
 afterEach(()=>vi.useRealTimers());
 const text=(b:SpeechBook)=>b.snapshot().map(e=>e.text).join('、');
+describe('声の接続を保つ長さ',()=>{
+  it('どの回でも、締め切りと最後の声を待つ時間より後に切れる',()=>{
+    // つなぐのは受付が始まる前。一回目は準備の合図の前、二回目からは回の手前。
+    const 早くつなぐ分=Math.max(COUNTDOWN_MS,VOICE_RECONNECT_MS);
+    for(const round of ROUNDS) {
+      const 受付=windowMsOf(round),切れる=speechSocketMsOf(受付)-早くつなぐ分;
+      expect(切れる).toBeGreaterThan(受付+SPEECH_WAIT_MS);
+    }
+    // 20秒の決め打ちだったころは、一回目の締め切り（18秒）より前に切れていた。
+    expect(20000-早くつなぐ分).toBeLessThan(windowMsOf(ROUNDS[0]));
+  });
+  it('受け皿は、一番長い回の分だけ持つ',()=>{
+    expect(MAX_INPUT_MS).toBe(Math.max(...ROUNDS.map(windowMsOf)));
+    for(const round of ROUNDS)expect(windowMsOf(round)).toBeLessThanOrEqual(MAX_INPUT_MS);
+  });
+});
+
 describe('ローカル音声認識の受付',()=>{
   it('同じ発話の途中結果を更新し、最後に一度だけ確定する',async()=>{
     const {socket,recognize}=setup();
@@ -56,13 +74,14 @@ describe('ローカル音声認識の受付',()=>{
   });
   it('重複した音、受付後の音、長すぎる音は、その分だけ捨てて続ける',async()=>{
     const {socket,recognize}=setup();
-    socket.audio(1000);socket.audio(1000);socket.audio(13999);
+    socket.audio(1000);socket.audio(1000);socket.audio(MAX_INPUT_MS-1);
     expect(socket.readyState).toBe(1);
     socket.end();await vi.advanceTimersByTimeAsync(1);
     socket.audio(2000);expect(socket.readyState).toBe(1);
     expect(recognize).toHaveBeenCalledOnce();
-    // 14秒を超えた分だけ落とし、14秒ちょうどまでは使う。
-    expect(socket.messages.find(m=>m.type==='transcript').entry.endMs).toBe(14000);socket.close();
+    // 受け皿の上限（一番長い回の18秒）を超えた分だけ落とし、18秒ちょうどまでは使う。
+    expect(MAX_INPUT_MS).toBe(18000);
+    expect(socket.messages.find(m=>m.type==='transcript').entry.endMs).toBe(MAX_INPUT_MS);socket.close();
   });
   it('形が壊れた音だけ接続を切る',()=>{
     const {socket}=setup();socket.emit('message',Buffer.alloc(5),true);expect(socket.readyState).toBe(3);

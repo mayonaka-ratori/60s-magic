@@ -1,6 +1,6 @@
 import type { WebSocket } from 'ws';
 import type { LocalSpeechResult, LocalSpeechStatus } from './local-speech';
-import { SPEECH_WAIT_MS } from '../src/game/rounds';
+import { MAX_INPUT_MS, MAX_INPUT_SAMPLES, ROUNDS, SAMPLES_PER_MS, SPEECH_WAIT_MAX_MS, SPEECH_WAIT_MS, speechSocketMsOf, windowMsOf } from '../src/game/rounds';
 export type LocalRecognizer = {
   getStatus:()=>LocalSpeechStatus;
   reserve:(owner:object)=>boolean;
@@ -14,15 +14,15 @@ const recentSessions:SessionRecord[]=[];
 /** 確認用の記録。直近の受付の要求と結果の時刻。音声は含まない。 */
 export function speechSessionDiagnostics(){return recentSessions.map(s=>({...s,requests:[...s.requests]}));}
 
-/** 14秒分を上限に最新の音を保持。古い認識要求を積み上げない。 */
+/** いちばん長い受付（一回目の18秒）を上限に最新の音を保持。古い認識要求を積み上げない。 */
 export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
   const owner={};
-  /** その回の受付の長さ（ms）。画面側が知らせる。届かなければ一回目の14秒として扱う。 */
-  let windowMs=14000;
+  /** その回の受付の長さ（ms）。画面側が知らせる。届かなければ一回目の長さとして扱う。 */
+  let windowMs=windowMsOf(ROUNDS[0]);
   const record:SessionRecord={sessionId:'',startedAt:new Date().toISOString(),requests:[],audioChunks:0,droppedChunks:0,lastAudioMs:null,endedAtAudioMs:null,waitMs:null,finalDelivered:false,closeReason:null};
   recentSessions.push(record);if(recentSessions.length>5)recentSessions.shift();
   const closeWith=(reason:string)=>{if(record.closeReason===null)record.closeReason=reason;};
-  const pcm=Buffer.alloc(224000*2);
+  const pcm=Buffer.alloc(MAX_INPUT_SAMPLES*2);
   let sessionId='',started=false,closed=false,ended=false,busy=false;
   let firstSample:number|null=null,lastSample=0,version=0,processedVersion=-1,revision=0;
   let lastText='',sameTextCount=0,lastRequestAt=0,deadline=Infinity,endedSent=false,lastProcessingMs=0;
@@ -31,8 +31,9 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
   const finish=()=>{if(endedSent||closed)return;endedSent=true;send({type:'ended'});};
   const stop=()=>{if(closed)return;closed=true;closeWith('接続を閉じた');clearInterval(ticker);clearTimeout(lifetime);recognizer.release(owner);pcm.fill(0);};
   const ticker=setInterval(()=>void pump(),100);
-  // 画面側が閉じ忘れたときの受け皿。一回目は3秒の合図の前につなぐので、閉じるまで最長18.4秒かかる。
-  const lifetime=setTimeout(()=>{closeWith('30秒の上限');finish();ws.close(1000);stop();},30000);
+  // 画面側が閉じ忘れたときの受け皿。長さは回の表から作る。受付が終わる前に切れてはいけない。
+  const limitMs=speechSocketMsOf();
+  const lifetime=setTimeout(()=>{closeWith(`${Math.round(limitMs/1000)}秒の上限`);finish();ws.close(1000);stop();},limitMs);
   ws.on('close',stop);ws.on('error',stop);
   async function pump(force=false) {
     if(closed||!started||busy||firstSample===null||version===processedVersion)return;
@@ -42,7 +43,7 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
     // 終了の直前に途中の認識を始めず、最後の音を含む要求を優先する。
     // 境目は、画面側が最後の声を待つ長さ（SPEECH_WAIT_MS）と同じにする。
     // 一回目（18秒）なら16秒、防御（15秒）なら13秒。回の長さに合わせる。
-    if(!ended&&lastSample>=Math.max(0,windowMs-SPEECH_WAIT_MS)*16)return;
+    if(!ended&&lastSample>=Math.max(0,windowMs-SPEECH_WAIT_MS)*SAMPLES_PER_MS)return;
     // 締め切りに間に合わない認識は始めない。結果を捨てるだけで、直前の結果を送るのも遅れる。
     if(ended&&lastProcessingMs>0&&now+lastProcessingMs>deadline){finish();return;}
     busy=true;lastRequestAt=now;
@@ -73,7 +74,7 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
       // 形が壊れた音だけ接続を切る。順番や長さの外れは、その分を捨てて続ける。
       if(buffer.length<10||buffer.length>4008||(buffer.length-8)%2){closeWith('音声の形が正しくない');ws.close(1008);return;}
       const time=buffer.readDoubleLE(0),start=Math.round(time*16),samples=(buffer.length-8)/2;
-      const room=224000-start;
+      const room=MAX_INPUT_SAMPLES-start;
       if(!started||ended||!Number.isFinite(time)||time<0||start<lastSample||room<=0) {
         record.droppedChunks++;
         if(record.droppedChunks>200){closeWith('受け取れない音声が続いた');ws.close(1008);}
@@ -88,14 +89,14 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
       if(typeof message.sessionId!=='string'||! /^[\w-]{1,80}$/.test(message.sessionId)){ws.close(1008);return;}
       sessionId=message.sessionId;record.sessionId=sessionId;
       const asked=Number(message.windowMs);
-      if(Number.isFinite(asked)&&asked>=1000&&asked<=60000)windowMs=asked;
+      if(Number.isFinite(asked)&&asked>=1000&&asked<=MAX_INPUT_MS)windowMs=asked;
       const status=recognizer.getStatus();
       if(status.state!=='ready'){send({type:'unavailable',reason:status.message});ws.close(1013);return;}
       if(!recognizer.reserve(owner)){send({type:'unavailable',reason:'別の画面で音声認識を使用しています'});ws.close(1013);return;}
       started=true;send({type:'ready',provider:'local',model:status.model});
     }else if(message.type==='end'&&started&&!ended){
       // 待てる時間は画面側が決める。届かない値は今までどおり650msとして扱う。
-      const asked=Number(message.waitMs),wait=Number.isFinite(asked)?Math.min(2500,Math.max(0,asked)):650;
+      const asked=Number(message.waitMs),wait=Number.isFinite(asked)?Math.min(SPEECH_WAIT_MAX_MS,Math.max(0,asked)):650;
       ended=true;deadline=performance.now()+wait;record.endedAtAudioMs=Math.round(lastSample/16);record.waitMs=wait;
       // 音が増えていなくても、最後の要求は確定結果として返す。
       version++;
