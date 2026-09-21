@@ -3,6 +3,7 @@ import { ROUNDS,BATTLE_END,beatAt,phaseAt,roundAt,speechLimitOf,replyLimitOf } f
 import { Battle } from '../src/game/battle';
 import { CastSession } from '../src/game/session';
 import { AIM,AIM_RADIUS,DEFAULT_ASPECT,ENCLOSE_TURN,GUARD_REACH,coversAim,dropNegated,enclosingStrokes,guardStyleOf,shieldOf,strokeEncloses,strokesOf,windingAround } from '../src/game/guard';
+import { aimMark } from '../src/render/effects/guard';
 import { GUARD_DAMAGE,GUARD_STEP_MS,healthSteps } from '../src/render/health-bar';
 import { hitDelay } from '../src/render/effects/release';
 import { liveWords } from '../src/game/live-words';
@@ -39,8 +40,14 @@ describe('回の時刻表',()=>{
     expect(roundAt(0).id).toBe('first');expect(roundAt(first.end-1).id).toBe('first');
     expect(roundAt(defend.start).id).toBe('defend');expect(roundAt(defend.end).id).toBe('finish');expect(roundAt(999999).id).toBe('finish');
     // 声を待つのは締め切りの2秒後まで、Jevは確定の0.1秒前まで。
-    expect(speechLimitOf(defend)).toBe(defend.inputEnd+2000);expect(replyLimitOf(defend)).toBe(defend.lock-100);
-    expect(speechLimitOf(first)).toBe(first.inputEnd+2000);expect(replyLimitOf(first)).toBe(first.lock-100);
+    expect(speechLimitOf(defend)).toBe(defend.inputEnd+2000);expect(speechLimitOf(first)).toBe(first.inputEnd+2000);
+    // 返事の打ち切りは固定の時刻。一回目は20.9秒、防御は47.9秒。
+    expect(replyLimitOf(first)).toBe(20900);expect(replyLimitOf(defend)).toBe(47900);
+    // どの回でも、声を待ち終わってから確定までの間に入る。ここを外すと、返事を待てないか確定に間に合わない。
+    for(const round of ROUNDS){
+      expect(replyLimitOf(round)).toBeGreaterThan(speechLimitOf(round));
+      expect(replyLimitOf(round)).toBeLessThan(round.lock);
+    }
     // 三回で90秒。一回目30秒、防御26秒、とどめ34秒。
     expect(BATTLE_END).toBe(90000);
     expect([first,defend,ROUNDS[2]].map(r=>(r.end-r.start)/1000)).toEqual([30,26,34]);
@@ -197,9 +204,9 @@ describe('盾を作る',()=>{
     expect(囲い.enclosed).toBe(true);expect(囲い.covering).toBe(false);
   });
   it('守れる範囲を、画面に描く輪と同じ形で測る',()=>{
-    // 印の輪は画面の高さを基準に描く。判定も同じ基準にそろえ、横の差には画面の比を掛ける。
+    // 印の輪は画面の短いほうの辺を基準に描く。判定も同じ基準にそろえ、横の差には画面の比を掛ける。
     const 横線=(dx:number)=>seg({x:AIM.x+dx,y:AIM.y-.02},{x:AIM.x+dx+.04,y:AIM.y+.06},1,8);
-    // 16対9の画面。高さの基準に直すと .06*16/9=.107 で範囲の中、.09*16/9=.16 で範囲の外。
+    // 16対9の画面。短いほうの辺は高さなので、高さの基準に直すと .06*16/9=.107 で範囲の中、.09*16/9=.16 で範囲の外。
     expect(GUARD_REACH).toBeCloseTo(AIM_RADIUS*1.2,6);
     expect(coversAim(横線(.06),AIM,DEFAULT_ASPECT)).toBe(true);
     expect(coversAim(横線(.09),AIM,DEFAULT_ASPECT)).toBe(false);
@@ -222,6 +229,49 @@ describe('盾を作る',()=>{
     expect(shieldOf(tall,null).kind).toBe('pillar');
     const tiny=Array.from({length:6},(_,i)=>({x:.5+i*.004,y:.56+i*.003,t:defend.start+i*20,hand:0,stroke:1}));
     expect(shieldOf(tiny,null).kind).toBe('orb');
+  });
+});
+
+/** 確かめる画面の大きさ。横長も縦長も混ぜる。 */
+const 画面の大きさ:Array<[number,number]>=[[1920,1080],[1440,900],[1280,720],[1024,768],[820,1180],[768,1024],[390,844],[375,667]];
+/**
+ * 判定が通る一番遠い点を画素で測る。式を写さず、判定を呼んで境目を挟み込む。
+ * 印から向きのほうへずらした短い線を渡す。線の上で印に一番近い点が、ずらした分だけ離れる。
+ */
+function 届く距離(w:number,h:number,向き:'よこ'|'たて'){
+  const aspect=w/h;
+  const 線=(画素:number)=>向き==='よこ'
+    ? seg({x:AIM.x+画素/w,y:AIM.y},{x:AIM.x+画素/w,y:AIM.y+.04},1,8)
+    : seg({x:AIM.x,y:AIM.y+画素/h},{x:AIM.x+.04,y:AIM.y+画素/h},1,8);
+  let 中=0,外=Math.max(w,h);
+  for(let i=0;i<50;i++){const 境=(中+外)/2;if(coversAim(線(境),AIM,aspect))中=境;else 外=境;}
+  return 中;
+}
+
+describe('印は画面の形が変わっても収まり、判定と一致する',()=>{
+  it('どの大きさでも、輪と目盛りと光点が画面の中に入る',()=>{
+    for(const [w,h] of 画面の大きさ){
+      const 印=aimMark(w,h);
+      // 外へ出る順に、目盛りの先、外側の輪、内側の輪、引き継いだ光点。縦長で左へはみ出していたのはここ。
+      for(const 端 of [印.ticks,印.outer,印.ring,印.inherited]){
+        expect(印.x-端,`${w}x${h} の左`).toBeGreaterThanOrEqual(0);
+        expect(印.x+端,`${w}x${h} の右`).toBeLessThanOrEqual(w);
+        expect(印.y-端,`${w}x${h} の上`).toBeGreaterThanOrEqual(0);
+        expect(印.y+端,`${w}x${h} の下`).toBeLessThanOrEqual(h);
+      }
+      // 収めるために小さくしすぎない。狭い画面でも、指で囲める大きさを残す。
+      expect(印.r*2,`${w}x${h} の直径`).toBeGreaterThanOrEqual(70);
+      expect(印.r,`${w}x${h} の半径`).toBeGreaterThanOrEqual(Math.min(w,h)/12);
+    }
+  });
+  it('判定が通る一番遠い点が、描いてある輪の縁と同じ場所にある',()=>{
+    for(const [w,h] of 画面の大きさ){
+      // 描くほうの半径（画素）と、判定の届く距離（画素）を別々に出して比べる。
+      const 縁=aimMark(w,h).r*1.2;
+      expect(届く距離(w,h,'よこ'),`${w}x${h} の横`).toBeCloseTo(縁,3);
+      // 横と縦で同じ長さになる。ここがずれると、輪の外で守れたり、輪の中で守れなかったりする。
+      expect(届く距離(w,h,'たて'),`${w}x${h} の縦`).toBeCloseTo(縁,3);
+    }
   });
 });
 

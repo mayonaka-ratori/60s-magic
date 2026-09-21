@@ -1,5 +1,5 @@
 import { clamp } from '../../game/motion';
-import { AIM_RADIUS } from '../../game/guard';
+import { AIM, aimRadiusPx, type XY as AimPoint } from '../../game/guard';
 import { increase } from './presets';
 import { glow, line, edged, ease, smooth, type Frame, type XY } from './frame';
 
@@ -15,7 +15,32 @@ export const LAUNCH_AFTER_RELEASE = .4;
 /** 盾を運ぶ動きにかける時間（秒）。締め切りの直後から。 */
 const MOVE_SECONDS = 1;
 
-const aimAt = (f: Frame): XY => ({ x: f.aim.x * f.w, y: f.aim.y * f.h });
+/** 外側の輪の大きさ。印の半径の1.5倍。 */
+const AIM_OUTER = 1.5;
+/** 目盛りの内端。印の半径の1.6倍。 */
+const AIM_TICK_IN = 1.6;
+/** 目盛りの外端。印の半径の2倍。印のうち一番外まで出る部分。 */
+const AIM_TICK = 2;
+/** 引き継いだ光点を並べる輪。印の半径の1.8倍。 */
+const INHERITED_REACH = 1.8;
+/** 脈と、囲めたときの膨らみで大きくなる上限。1.06倍が二つ重なる。 */
+const AIM_SWELL = 1.06 * 1.06;
+
+/**
+ * 印の中心と、各部分の大きさ（画素）。描く側はここだけを見る。
+ * 半径は画面の短いほうの辺で決まるので、縦長の画面でも目盛りまで画面に収まる。
+ */
+export function aimMark(w: number, h: number, aim: AimPoint = AIM) {
+  const r = aimRadiusPx(w, h);
+  return {
+    x: aim.x * w, y: aim.y * h, r,
+    /** 脈で一番大きくなったときの内側の輪 */ ring: r * AIM_SWELL,
+    /** 同じく外側の輪 */ outer: r * AIM_SWELL * AIM_OUTER,
+    /** 同じく目盛りの外端 */ ticks: r * AIM_SWELL * AIM_TICK,
+    /** 引き継いだ光点が並ぶ輪 */ inherited: r * INHERITED_REACH,
+  };
+}
+const aimAt = (f: Frame): XY => { const m = aimMark(f.w, f.h, f.aim); return { x: m.x, y: m.y }; };
 const lerp = (a: XY, b: XY, u: number): XY => ({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
 
 /** 三日月の斬撃。進む向きへ開いた弧を、白い芯と暗い赤の縁で描く。 */
@@ -35,7 +60,7 @@ const AIM_FLAT = .88;
 function drawAim(f: Frame) {
   const { c, t, beat } = f;
   if (t < beat.start || t > beat.impact + .8) return;
-  const g = aimAt(f), r = AIM_RADIUS * f.h;
+  const mark = aimMark(f.w, f.h, f.aim), g = { x: mark.x, y: mark.y }, r = mark.r;
   const shield = f.guard?.shield ?? null;
   // 確定前は今の入力を、確定後は決まった盾を見る。
   const held = shield ? shield.enclosed : f.live.rings > 0;
@@ -54,12 +79,12 @@ function drawAim(f: Frame) {
   // 内側の輪、外側の輪、四方の目盛り。宙に浮いて見えるよう、縦を少しだけ潰す。
   edged(f, 2, alpha, () => { c.ellipse(g.x, g.y, size, size * AIM_FLAT, 0, 0, Math.PI * 2); }, main, core);
   c.globalAlpha = alpha * .5; c.lineWidth = 1.2; c.strokeStyle = main;
-  c.beginPath(); c.ellipse(g.x, g.y, size * 1.5, size * 1.5 * AIM_FLAT, 0, 0, Math.PI * 2); c.stroke();
+  c.beginPath(); c.ellipse(g.x, g.y, size * AIM_OUTER, size * AIM_OUTER * AIM_FLAT, 0, 0, Math.PI * 2); c.stroke();
   c.beginPath();
   for (let i = 0; i < 4; i++) {
     const a = i / 4 * Math.PI * 2 + t * .4;
-    c.moveTo(g.x + Math.cos(a) * size * 1.6, g.y + Math.sin(a) * size * 1.6 * AIM_FLAT);
-    c.lineTo(g.x + Math.cos(a) * size * 2, g.y + Math.sin(a) * size * 2 * AIM_FLAT);
+    c.moveTo(g.x + Math.cos(a) * size * AIM_TICK_IN, g.y + Math.sin(a) * size * AIM_TICK_IN * AIM_FLAT);
+    c.lineTo(g.x + Math.cos(a) * size * AIM_TICK, g.y + Math.sin(a) * size * AIM_TICK * AIM_FLAT);
   }
   c.stroke();
   // 守れているときは内側が満ちる。囲えたときはもっと濃く出し、「掴んだ」ことが分かるようにする。
@@ -92,9 +117,9 @@ function drawInherited(f: Frame) {
   const { t, beat } = f;
   if (!f.inherited.length || t < beat.start || t > beat.impact) return;
   const appear = smooth(clamp((t - beat.start) / 1.5));
+  const mark = aimMark(f.w, f.h, f.aim), g = { x: mark.x, y: mark.y }, reach = mark.inherited;
   for (let i = 0; i < f.inherited.length; i++) {
     const node = f.inherited[i], a = i / Math.max(1, f.inherited.length) * Math.PI * 2 + t * .25;
-    const g = aimAt(f), reach = AIM_RADIUS * f.h * 1.8;
     const x = node.x * f.w + (g.x + Math.cos(a) * reach - node.x * f.w) * appear;
     const y = node.y * f.h + (g.y + Math.sin(a) * reach * .6 - node.y * f.h) * appear;
     glow(f, x, y, 2 + Math.sin(t * 2 + i) * .5, .25 + appear * .2);

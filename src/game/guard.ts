@@ -11,13 +11,25 @@ export type XY = { x: number; y: number };
  * 「ここに来る」と分かるための案内である。
  */
 export const AIM: XY = { x: .27, y: .5 };
-/** 印の半径。画面の高さを1とした値。ここを守る場所として見せる大きさ。 */
+/**
+ * 印の半径。画面の短いほうの辺を1とした値。ここを守る場所として見せる大きさ。
+ * 高さだけを基準にすると、縦長の画面で輪と目盛りが中心の左側へ伸びて画面からはみ出す。
+ * 短いほうの辺を使うと、横長の画面では今までどおり高さが基準になり、縦長でも必ず収まる。
+ */
 export const AIM_RADIUS = .1;
 /**
- * 守ったと見なす広さ。画面の高さを1とした値で、印の輪に掛かる程度まで含める。
+ * 守ったと見なす広さ。印の半径と同じ基準（画面の短いほうの辺を1）で、輪の1.2倍まで。
  * この中に線があれば、運ばずにその場所のまま盾にする。広げすぎると、どこに描いても同じになる。
  */
 export const GUARD_REACH = AIM_RADIUS * 1.2;
+/** 印を描く半径（画素）。描く側も試験もこの長さを使う。 */
+export const aimRadiusPx = (w: number, h: number) => AIM_RADIUS * Math.min(w, h);
+/**
+ * 守ったと見なす広さを、画面の高さを1とした長さに直す。点までの距離はこの単位で測る。
+ * 短いほうの辺を1とした GUARD_REACH に、高さに対する短い辺の割合を掛けるだけ。
+ * 横長の画面では高さがそのまま基準になり、縦長の画面では幅の分だけ狭くなる。
+ */
+export const guardReachOf = (aspect: number) => GUARD_REACH * Math.min(aspect, 1);
 /**
  * 画面の横と縦の比（横÷縦）。点の横の位置は画面の幅を1とした値なので、
  * 印までの距離を測るときはこの比を掛けて、実際に見えている輪と同じ形にする。
@@ -88,7 +100,7 @@ const reachOf = (stroke: readonly XY[], aim: XY, aspect: number) =>
 export function coveringStroke(points: readonly Point[], aim: XY = AIM, aspect: number = DEFAULT_ASPECT) {
   return strokesOf(points).filter(stroke => stroke.length >= 2)
     .map(stroke => ({ stroke, box: boxOf(stroke) }))
-    .filter(found => reachOf(found.stroke, aim, aspect) <= GUARD_REACH && Math.max(found.box.width, found.box.height) >= MIN_EXTENT)
+    .filter(found => reachOf(found.stroke, aim, aspect) <= guardReachOf(aspect) && Math.max(found.box.width, found.box.height) >= MIN_EXTENT)
     .sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height)[0] ?? null;
 }
 /** 印の範囲を守れているか。描いている最中の返事に使う。 */
