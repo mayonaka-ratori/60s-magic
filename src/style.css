@@ -42,7 +42,9 @@ header{position:absolute;z-index:2;inset:30px 42px auto;display:flex;align-items
 #world,#knight{transform:scale(1.03)}
 #app:not([data-screen=playing]):not([data-screen=result]) .vignette{background:linear-gradient(90deg,#04101aeb,#07111cba 34%,#050e1720 62%,#050e1715),linear-gradient(0deg,#030c18b0,transparent 30%)}
 .welcome{left:6%;transform:translateY(-47%)}
-#app[data-screen=playing] header .brand{opacity:.75}.trial{background:#09162599;padding:5px 8px}
+#app[data-screen=playing] header .brand{opacity:.75}
+/* 結果画面は魔導書が画面全体を覆って題字は見えないので、題字そのものを消す（文字の重なりの検査にも引っかからない）。 */
+#app[data-screen=result] header .brand{display:none}.trial{background:#09162599;padding:5px 8px}
 .enemy-health{top:6%;width:min(310px,40%);color:#edf1f4;font-family:'Noto Serif JP',serif;font-size:clamp(13px,1.05vw,20px)}.enemy-health i{height:7px;background:#293444;border:1px solid #18222b;outline:1px solid #e7ebee55}.enemy-health b{background:linear-gradient(#f87773,#a12632)}
 /* 下の案内は2段。見出しと、ひとことの補い。 */
 .bottom-hud{bottom:26px;left:50%;transform:translateX(-50%);width:min(620px,92%);padding:15px 22px;background:linear-gradient(120deg,#122230ed,#101b27dd);border:1px solid #b0cad773;box-shadow:inset 0 0 0 3px #12212c,0 4px 20px #0005}.instruction{margin:0 0 8px}.hint{min-height:17px}.steps{margin-top:12px;gap:12px}.steps i{width:18px}.steps span.active{color:#c7eaff}.input-panel{bottom:228px;background:#0b1724ed}
