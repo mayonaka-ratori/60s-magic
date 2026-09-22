@@ -36,6 +36,8 @@ export class LocalSpeech {
   private recent:LocalSpeechJobRecord[]=[];
   private rejectedBusy=0;
   private failures=0;
+  /** 続けて時間内に終わらなかった回数。結果が届けば0に戻す。 */
+  private timeouts=0;
   private startedAt=0;
   private status:LocalSpeechStatus={state:'missing',message:'npm run setup:speech で音声認識を準備してください',model:speechModelName(defaultSpeechPreset()),preset:defaultSpeechPreset(),device:process.platform==='win32'?'cuda':defaultSpeechPreset().endsWith('-mlx')?'gpu':'cpu'};
   constructor(private python=process.env.LOCAL_SPEECH_PYTHON||defaultSpeechPython(),private model=process.env.LOCAL_SPEECH_MODEL||defaultSpeechModelDir()) {}
@@ -69,6 +71,7 @@ export class LocalSpeech {
         if(this.timer)clearTimeout(this.timer);this.timer=null;
         const job=this.active;this.active=null;
         if(!job)return;
+        this.timeouts=0;
         const now=performance.now();
         const record:LocalSpeechJobRecord={id:job.id,at:new Date().toISOString(),audioMs:Math.round(job.pcm.length/32),queuedMs:Math.round((job.sentAt??now)-job.createdAt),processingMs:Number(message.processingMs)||0,roundTripMs:Math.round(now-(job.sentAt??job.createdAt))};
         if(message.error||typeof message.text!=='string'||message.text.length>1500){this.failures++;this.remember({...record,error:'変換できなかった'});job.reject(new Error('音声を文字に変換できませんでした'));}
@@ -94,8 +97,16 @@ export class LocalSpeech {
   }
   private dispatch(job:Job) {
     this.active=job;job.sentAt=performance.now();
-    this.timer=setTimeout(()=>this.fail('音声認識が時間内に終わりませんでした'),10000);
+    this.timer=setTimeout(()=>this.giveUpJob(),10000);
     this.process?.stdin.write(JSON.stringify({id:job.id,pcm:job.pcm.toString('base64')})+'\n');
+  }
+  /** 一回の認識が時間内に終わらなかった。その要求だけ失敗にして、Python側は残す。続けて3回なら止める。 */
+  private giveUpJob() {
+    this.timer=null;this.timeouts++;this.failures++;
+    if(this.timeouts>=3){this.fail('音声認識が続けて時間内に終わりませんでした。アプリを起動し直してください。');return;}
+    const job=this.active;this.active=null;
+    if(job){this.remember({id:job.id,at:new Date().toISOString(),audioMs:Math.round(job.pcm.length/32),queuedMs:Math.round((job.sentAt??performance.now())-job.createdAt),processingMs:0,roundTripMs:Math.round(performance.now()-(job.sentAt??job.createdAt)),error:'時間内に終わらなかった'});job.reject(new Error('音声認識が時間内に終わりませんでした'));}
+    const next=this.queued;this.queued=null;if(next)this.dispatch(next);
   }
   private fail(message:string) {
     if(this.timer)clearTimeout(this.timer);this.timer=null;

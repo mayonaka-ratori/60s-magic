@@ -18,6 +18,11 @@ describe('Jevへの接続',()=>{
   });
   it('未設定を成功と表示せず、通信しない',async()=>{const mock=vi.fn();const result=await evaluateJev(new CastSession(()=>0).freeze(),{fetcher:mock});expect(result.status).toBe('unconfigured');expect(mock).not.toHaveBeenCalled();});
   it('混雑時に再試行して演出を待たせない',async()=>{const mock=vi.fn(async()=>new Response('',{status:429}));expect((await evaluateJev(new CastSession(()=>0).freeze(),{key:'test-only',fetcher:mock})).status).toBe('http-429');expect(mock).toHaveBeenCalledOnce();});
+  it('三回とも（一回目、防御、とどめ）の要求を受け付ける',()=>{
+    for(const round of ROUNDS){const state=new CastSession(()=>0,'play',round).freeze();expect(validState(state),round.id).toBe(true);expect(state.castId).toBe(round.castId);}
+    expect(new CastSession(()=>0,'play',ROUNDS[2]).freeze().phase).toBe('final');
+    expect(new CastSession(()=>0,'play',ROUNDS[2]).freeze().currentTask).not.toBe(new CastSession(()=>0,'play',ROUNDS[0]).freeze().currentTask);
+  });
   it('壊れた要求と回答を拒む',async()=>{
     expect(validState({})).toBe(false);expect(validState(new CastSession(()=>0).freeze())).toBe(true);
     // 三回ともJevへ送れる。とどめ（cast-03）を弾いていて、最後の魔法だけPC内の規則で決まっていた。

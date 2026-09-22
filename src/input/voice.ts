@@ -12,6 +12,8 @@ export class VoiceInput {
   level=0;
   /** 最後の結果が届いた、または届かないと決まった。画面側はこれを見て次へ進む。 */
   settled=false;
+  /** 受付中に接続が切れたとき、文字入力へ切り替えるための印。 */
+  lost=false;
   /** hooks は確認用の記録。音の送信と接続の出来事を時刻つきで残す。 */
   constructor(private onEntry:(entry:SpeechEntry)=>void,private onStatus:(message:string)=>void,private hooks:{audio?:(bytes:number,startMs:number)=>void;event?:(kind:string,detail?:Record<string,unknown>)=>void}={}) {}
   private note(kind:string,detail?:Record<string,unknown>){this.hooks.event?.(kind,detail);}
@@ -42,7 +44,7 @@ export class VoiceInput {
    * マイク側も同じ値でちょうど受付の終わりまで録る。値は rounds.ts の表から来る。
    */
   async connect(sessionId:string,windowMs=MAX_INPUT_MS) {
-    this.runId=sessionId;this.settled=false;this.windowMs=windowMs;
+    this.runId=sessionId;this.settled=false;this.lost=false;this.windowMs=windowMs;
     const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/speech`);this.ws=ws;
     await new Promise<void>((resolve,reject)=>{
       let ready=false;
@@ -55,9 +57,9 @@ export class VoiceInput {
         if(message.type==='ready'){clearTimeout(timer);ready=true;this.note('音声認識の準備ができた',{provider:message.provider,model:message.model});resolve();}
         if(message.type==='transcript')this.onEntry(message.entry);
         if(message.type==='ended'){this.settled=true;this.note('音声認識が最後の結果を送り終えた');}
-        if(message.type==='unavailable'){clearTimeout(timer);this.settled=true;this.note('音声認識を使えない',{reason:message.reason});this.onStatus(message.reason);reject(new Error(message.reason));}
+        if(message.type==='unavailable'){clearTimeout(timer);this.settled=true;this.lost=true;this.note('音声認識を使えない',{reason:message.reason});this.onStatus(message.reason);reject(new Error(message.reason));}
       };
-      ws.onclose=event=>{clearTimeout(timer);if(this.runId!==sessionId)return;this.settled=true;this.note('音声認識との接続が閉じた',{code:event.code});if(!ready)reject(new Error('音声認識との接続が切れました'));else this.onStatus('音声認識との接続が切れました。描いた線で続けます。');};
+      ws.onclose=event=>{clearTimeout(timer);if(this.runId!==sessionId)return;this.settled=true;this.note('音声認識との接続が閉じた',{code:event.code});if(!ready)reject(new Error('音声認識との接続が切れました'));else {this.lost=true;this.onStatus('音声認識との接続が切れました。文字で入れるか、描いた線で続けられます。');}};
     });
   }
   start(offset=0){this.note('録音を始めた',{offsetMs:Math.round(offset),windowMs:this.windowMs,sampleRate:this.context?.sampleRate??null});this.node?.port.postMessage({type:'start',offset,windowMs:this.windowMs});}

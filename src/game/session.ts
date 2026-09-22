@@ -79,8 +79,8 @@ export class CastSession {
     const chant=readChant(text);
     this.corrections=chant.corrections;
     const motion=summarizeMotion(this.motion.raw);
-    const defend=round.id==='defend';
-    this.state={schemaVersion:'spell-state-2',sessionId:this.id,castId:round.castId,inputRevision:1,phase:defend?'defend':'free',
+    const defend=round.id==='defend',final=round.id==='finish';
+    this.state={schemaVersion:'spell-state-2',sessionId:this.id,castId:round.castId,inputRevision:1,phase:defend?'defend':final?'final':'free',
       currentTask:round.id==='defend'
         ?'自分の線と言葉から守る魔法を作り、狙いの印へ来る騎士の一撃を切り抜ける'
         :round.id==='finish'

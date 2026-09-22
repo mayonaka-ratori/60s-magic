@@ -18,7 +18,7 @@ export type Motion = {
 };
 export type SpellState = {
   schemaVersion: 'spell-state-2'; sessionId: string; castId: string; inputRevision: number;
-  phase: 'free' | 'defend'; currentTask: string;
+  phase: 'free' | 'defend' | 'final'; currentTask: string;
   inputWindow: { startSessionMs: number; endSessionMs: number; chantPromptSessionMs: number; motionAndSpeechConcurrent: true };
   motion: Motion;
   timedEvents: Array<{ startMs: number; endMs: number; motion?: string; speech?: string; speechTiming?: 'utterance' | 'typed' }>;

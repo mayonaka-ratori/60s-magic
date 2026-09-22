@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { afterEach,describe,expect,it,vi } from 'vitest';
 import type { WebSocket } from 'ws';
-import { connectLocalSpeech, type LocalRecognizer } from '../server/local-speech-session';
+import { connectLocalSpeech, speechSessionDiagnostics, type LocalRecognizer } from '../server/local-speech-session';
 import { speechModelName } from '../server/local-speech';
 import { SpeechBook } from '../src/game/speech-book';
 import { CastSession } from '../src/game/session';
@@ -90,6 +90,13 @@ describe('ローカル音声認識の受付',()=>{
     const {socket}=setup();socket.audio(5000);
     for(let i=0;i<201;i++)socket.audio(100);
     expect(socket.readyState).toBe(3);
+  });
+  it('確認用の記録に、聞き取った言葉を残さない',async()=>{
+    const {socket}=setup();
+    socket.audio(1000);socket.audio(1700);socket.end();await vi.advanceTimersByTimeAsync(1);
+    expect(socket.messages.some(m=>m.type==='transcript'&&m.entry.text==='氷よ壁となれ')).toBe(true);
+    expect(JSON.stringify(speechSessionDiagnostics())).not.toContain('氷よ壁となれ');
+    expect(speechSessionDiagnostics().at(-1)?.requests[0]?.textLength).toBe(6);socket.close();
   });
   it('待てる時間を伸ばすと、遅れて届いた最後の結果も送る',async()=>{
     const {socket}=setup(vi.fn(()=>new Promise(resolve=>setTimeout(()=>resolve({text:'遅れた声',processingMs:900}),900))));
