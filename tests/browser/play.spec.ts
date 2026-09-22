@@ -14,7 +14,7 @@ async function encircleAim(page:import('@playwright/test').Page,radiusX=150,radi
 
 test('90秒を最後まで遊び、七つの雷と、印を囲んだ盾と、とどめの魔法を記録できる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/?dev=1');await expect(page.locator('#loading')).toBeHidden();await page.screenshot({path:'test-results/01-ready.png'});
+  await page.goto('/?dev=1&flow=together');await expect(page.locator('#loading')).toBeHidden();await page.screenshot({path:'test-results/01-ready.png'});
   await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await expect(page.locator('#hud')).toBeVisible();
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
   await page.mouse.move(460,450);await page.mouse.down();
@@ -105,7 +105,7 @@ test('遅いJevの回答は使わず、本人の氷の壁で時刻どおり発�
     const s=route.request().postDataJSON();await new Promise(resolve=>setTimeout(resolve,3000));
     await route.fulfill({json:{sessionId:s.sessionId,castId:s.castId,inputRevision:s.inputRevision,status:'ok',answers:{element:{type:'choice',choice:'fire',probabilities:{fire:1}}}}}).catch(()=>{});
   });
-  await page.goto('/?dev=1');await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await page.locator('#chant').fill('雷ではなく氷よ、壁となれ');
+  await page.goto('/?dev=1&flow=together');await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await page.locator('#chant').fill('雷ではなく氷よ、壁となれ');
   await expect(page.locator('#step-release')).toHaveClass('active',{timeout:26000});
   await expect(page.locator('#result')).toBeVisible({timeout:76000});
   await expect(page.locator('#spell-list')).toContainText('氷の壁');
@@ -118,13 +118,13 @@ test('遅いJevの回答は使わず、本人の氷の壁で時刻どおり発�
 
 test('カメラの認識を別の処理場所で準備し、中止すると解放する',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/');await page.locator('input[value="camera"]').check();await page.locator('#start').click();
+  await page.goto('/?flow=together');await page.locator('input[value="camera"]').check();await page.locator('#start').click();
   await expect(page.locator('#hud')).toBeVisible({timeout:30000});await page.waitForTimeout(1500);await page.locator('#cancel').click();
   await expect(page.locator('#welcome')).toBeVisible();expect(errors).toEqual([]);
 });
 
 test('見本は本人の入力と区別され、途中で中止できる',async({page})=>{
-  await page.goto('/');await page.locator('#demo').click();await expect(page.locator('#demo-tag')).toBeVisible();
+  await page.goto('/?flow=together');await page.locator('#demo').click();await expect(page.locator('#demo-tag')).toBeVisible();
   await page.waitForTimeout(1000);await page.locator('#cancel').click();await expect(page.locator('#welcome')).toBeVisible();await expect(page.locator('#hud')).toBeHidden();
 });
 
@@ -137,7 +137,7 @@ test('Jevの期限内の回答で曖昧な言葉を反映し、発動時刻は�
       element:{type:'choice',choice:'ice',probabilities:{ice:.9,unknown:.1}},form:{type:'choice',choice:'wall',probabilities:{wall:.9,orb:.1}},purpose:{type:'choice',choice:'defend',probabilities:{defend:.9,unknown:.1}},
     }}});
   });
-  await page.goto('/?dev=1');await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await page.locator('#chant').fill('冬の静けさよ、前に立て');
+  await page.goto('/?dev=1&flow=together');await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await page.locator('#chant').fill('冬の静けさよ、前に立て');
   await expect(page.locator('#recognized')).toBeVisible({timeout:24000});await expect(page.locator('#step-complete')).toHaveClass('active');
   await expect(page.locator('#result')).toBeVisible({timeout:78000});
   await expect(page.locator('#spell-list')).toContainText('氷の壁');

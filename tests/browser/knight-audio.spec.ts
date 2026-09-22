@@ -23,7 +23,7 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
       return (connect as any).call(this,destination,...args);
     };
   });
-  await page.goto('/?dev=1');await page.locator('.sound-settings summary').click();await page.locator('#test-sound').click();
+  await page.goto('/?dev=1&flow=together');await page.locator('.sound-settings summary').click();await page.locator('#test-sound').click();
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.peak)).toBeGreaterThan(.001);
   await page.locator('#use-sound').uncheck();
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.rms)).toBeLessThan(.00001);

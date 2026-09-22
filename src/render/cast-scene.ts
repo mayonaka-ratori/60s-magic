@@ -1,3 +1,4 @@
+import { ANNOUNCEMENT_MS } from '../game/rounds';
 import { VOICE_ORIGIN } from '../game/voice-growth';
 import { CompletedSpell } from './completed-spell';
 import { spellPose } from './spell-layout';
@@ -69,7 +70,8 @@ export class CastScene {
     // 入力の量を騎士へも渡す。同じ魔法でも、たくさん描いて唱えたほど大きく崩れる。
     // 防御の回の姿勢は、止め方（受け止め・弾き返し・かき消し）で変わる。
     this.knight.render(worldMs,!ready,recipe,live.amount,undefined,guard?.style??null);
-    const complete=ms>=beat.inputEnd*1000&&!ready;
+    const drawEnd=beat.drawEnd??beat.inputEnd;
+    const complete=ms>=drawEnd*1000&&!ready;
     const shape=ready?[]:points.length?points:complete?[{...VOICE_ORIGIN,t:0,hand:0,stroke:0}]:[];
     const key=`${this.revision}:${ready}:${complete}:${shape.length}:${shape.at(-1)?.t}:${shape.at(-1)?.x}:${shape.at(-1)?.y}`;
     // 毎フレーム管を作り直さず、入力が変わった時だけ更新。完成後は位置と光だけを変える。
@@ -78,7 +80,8 @@ export class CastScene {
     }
     const pose=spellPose(shape,width,height,worldMs,beat),color=recipe?colors[recipe.element]:colors.neutral;
     const charge=clamp((ms-beat.inputEnd*1000)/((beat.release-beat.inputEnd)*1000));
-    const glow=.45+clamp((ms-beat.start*1000)/((beat.inputEnd-beat.start)*1000))*.25+charge*.55+voice*.45;
+    const switchGlow=drawEnd<beat.inputEnd&&ms>=drawEnd*1000?Math.max(0,1-(ms-drawEnd*1000)/ANNOUNCEMENT_MS)*.8:0;
+    const glow=switchGlow+.45+clamp((ms-beat.start*1000)/((beat.inputEnd-beat.start)*1000))*.25+charge*.55+voice*.45;
     this.spell.setGlow(glow);
     this.spell.present(pose.scale,pose.dx,pose.dy,ready?0:pose.opacity,color,pose.progress);
     this.spell.render();

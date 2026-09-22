@@ -113,7 +113,8 @@ export function spellPose(points:readonly Point[],width:number,height:number,ms:
   const box=boxOf(points,width,height),frame=completedSpellFrame(width,height,beat,points);
   const cx=box?box.x:frame.x,cy=box?box.y:frame.y;
   const scaleTo=hasSize(box)?scaleBetween(box,frame):1;
-  const p=clamp((ms-beat.inputEnd*1000)/((beat.release-beat.inputEnd)*1000)),progress=p*p*(3-2*p);
+  const drawEnd=beat.drawEnd??beat.inputEnd;
+  const p=clamp((ms-drawEnd*1000)/((beat.release-drawEnd)*1000)),progress=p*p*(3-2*p);
   const scale=1+(scaleTo-1)*progress;
   const center={x:cx+(frame.x-cx)*progress,y:cy+(frame.y-cy)*progress};
   const dx=center.x-width/2-(cx-width/2)*scale,dy=center.y-height/2-(cy-height/2)*scale;

@@ -202,3 +202,14 @@ body[data-calm=on] .act-title{animation:none;opacity:1}
 /* まず魔法名だけを見せ、ひと呼吸おいてから残りを出す。 */
 .grimoire .spell-frame,.grimoire .keepsake,.grimoire .spell-list,.grimoire .grimoire-foot{transition:opacity .6s ease}
 .grimoire.name-only .spell-frame,.grimoire.name-only .spell-description,.grimoire.name-only .transcript,.grimoire.name-only .keepsake,.grimoire.name-only .spell-list,.grimoire.name-only .grimoire-foot{opacity:0}
+
+/* 遊び方の選択を足しても、開始ボタンと説明を読めるようにする。 */
+.flow-options .mode-option{padding:7px 10px}
+.flow-options .mode-option small{margin-top:3px;padding-left:0}
+.welcome .notice:empty{display:none}
+@media(max-width:520px){
+  .welcome h1{margin:10px 0}
+  .welcome .intro{line-height:1.65}
+  .welcome .text-button{padding:6px 0}
+  .welcome .mode-option{padding:8px 7px}
+}

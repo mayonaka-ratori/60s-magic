@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test('見本と比較し、自分の線を完成形にできる', async ({page}) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('/?view=look');
+  await page.goto('/?view=look&flow=together');
   await expect(page.locator('#loading')).toBeHidden();
   await expect(page.locator('#spell')).toHaveAttribute('data-state','complete');
   await page.screenshot({path:'test-results/look-complete.png'});

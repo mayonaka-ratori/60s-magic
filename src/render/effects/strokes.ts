@@ -56,7 +56,7 @@ export function drawStrokeReactions(f: Frame, memory: StrokeMemory) {
   const fresh = current && t * 1000 - current[current.length - 1].t < 250;
 
   // 速く引くほど、筆先から火花が飛ぶ。ゆっくりなら何も出ない。
-  if (fresh && t < f.beat.inputEnd) {
+  if (fresh && t < (f.beat.drawEnd??f.beat.inputEnd)) {
     const { speed, dir } = tipSpeed(current, w, h);
     const ratio = speedRatio(speed);
     if (ratio > 0) {
@@ -116,7 +116,7 @@ export function drawStrokeReactions(f: Frame, memory: StrokeMemory) {
   }
 
   // 蓄積の間は線全体をほんの少し明るくするだけにして、蓄積の演出と重ねすぎない。
-  if (t >= f.beat.inputEnd) {
+  if (t >= (f.beat.drawEnd??f.beat.inputEnd)) {
     const alpha = (.06 + amount * .12 + voice * .1) * boost * (1 - clamp((t - (f.beat.release - .4)) / .4));
     if (alpha > .004) {
       c.globalAlpha = alpha; c.lineWidth = 2.4; c.strokeStyle = palette.main;

@@ -23,7 +23,7 @@ const overlaps=(page:Page,where:string)=>page.evaluate(([sel,label])=>{
 
 async function playThrough(page:Page,where:string) {
   const found:string[]=[];
-  await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   await page.mouse.move(420,400);await page.mouse.down();await page.mouse.move(700,520,{steps:20});await page.mouse.up();
   // 始めたら時計が出る。合図が消えてから出るので、合図の3秒ぶんを待てる長さにする。
@@ -43,7 +43,7 @@ test('開始前の画面は、どの大きさでも文字が重ならない',asy
   const found:string[]=[];
   for(const size of [{width:1920,height:1080},{width:1440,height:900},{width:1280,height:800},{width:1280,height:720},{width:1024,height:768},{width:390,height:844}]) {
     await page.setViewportSize(size);
-    await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
+    await page.goto('/?flow=together');await expect(page.locator('#loading')).toBeHidden();
     found.push(...await overlaps(page,`${size.width}×${size.height}`));
     const bottom=await page.locator('#privacy').evaluate(n=>n.getBoundingClientRect().bottom);
     expect(bottom,`${size.width}×${size.height}で説明文が画面からはみ出す`).toBeLessThanOrEqual(size.height);
@@ -67,7 +67,7 @@ test('プレイ中と結果の画面で文字が重ならない（縦長）',asy
 test.describe('このPCの「動きを減らす」設定',()=>{
   test.use({reducedMotion:'reduce'});
   test('控えめから始まるが、演出を派手にするボタンはいつでも押せる',async({page})=>{
-    await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
+    await page.goto('/?flow=together');await expect(page.locator('#loading')).toBeHidden();
     await page.locator('.sound-settings summary').click();
     const button=page.locator('#calm-option');
     await expect(button).toHaveText('演出を派手にする');
@@ -84,16 +84,16 @@ test.describe('このPCの「動きを減らす」設定',()=>{
 
 test('確認用の表示は、遊ぶ人には出さず ?dev=1 でだけ出す',async({page})=>{
   // 始めたときの時計と、結果の画面での確認は、上の横長の通しで見ている。ここは90秒を通さない。
-  await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#loading')).toBeHidden();
   for(const target of ['.trial','#settings','.dev-only'])await expect(page.locator(target).first()).toBeHidden();
-  await page.goto('/?dev=1');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
+  await page.goto('/?dev=1&flow=together');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
 });
 
 test('1920×1080で、案内の文字が決めた大きさを下回らない',async({page})=>{
   // Xboxの指針は1080pで最小28px、設計仕様は操作指示を36〜44pxとしている。
   // 過去に上書きの24px指定が clamp を打ち消していたので、ここで見張る。
   await page.setViewportSize({width:1920,height:1080});
-  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#bottom-hud')).toBeVisible();
   const 下限:Record<string,number>={'#instruction':36,'#hint':16,'.steps span':16,'.enemy-health':20,'#timer b':30,'#timer small':15,'#cancel':14,'.input-panel label':15};
   for(const [target,min] of Object.entries(下限)) {
@@ -106,7 +106,7 @@ test('1920×1080で、案内の文字が決めた大きさを下回らない',as
 });
 
 test('締め切りが近づくと知らせ、発動では魔法名を大きく出す',async({page})=>{
-  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
   // 描画が遅い環境でも取りこぼさないよう、1秒ごとに見て、出たものを集める。

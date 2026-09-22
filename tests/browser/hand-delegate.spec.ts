@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('手の認識をGPUで動かし、使えないPCではCPUへ戻して続ける',async({page})=>{
-  await page.goto('/');
+  await page.goto('/?flow=together');
   const result=await page.evaluate(async()=>{
     const worker=new Worker('/hand-worker.js');
     const send=(message:Record<string,unknown>,transfer?:Transferable[])=>

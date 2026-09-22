@@ -31,6 +31,7 @@ export class CastSession {
   readonly motion:MotionRecorder;
   readonly speech:SpeechBook;
   readonly growth=new VoiceGrowth();
+  private growthRevision:string|null=null;
   readonly events:Array<{name:string; atMs:number; observedMs:number}>=[];
   readonly startMs:number;
   state:SpellState|null=null;
@@ -60,7 +61,12 @@ export class CastSession {
   tick() {
     if(this.cancelled)return;
     this.elapsed=Math.max(0,this.clock()-this.startMs);
-    if(FLOW==='sequential')this.growth.update(liveWords(this.speech.live(),this.speechOffset),this.elapsed,this.round.voiceStart,this.round.inputEnd);
+    if(FLOW==='sequential'&&acceptsVoice(this.round,this.elapsed)) {
+      // 認識結果が変わったときだけ読み直す。見本の未来の言葉は、その時刻まで待つ。
+      const entries=this.speech.live().filter(e=>e.endMs+this.speechOffset<=this.elapsed);
+      const revision=entries.map(e=>`${e.id}:${e.revision}`).join(',');
+      if(revision!==this.growthRevision){this.growthRevision=revision;this.growth.update(liveWords(entries,this.speechOffset),this.elapsed,this.round.voiceStart,this.round.inputEnd);}
+    }
     const next=phaseAt(this.elapsed,this.round);
     const marks:Partial<Record<Phase,number>>={complete:this.round.inputEnd,release:this.round.release,handoff:this.round.handoff,finished:this.round.end};
     if(next!==this.phase) {this.phase=next;this.events.push({name:next,atMs:marks[next]??this.elapsed,observedMs:this.elapsed});}

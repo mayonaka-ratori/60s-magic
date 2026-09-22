@@ -2,7 +2,7 @@ import './style.css';
 import { announcementAt, inputDeadline } from './game/guidance';
 import { Battle } from './game/battle';
 import type { CastSession } from './game/session';
-import { BATTLE_END, FLOW, COUNTDOWN_MS, GUARD_STAGGER_MS, ROUNDS, SPEECH_WAIT_MS, voiceConnectAt, interpretAtOf, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
+import { BATTLE_END, FLOW, COUNTDOWN_MS, GUARD_STAGGER_MS, ROUNDS, SPEECH_WAIT_MS, showsCursor, voiceConnectAt, interpretAtOf, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
 import { GUARD_LABELS } from './game/guard';
 import { ELEMENT_LABELS, PURPOSE_LABELS, FORM_LABELS, type Phase } from './game/types';
 import { HandCamera } from './input/camera';
@@ -22,10 +22,10 @@ import { DELIVERY_MESSAGES, PlayRecorder, nameParts, playOf, resultRows, type Pl
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <img id="world" src="/art/ruins-empty-v1.png" alt="石の柱と城が見える遺跡"><canvas id="knight" aria-label="剣と盾を持つ遺跡の騎士"></canvas><canvas id="spell" aria-hidden="true"></canvas><canvas id="magic" aria-label="手やマウスの動きで術式を描く場所"></canvas><canvas id="composite" aria-hidden="true"></canvas>
   <div class="vignette"></div>
-  <header><div class="brand"><span class="sigil" aria-hidden="true"></span><div><div class="brand-name">はじまりの魔法</div><p class="eyebrow">描いて、唱えて、解き放つ</p></div></div><div class="top-right"><span class="trial dev-only">90秒・試作</span><div class="timer" id="timer" hidden><small>のこり</small><b>18</b><small>秒</small></div></div></header>
+  <header><div class="brand"><span class="sigil" aria-hidden="true"></span><div><div class="brand-name">はじまりの魔法</div><p class="eyebrow">描いて、唱えて、解き放つ</p></div></div><div class="top-right"><span class="trial dev-only">90秒・試作</span><div class="timer" id="timer" hidden><small>のこり</small><b>${Math.ceil(windowMsOf(ROUNDS[0])/1000)}</b><small>秒</small></div></div></header>
   <section class="welcome" id="welcome"><div class="chapter">第一幕 / 最初の魔法</div><h1><span>その手で描く</span><span>その言葉で放つ</span></h1><p class="intro">自由に描いた線が、ひとつの魔法になる。<br>手を動かしながら、好きな言葉を唱えよう。<br>二回目は、左に浮かぶ輪の中に描けば盾になります</p>
     <fieldset class="mode-options"><legend>描き方を選ぶ</legend><label class="mode-option"><input type="radio" name="mode" value="camera"><strong>手で描く</strong><small>カメラに手を映す（片手でも大丈夫）</small></label><label class="mode-option"><input type="radio" name="mode" value="pointer" checked><strong>マウスで試す</strong><small>画面を押したまま動かす</small></label></fieldset>
-    <fieldset class="mode-options"><legend>遊び方を選ぶ</legend><label class="mode-option"><input type="radio" name="flow" value="sequential"><strong>順番に</strong><small>初めての人はこちら</small></label><label class="mode-option"><input type="radio" name="flow" value="together"><strong>同時に</strong><small>慣れた人向け</small></label></fieldset>
+    <fieldset class="mode-options flow-options"><legend>遊び方を選ぶ</legend><label class="mode-option"><input type="radio" name="flow" value="sequential"><strong>順番に</strong><small>初めての人はこちら</small></label><label class="mode-option"><input type="radio" name="flow" value="together"><strong>同時に</strong><small>慣れた人向け</small></label></fieldset>
     <label class="voice-option"><input type="checkbox" id="use-voice">マイクで唱える <span id="voice-availability"></span></label>
     <details class="sound-settings"><summary>音と演出の設定</summary><div class="sound-options"><label><input id="use-sound" type="checkbox" checked>効果音</label><label for="sound-volume">音量</label><input id="sound-volume" type="range" min="0" max="100" value="25" aria-label="効果音の音量"><output id="sound-volume-value">25%</output><button id="test-sound" type="button">音を試す</button></div></details>
     <button class="primary" id="start">魔法をつくる <span class="arrow" aria-hidden="true">↗</span></button><div class="welcome-actions"><button class="text-button" id="demo">見本の動きを見る</button><button class="text-button" id="chant-words">詠唱の言葉を見る</button><button class="text-button dev-only" id="settings">接続の確認</button><button class="text-button dev-only" id="last-record" hidden>前回の記録を保存する</button></div>
@@ -183,7 +183,7 @@ const COUNTDOWN_SECONDS=COUNTDOWN_MS/1000;let countingDown=false;
 async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json());}catch{serviceNotice='接続を確認できません。このPCの中だけで魔法を決めます。';status.speech=false;}
   el('voice-availability').textContent=status.speech?(status.speechProvider==='local'?'（このPCで聞き取ります）':'（Googleで聞き取ります）'):status.localSpeech?.state==='loading'?'（準備中です）':'（いまは使えません）';
   el<HTMLInputElement>('use-voice').disabled=!status.speech;
-  if(!status.speech)el<HTMLInputElement>('use-voice').checked=false;
+  if(!status.speech&&status.localSpeech?.state!=='loading')el<HTMLInputElement>('use-voice').checked=false;
   updateFlowChoice();
   el('privacy').textContent=`${status.speechProvider==='google'?'カメラの映像はこのPCの中だけで扱います。声はGoogleへ送って文字に変えます。':'カメラの映像も声も、このPCの中だけで扱い、外へ送りません。'}${status.jev?'文字にした言葉と動きの形だけ、魔法を決める処理へ送ります。':''}描いた線と唱えた言葉は、このPCの中にだけ残します。カメラの映像と声そのものは残しません。`;}
 void readStatus();
@@ -378,6 +378,10 @@ function updateUi() {
     first.complete=['唱えた言葉が、魔法になる','もう声を止めても大丈夫'];
     first.release=[recipe?.name??'魔法を解き放つ','あなたの言葉から、騎士へ放たれる'];
   }
+  if(FLOW==='sequential'&&round.id==='finish'){
+    lastRound.draw=['弱点へ、最後の術式を描け','描き終えたら、合図のあとに唱えます'];
+    lastRound.chant=['全力で詠唱せよ','手を止めて、好きな言葉を唱えよう'];
+  }
   if(round.voiceStart===null)defend.draw=['左の輪の中に、守る形を描け',rings?'囲えた。その形が盾になります':covered?'その線が、そのまま盾になります':'輪から離れていても大丈夫。一番近い線が輪の前へ動きます'];
   const label=(round.id==='finish'?lastRound:round.id==='defend'?defend:first)[phase];
   if(label){el('instruction').textContent=label[0];el('hint').textContent=label[1];}
@@ -391,14 +395,15 @@ function updateUi() {
   const announcement=announcementAt(round,battle.elapsed),act=announcement.text;
   if(act!==actShown){actShown=act;el('act-title').textContent=act;show('act-title',!!act);}
   el('act-title').style.opacity=String(announcement.opacity);
-  const steps=round.drawEnd===null?['唱える','形になる','放つ']:ROUND_STEPS[round.id];
+  const steps=round.drawEnd===null?['唱える','形になる','放つ']:FLOW==='sequential'&&round.id==='finish'?['描く','唱える','放つ']:ROUND_STEPS[round.id];
   for(let i=0;i<3;i++)el(`step-${i+1}-label`).textContent=steps[i];
   const heard=voice?cast.speech.latest():null;
   if(heard&&heard.source!=='typed'&&t<round.lock/1000)el('voice-label').textContent=`聞き取り：「${heard.text.slice(-40)}」${heard.final?'':'（途中）'}`;
   el('service-notice').textContent=serviceNotice;
   show('voice-label',!!voice&&!demo&&voiceRound===round.id&&t<round.lock/1000&&(!!heard||cast.acceptingVoice));
-  el('step-input').classList.toggle('active',accepting);
-  el('step-complete').classList.toggle('active',!accepting&&t<round.release/1000);
+  const separated=round.drawEnd!==null&&round.drawEnd<round.inputEnd;
+  el('step-input').classList.toggle('active',separated?drawing:accepting);
+  el('step-complete').classList.toggle('active',separated?!drawing&&t<round.release/1000:!accepting&&t<round.release/1000);
   el('step-release').classList.toggle('active',t>=round.release/1000);
   // 声を使えない回（マイクなし、またはつなぎ直せなかったとき）は、文字で入れられるようにする。
   if(voice?.lost&&!voiceLost){voiceLost=true;diag?.log('声の接続が切れた',{round:round.id});}
@@ -445,6 +450,9 @@ function driveRound(battle:Battle,cast:CastSession) {
     if(round.index>1)el<HTMLInputElement>('chant').value='';
     el('voice-label').textContent='声を受け付けています';
   }
+  if(round.drawEnd!==null&&round.drawEnd<round.inputEnd&&ms>=round.drawEnd&&!cast.events.some(e=>e.name==='drawing-ended')){
+    cast.events.push({name:'drawing-ended',atMs:round.drawEnd,observedMs:ms});cursors=[];
+  }
   if(ms>=round.inputEnd&&!ended.has(round.id)) {
     ended.add(round.id);
     if(voiceRound===round.id)voice?.stop(SPEECH_WAIT_MS);
@@ -471,7 +479,7 @@ function driveRound(battle:Battle,cast:CastSession) {
 
 /**
  * 二回目からの回のために、声の受付を作り直す。前の回の接続は確定のときに閉じている。
- * つなぐのは回の始まりより前（防御は27.5秒、とどめは53.5秒）だが、録音を始めるのは回が始まってから。
+ * つなぐ時刻は声の受付開始から作り、録音はその受付開始まで待つ。
  * 声の時刻は回ごとに0から数えるので、早く始めるとその分だけ時刻がずれ、受付の長さをはみ出して捨てられる。
  */
 function prepareRoundVoice(battle:Battle,round:Round) {
@@ -676,7 +684,7 @@ function animate(now:number) {
   if(live.rings!==lastRings){if(live.rings>lastRings)sound.ring(live.rings);lastRings=live.rings;}
   lastCovered=live.covered;
   if(cast)sound.update(ms,cast.recipe??session!.first.recipe,magic.preset,live.amount);
-  stage.render(cast?.motion.display??[],ms,cast?.recipe??null,FLOW==='sequential'?0:voice?.level??0,cursors,!session&&!countingDown,live,session?.defend.guard??null,session?.inherited??[]);
+  stage.render(cast?.motion.display??[],ms,cast?.recipe??null,FLOW==='sequential'?0:voice?.level??0,cast&&!showsCursor(cast.round,ms)?[]:cursors,!session&&!countingDown,live,session?.defend.guard??null,session?.inherited??[]);
   // 閃光、ビネット、グレイン、暗転、背景の彩度はHTMLの層で出す。
   overlay.update(magic.screen,magic.preset.palettes[cast?.recipe?.element??'neutral'],calmMode);
   // 体力も世界の時計で減らす。命中で止めている間は先へ進まない（stage.render の後に読む）。

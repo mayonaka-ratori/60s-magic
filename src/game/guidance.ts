@@ -1,4 +1,4 @@
-import { ANNOUNCEMENT_HOLD_MS, ANNOUNCEMENT_FADE_MS, ANNOUNCEMENT_MS, FLOW, type Round } from './rounds';
+import { ANNOUNCEMENT_HOLD_MS, ANNOUNCEMENT_FADE_MS, ANNOUNCEMENT_MS, TOGETHER_ANNOUNCEMENT_MS, FLOW, type Round } from './rounds';
 
 /** 描く時間を数え終えたら、唱える締め切りへ数え直す。 */
 export function inputDeadline(round: Round, ms: number) {
@@ -9,7 +9,7 @@ export function inputDeadline(round: Round, ms: number) {
 export function announcementAt(round: Round, ms: number) {
   if(FLOW==='together') {
     const text=round.id==='first'?'':`第${'一二三'[round.index-1]}幕　${round.id==='defend'?'防御':'とどめ'}`;
-    return {text:ms>=round.start&&ms<round.start+800?text:'',opacity:1};
+    return {text:ms>=round.start&&ms<round.start+TOGETHER_ANNOUNCEMENT_MS?text:'',opacity:1};
   }
   const switching=round.id==='finish'&&round.drawEnd!==null&&round.drawEnd<round.inputEnd&&ms>=round.drawEnd;
   const start=switching?round.drawEnd!:round.start, elapsed=ms-start;

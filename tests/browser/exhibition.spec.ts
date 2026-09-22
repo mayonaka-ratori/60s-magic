@@ -1,7 +1,7 @@
 import { test,expect } from '@playwright/test';
 
 test('誰も触らないと見本が自動で流れ、触ると止まってタイトルへ戻る',async({page})=>{
-  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   // 30秒動きがなければ自動で始まる。通りすがりの人へ、何をする遊びかを見せるため。
   await expect(page.locator('#demo-tag')).toBeVisible({timeout:45000});
   await expect(page.locator('#hud')).toBeVisible();
@@ -13,7 +13,7 @@ test('誰も触らないと見本が自動で流れ、触ると止まってタ�
 test('結果のまま誰も触らなければ、タイトルへ戻って自動再生に戻る',async({page})=>{
   // 結果は次の人の開始操作まで残すが、誰も居なくなったまま置き去りにしない。
   // 待ち時間はURLで短くできるので、ここでは短い値で流れだけを確かめる。
-  await page.goto('/?attract=5&resultIdle=6');
+  await page.goto('/?attract=5&resultIdle=6&flow=together');
   await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();
   // ここは開始ボタンの直後から待つ。3秒の合図と本編90秒で93秒かかるので、余裕を足して100秒待つ。
@@ -23,13 +23,13 @@ test('結果のまま誰も触らなければ、タイトルへ戻って自動�
 });
 
 test('唱える時間になると、まだ何も言っていない人に例を出す',async({page})=>{
-  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   await expect(page.locator('#hint')).toHaveText('たとえば「雷よ、七つに分かれろ」',{timeout:26000});
 });
 
 test('もう言葉を入れた人には、詠唱の例を出さない',async({page})=>{
-  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   // 締め切り前に入れる。18秒を過ぎると入力欄が閉じるので、始めてすぐ入れる。
   await page.locator('#chant').fill('氷よ、壁となれ');
@@ -43,7 +43,7 @@ test('もう言葉を入れた人には、詠唱の例を出さない',async({pa
 });
 
 test('当たった瞬間に体力バーが反応し、騎士に魔法の傷あとが残る',async({page})=>{
-  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#hud')).toBeVisible();
   const 見たもの=new Set<string>();
   // 三つとも一回目の命中（23.5秒）までに出る。出そろったら90秒の最後までは待たない。
@@ -65,7 +65,7 @@ test('当たった瞬間に体力バーが反応し、騎士に魔法の傷あ�
 });
 
 test('画面で読む文字はゴシック体、明朝は題字と魔法名だけにする',async({page})=>{
-  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   // 音の設定は最初たたんでおく。最初に見せるのは描き方と「魔法をつくる」。
   await expect(page.locator('#use-sound')).toBeHidden();
   await page.locator('.sound-settings summary').click();

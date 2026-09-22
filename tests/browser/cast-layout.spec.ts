@@ -2,7 +2,7 @@ import { test,expect } from '@playwright/test';
 
 test('画面全体の二筆が描いた大きさのまま残り、縦画面の結果からもう一度始められる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/');await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
+  await page.goto('/?flow=together');await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
   await page.mouse.move(30,200);await page.mouse.down();await page.mouse.move(1390,650,{steps:40});await page.mouse.up();
   await page.mouse.move(70,680);await page.mouse.down();await page.mouse.move(1250,160,{steps:40});await page.mouse.up();
   await expect(page.locator('#spell')).toHaveAttribute('data-scale','1.0000');

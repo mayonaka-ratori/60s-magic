@@ -9,10 +9,34 @@ import { playOf, resultRows } from '../src/game/record';
 import { drawVoiceGrowth } from '../src/render/effects/voice-growth';
 import { testFrame, stubContext } from './helpers';
 import { AIM, drawnGuard, shieldOf } from '../src/game/guard';
-import { interpretAtOf, replyLimitOf, speechLimitOf, voiceConnectAt } from '../src/game/rounds';
+import { interpretAtOf, replyLimitOf, speechLimitOf, voiceConnectAt, showsCursor, VOICE_RECONNECT_MS } from '../src/game/rounds';
+import { spellPose } from '../src/render/spell-layout';
 import { FLOW, ROUNDS, TOGETHER_ROUNDS, SEQUENTIAL_ROUNDS, MAX_INPUT_MS, MAX_INPUT_SAMPLES, SAMPLES_PER_MS, flowOf, beatOf, windowMsOf } from '../src/game/rounds';
 
 describe('二つの遊び方', () => {
+  it('選んだ表のとおりに手と声を受け付け、とどめの切り替えで線と光点を止める', () => {
+    const expected=FLOW==='sequential'?[[null,0],[38000,null],[62000,62000]]:[[18000,0],[45000,30000],[72000,56000]];
+    expect(ROUNDS.map(r=>[r.drawEnd,r.voiceStart])).toEqual(expected);
+    for(const round of ROUNDS) {
+      let now=round.start;const cast=new CastSession(()=>now,'境目',round,0);
+      expect(cast.acceptingDrawing).toBe(round.drawEnd!==null);
+      expect(cast.acceptingVoice).toBe(round.voiceStart===round.start);
+      if(round.drawEnd!==null) {
+        now=round.drawEnd-1;expect(cast.motion.add(.2,.3,now)).toBe(true);expect(showsCursor(round,now)).toBe(true);
+        now++;expect(cast.motion.add(.3,.4,now)).toBe(false);expect(showsCursor(round,now)).toBe(false);
+      }
+      if(round.voiceStart!==null) {
+        expect(voiceConnectAt(round)).toBe(round.voiceStart-VOICE_RECONNECT_MS);
+        now=round.voiceStart;expect(cast.acceptingVoice).toBe(true);
+        now=round.inputEnd;expect(cast.acceptingVoice).toBe(false);
+      }
+    }
+    const finish=ROUNDS[2],points=[{x:.4,y:.4,t:finish.start,hand:0,stroke:0},{x:.45,y:.42,t:finish.start+1,hand:0,stroke:0}];
+    expect(spellPose(points,1280,720,finish.drawEnd!,beatOf(finish)).progress).toBe(0);
+    expect(spellPose(points,1280,720,finish.drawEnd!+1,beatOf(finish)).progress).toBeGreaterThan(0);
+    expect(ROUNDS[2].release).toBe(TOGETHER_ROUNDS[2].release);
+    expect(ROUNDS[2].finalBlow).toBe(TOGETHER_ROUNDS[2].finalBlow);
+  });
   it('三段の描き方と無入力で止め方が決まり、描いた縁を変えない', () => {
     const ring=Array.from({length:33},(_,i)=>({x:AIM.x+Math.cos(i/32*Math.PI*2)*.1,y:AIM.y+Math.sin(i/32*Math.PI*2)*.15,t:i,hand:0,stroke:0}));
     const covered=[{x:AIM.x-.1,y:AIM.y,t:0,hand:0,stroke:0},{x:AIM.x,y:AIM.y,t:1,hand:0,stroke:0}];
@@ -64,7 +88,7 @@ describe('二つの遊び方', () => {
     resetLiveWords();const growth=new VoiceGrowth(),round=ROUNDS[0];
     const words=(text:string,revision:number)=>liveWords([{id:0,revision,startMs:0,endMs:1,text,final:false,stability:.5,source:'local'}]);
     growth.update(words('炎',1),2,0,round.inputEnd);
-    growth.update(words('炎',2),3,0,round.inputEnd);
+    growth.update(words('炎、炎',2),3,0,round.inputEnd);
     expect(growth.snapshot()).toHaveLength(1);
     growth.update(words('氷',3),4,0,round.inputEnd);
     expect(growth.snapshot().map(p=>[p.element,p.active])).toEqual([['fire',false],['ice',true]]);

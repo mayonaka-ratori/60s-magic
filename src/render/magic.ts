@@ -137,10 +137,11 @@ export class MagicCanvas {
     points: Point[]; ms: number; recipe: Recipe | null; voice: number; cursors: XY[]; ready: boolean;
     target: XY; origin: XY; live?: LiveInput; beat?: Beat; guard?: GuardPlan | null; inherited?: XY[];
   }) {
-    const { points, ms, recipe, voice, cursors, ready, target, origin } = input;
+    const { points, ms, recipe, voice, ready, target, origin } = input;
     const live = input.live ?? emptyLive, guard = input.guard ?? null, inherited = input.inherited ?? [];
     const c = this.ctx, w = this.width, h = this.height, t = ms / 1000;
     const beat = input.beat ?? beatAt(t);
+    const drawEnd=beat.drawEnd??beat.inputEnd,cursors=t<drawEnd?input.cursors:[];
     c.clearRect(0, 0, w, h);
     // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前（29.5秒）で変わらない。
     const stopAt = stopAtOf(beat);
@@ -176,7 +177,7 @@ export class MagicCanvas {
     // 描いている間の光。線の節が光り、光が線の上を巡る。声で大きくなる。
     if (t >= beat.build && t < beat.release) {
       for (const p of nodes) this.sprites.draw(c, p.x * w, p.y * h, 2 + voice * 3, palette.core, palette.main, .5);
-      const runners = t >= beat.inputEnd ? 14 : 8;
+      const runners = t >= drawEnd ? 14 : 8;
       for (let i = 0; i < Math.min(runners, points.length); i++) {
         const index = Math.floor(((t * .16 + i / runners) % 1) * points.length), p = points[index];
         this.sprites.draw(c, p.x * w, p.y * h, 1.8, palette.core, palette.main, .7);
@@ -190,7 +191,7 @@ export class MagicCanvas {
         this.sprites.draw(c, a.x * w + (origin.x - a.x * w) * p, a.y * h + (origin.y - a.y * h) * p, 2, palette.core, palette.main, p * .7);
       }
     }
-    if (t < beat.inputEnd) for (const p of cursors) {
+    if (t < drawEnd) for (const p of cursors) {
       this.sprites.draw(c, p.x * w, p.y * h, 4 + voice * 2, palette.core, palette.main, 1);
       // 手の跡に小さな光を残す。
       if (dt > 0 && this.pool.random() < .6) this.pool.spawn({ x: p.x * w, y: p.y * h, vx: (this.pool.random() - .5) * 20, vy: -10 - this.pool.random() * 20, life: .5 + this.pool.random() * .5, size: 1 + this.pool.random() * 1.2, drag: .5, color: palette.main, core: palette.core, kind: 0 });

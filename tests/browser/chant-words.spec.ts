@@ -1,6 +1,6 @@
 import { test,expect } from '@playwright/test';
 test('詠唱の言葉と読みを見て、かなの難語から雷を発動する',async({page})=>{
-  await page.goto('/?dev=1');await page.locator('#chant-words').click();
+  await page.goto('/?dev=1&flow=together');await page.locator('#chant-words').click();
   await expect(page.locator('#sheet-title')).toHaveText('詠唱の言葉');
   await expect(page.locator('#sheet-body')).toContainText('雷霆（らいてい）');
   await expect(page.locator('#sheet-body')).toContainText('領域展開（りょういきてんかい）');

@@ -2,8 +2,7 @@ import type { Phase } from './types';
 
 /**
  * 一回分の時刻（ms）。90秒を三回に分けた表の一行にあたる。
- * 秒数は設計仕様の1.3の値をそのまま置いている。勝手に動かさない。
- * 一回目30秒、防御26秒、とどめ34秒。とどめを一番長くして、最後の魔法に余裕を持たせている。
+ * 「順番に」は専用の設計の5章、「同時に」は設計仕様の1.3の表を使う。勝手に動かさない。
  */
 export type Round = {
   id: 'first' | 'defend' | 'finish';
@@ -12,7 +11,7 @@ export type Round = {
   castId: string;
   /** 入力の受付を始める時刻。 */
   start: number;
-  /** 線が残り始める合図。一回目だけ持ち、防御は最初から残る。 */
+  /** 線が残り始める合図。無いときは、この合図を出さない。 */
   build: number | null;
   /** 詠唱の案内を出す時刻。 */
   chant: number | null;
@@ -39,7 +38,8 @@ export type Round = {
 export type Flow = 'sequential' | 'together';
 /** ページを開いたときだけ選ぶ。サーバーも同じ表を読めるよう、URLが無い場合を扱う。 */
 export const flowOf = (search: string): Flow => new URLSearchParams(search).get('flow') === 'together' ? 'together' : 'sequential';
-export const FLOW = flowOf(typeof location === 'undefined' ? '' : location.search);
+/** URLを持たない確認用の道具は従来の表を読む。サーバーの受け皿は両方の表から作る。 */
+export const FLOW: Flow = typeof location === 'undefined' ? 'together' : flowOf(location.search);
 
 export const TOGETHER_ROUNDS: Round[] = [
   { id: 'first', index: 1, castId: 'cast-01', start: 0, drawEnd: 18000, voiceStart: 0, build: 7000, chant: 14000, inputEnd: 18000, lock: 21000, release: 22000, impact: 23500, finalBlow: null, handoff: 29000, end: 30000 },
@@ -47,11 +47,11 @@ export const TOGETHER_ROUNDS: Round[] = [
   { id: 'finish', index: 3, castId: 'cast-03', start: 56000, drawEnd: 72000, voiceStart: 56000, build: null, chant: 64000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
 ];
 
-/** 順番に遊ぶ時刻。手と声を分ける前も、この表で三回を進める。 */
+/** 順番に遊ぶ時刻。手と声の受付も、この表から作る。 */
 export const SEQUENTIAL_ROUNDS: Round[] = [
   { id: 'first', index: 1, castId: 'cast-01', start: 0, drawEnd: null, voiceStart: 0, build: null, chant: null, inputEnd: 14000, lock: 17000, release: 18000, impact: 19500, finalBlow: null, handoff: 24000, end: 26000 },
   { id: 'defend', index: 2, castId: 'cast-02', start: 26000, drawEnd: 38000, voiceStart: null, build: 26000, chant: null, inputEnd: 38000, lock: 40000, release: 41000, impact: 42400, finalBlow: null, handoff: 46000, end: 50000 },
-  { id: 'finish', index: 3, castId: 'cast-03', start: 50000, drawEnd: 72000, voiceStart: 50000, build: 50000, chant: 62000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
+  { id: 'finish', index: 3, castId: 'cast-03', start: 50000, drawEnd: 62000, voiceStart: 62000, build: 50000, chant: 62000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
 ];
 export const ROUNDS = FLOW === 'together' ? TOGETHER_ROUNDS : SEQUENTIAL_ROUNDS;
 
@@ -110,7 +110,7 @@ export const SPEECH_WAIT_MS = 2000;
 export const SPEECH_WAIT_MAX_MS = SPEECH_WAIT_MS + 1000;
 /** その回の受付の長さ（ms）。マイクの打ち切りも音の受け皿の大きさも、この値から作る。 */
 export const windowMsOf = (round: Round) => round.inputEnd - round.start;
-/** いちばん長い受付（ms）。一回目の18秒。受け皿の大きさと接続の上限はここから作る。 */
+/** 両方の表でいちばん長い受付（ms）。受け皿の大きさと接続の上限はここから作る。 */
 export const MAX_INPUT_MS = Math.max(...[...TOGETHER_ROUNDS, ...SEQUENTIAL_ROUNDS].map(windowMsOf));
 /** 16kHzで受け取るので、1msあたり16点。受け皿の大きさを点の数で書くときに使う。 */
 export const SAMPLES_PER_MS = 16;
@@ -122,7 +122,9 @@ export const COUNTDOWN_MS = 3000;
 export const ANNOUNCEMENT_HOLD_MS = 1500;
 export const ANNOUNCEMENT_FADE_MS = 500;
 export const ANNOUNCEMENT_MS = ANNOUNCEMENT_HOLD_MS + ANNOUNCEMENT_FADE_MS;
-/** 二回目からの回で、声の受付を作り直し始める時刻（回の始まりより前、ms）。 */
+/** 同時に遊ぶ場合の幕の長さ。従来の表示を保つ。 */
+export const TOGETHER_ANNOUNCEMENT_MS = 800;
+/** 声の受付開始より前に、接続を準備する長さ（ms）。 */
 export const VOICE_RECONNECT_MS = 2500;
 /**
  * 音声認識の接続を保てる上限（ms）。画面側が閉じ忘れたときの受け皿で、
@@ -147,12 +149,14 @@ export const roundAt = (ms: number) => ROUNDS.find(round => ms < round.end) ?? R
 
 export const acceptsDrawing = (round: Round, ms: number) => round.drawEnd !== null && ms >= round.start && ms < round.drawEnd;
 export const acceptsVoice = (round: Round, ms: number) => round.voiceStart !== null && ms >= round.voiceStart && ms < round.inputEnd;
+/** 声だけの一回目は手を追う点だけ見せる。とどめは描く締め切りで消す。 */
+export const showsCursor = (round: Round, ms: number) => ms >= round.start && ms < (round.drawEnd ?? round.inputEnd);
 export const voiceConnectAt = (round: Round) => round.voiceStart === null ? null : round.voiceStart - VOICE_RECONNECT_MS;
 
 export function phaseAt(ms: number, round: Round = ROUNDS[0]): Phase {
   if (ms < round.start) return 'ready';
   if (ms < round.inputEnd) {
-    if (round.drawEnd === null && acceptsVoice(round,ms)) return 'chant';
+    if ((round.drawEnd === null || (round.voiceStart !== null && round.voiceStart > round.start)) && acceptsVoice(round,ms)) return 'chant';
     if (round.build !== null && ms < round.build) return 'draw';
     if (round.chant === null || ms < round.chant) return round.build === null || round.build === round.start ? 'draw' : 'build';
     return 'chant';

@@ -16,7 +16,7 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     const page=await context.newPage();const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
     const outsideAudio:string[]=[];
     page.on('websocket',socket=>{if(!socket.url().startsWith('ws://127.0.0.1:5173/'))outsideAudio.push(socket.url());});
-    await page.goto('http://127.0.0.1:5173/?dev=1');
+    await page.goto('http://127.0.0.1:5173/?dev=1&flow=together');
     await expect(page.locator('#use-voice')).toBeEnabled({timeout:15000});await expect(page.locator('#privacy')).toContainText('このPCの中だけ');
     await page.locator('#use-voice').check();await page.locator('#start').click();
     // マイクと音声認識のつなぎ込みが終わってから3秒の合図が出るので、まず合図の画面を待つ。
