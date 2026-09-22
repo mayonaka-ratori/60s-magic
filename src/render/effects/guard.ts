@@ -207,7 +207,8 @@ function drawInherited(f: Frame) {
     const node = f.inherited[i], a = i / Math.max(1, f.inherited.length) * Math.PI * 2 + t * .25;
     const x = node.x * f.w + (g.x + Math.cos(a) * reach - node.x * f.w) * appear;
     const y = node.y * f.h + (g.y + Math.sin(a) * reach * .6 - node.y * f.h) * appear;
-    glow(f, x, y, 2 + Math.sin(t * 2 + i) * .5, .25 + appear * .2);
+    const pal=node.element?f.preset.palettes[node.element]:f.palette;
+    glow(f, x, y, 2 + Math.sin(t * 2 + i) * .5, .25 + appear * .2,pal.main,pal.core);
   }
 }
 
@@ -256,7 +257,7 @@ function drawShield(f: Frame) {
     c.globalAlpha = a; c.lineWidth = width; c.stroke();
     c.globalAlpha = a * .95; c.lineWidth = Math.max(.9, width * .38); c.strokeStyle = f.palette.core; c.stroke();
     // 面の中を流れる光の格子。一番外の層の内側だけに出し、盾の外へはみ出させない。
-    if (k === 0) {
+    if (k === 0 && (!plan.surface || plan.surface === 'grid')) {
       c.save(); c.clip();
       c.globalAlpha = alpha * .3; c.lineWidth = 1; c.strokeStyle = f.palette.main;
       c.beginPath();
@@ -267,6 +268,13 @@ function drawShield(f: Frame) {
       c.stroke(); c.restore();
     }
   }
+  if(plan.surface==='membrane') {
+    c.save();c.beginPath();shieldPath(f,1+flex,back);c.clip();
+    const sheen=c.createLinearGradient(g.x-reach,g.y-reach,g.x+reach,g.y+reach);
+    sheen.addColorStop(0,f.palette.main);sheen.addColorStop(.5,f.palette.core);sheen.addColorStop(1,f.palette.main);
+    c.fillStyle=sheen;c.globalAlpha=alpha*(.16+form*.16);c.fillRect(g.x-reach,g.y-reach,reach*2,reach*2);c.restore();
+  }
+  if(plan.surface==='orb')glow(f,g.x,g.y,12+form*16,alpha*.65);
   glow(f, g.x, g.y, 6 + form * 7, alpha * .35);
   // 運んでいる間は、元の位置から尾を引く。尾は「どこから来たか」を見せるので、元の位置へ向ける。
   if (back > 0) {

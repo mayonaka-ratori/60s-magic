@@ -19,7 +19,7 @@ export type Motion = {
 export type SpellState = {
   schemaVersion: 'spell-state-2'; sessionId: string; castId: string; inputRevision: number;
   phase: 'free' | 'defend' | 'final'; currentTask: string;
-  inputWindow: { startSessionMs: number; endSessionMs: number; chantPromptSessionMs: number; motionAndSpeechConcurrent: true };
+  inputWindow: { startSessionMs: number; endSessionMs: number; chantPromptSessionMs: number | null; motionAndSpeechConcurrent: boolean; drawEndSessionMs: number | null; voiceStartSessionMs: number | null };
   motion: Motion;
   timedEvents: Array<{ startMs: number; endMs: number; motion?: string; speech?: string; speechTiming?: 'utterance' | 'typed' }>;
   speech: { status: 'recognized' | 'typed' | 'unavailable'; provider?:'local'|'google'|'typed'|null; locale: 'ja-JP'; rawTranscript: string; normalizedTranscript: string; explicitCount: number | null; explicitNegation: boolean };

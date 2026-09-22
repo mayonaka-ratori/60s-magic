@@ -59,7 +59,7 @@ export function liveWords(entries: readonly SpeechEntry[], offsetMs = 0): LiveWo
   const found: LiveWord[] = [];
   for (const entry of [...entries].sort((a, b) => a.startMs - b.startMs)) {
     // 詠唱辞書で意味に直してから、否定と言い直しの前半を落とす。「炎ではなく氷」は氷だけが残る。
-    const text = affirmativeText(readChant(entry.text ?? '').meaning);
+    const text = affirmativeText(readChant(entry.text ?? '').effects);
     const heard = (Number.isFinite(entry.endMs) && entry.endMs >= entry.startMs ? entry.endMs : entry.startMs) + offsetMs;
     // 同じ発話の中で同じ語が何度目に出たか。番号を分けるために数える。
     const seen = new Map<string, number>();

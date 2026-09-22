@@ -88,7 +88,7 @@ test('開始前の画面は、どの大きさでも文字が重ならない',asy
   const found:string[]=[];
   for(const size of [{width:1920,height:1080},{width:1440,height:900},{width:1280,height:800},{width:1280,height:720},{width:1024,height:768},{width:390,height:844}]) {
     await page.setViewportSize(size);
-    await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
+    await page.goto('/?flow=together');await expect(page.locator('#loading')).toBeHidden();
     found.push(...await overlaps(page,`${size.width}×${size.height}`));
     const bottom=await page.locator('#privacy').evaluate(n=>n.getBoundingClientRect().bottom);
     expect(bottom,`${size.width}×${size.height}で説明文が画面からはみ出す`).toBeLessThanOrEqual(size.height);
@@ -99,7 +99,7 @@ test('開始前の画面は、どの大きさでも文字が重ならない',asy
 test('横長で90秒を通し、文字が重ならず、締め切りと体力と魔法名を見せ、結果のまま放っておくと見本へ戻る',async({page})=>{
   // 結果は次の人の開始操作まで残すが、誰も居なくなったまま置き去りにしない。
   // 待ち時間はURLで短くできるので、ここでは短い値で流れだけを確かめる。
-  const {found,errors}=await playThrough(page,'1440×900','/?attract=5&resultIdle=6','雷よ、七つに分かれろ');
+  const {found,errors}=await playThrough(page,'1440×900','/?attract=5&resultIdle=6&flow=together','雷よ、七つに分かれろ');
   expect(found).toEqual([]);
   // 遊ぶ人の画面では、結果になっても確認用の表示を出さない。
   await expect(page.locator('.report-actions')).toBeHidden();
@@ -122,7 +122,7 @@ test('横長で90秒を通し、文字が重ならず、締め切りと体力と
 
 test('縦長で90秒を通し、文字が重ならず、何も唱えない人に例を出し、結果からもう一度始められる',async({page})=>{
   await page.setViewportSize({width:390,height:844});
-  const {found,errors}=await playThrough(page,'390×844','/');
+  const {found,errors}=await playThrough(page,'390×844','/?flow=together');
   expect(found).toEqual([]);
   // 唱える時間になると、まだ何も言っていない人に例を出す。
   expect((await 集めた様子(page)).ひとこと).toContain('たとえば「雷よ、七つに分かれろ」');
@@ -142,7 +142,7 @@ test('縦長で90秒を通し、文字が重ならず、何も唱えない人に
 test.describe('このPCの「動きを減らす」設定',()=>{
   test.use({reducedMotion:'reduce'});
   test('控えめから始まるが、演出を派手にするボタンはいつでも押せる',async({page})=>{
-    await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
+    await page.goto('/?flow=together');await expect(page.locator('#loading')).toBeHidden();
     await page.locator('.sound-settings summary').click();
     const button=page.locator('#calm-option');
     await expect(button).toHaveText('演出を派手にする');
@@ -158,17 +158,17 @@ test.describe('このPCの「動きを減らす」設定',()=>{
 });
 
 test('確認用の表示は、遊ぶ人には出さず ?dev=1 でだけ出す',async({page})=>{
-  // 始めたときの時計と、結果の画面での確認は、横長の通しで見ている。ここは90秒を通さない。
-  await page.goto('/');await expect(page.locator('#loading')).toBeHidden();
+  // 始めたときの時計と、結果の画面での確認は、上の横長の通しで見ている。ここは90秒を通さない。
+  await page.goto('/?flow=together');await expect(page.locator('#loading')).toBeHidden();
   for(const target of ['.trial','#settings','.dev-only'])await expect(page.locator(target).first()).toBeHidden();
-  await page.goto('/?dev=1');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
+  await page.goto('/?dev=1&flow=together');await expect(page.locator('.trial')).toBeVisible();await expect(page.locator('#settings')).toBeVisible();
 });
 
 test('1920×1080で、案内の文字が決めた大きさを下回らない',async({page})=>{
   // Xboxの指針は1080pで最小28px、設計仕様は操作指示を36〜44pxとしている。
   // 過去に上書きの24px指定が clamp を打ち消していたので、ここで見張る。
   await page.setViewportSize({width:1920,height:1080});
-  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   await page.locator('#start').click();await expect(page.locator('#bottom-hud')).toBeVisible();
   const 下限:Record<string,number>={'#instruction':36,'#hint':16,'.steps span':16,'.enemy-health':20,'#timer b':30,'#timer small':15,'#cancel':14,'.input-panel label':15};
   for(const [target,min] of Object.entries(下限)) {

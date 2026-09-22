@@ -1,6 +1,6 @@
 import { describe,it,expect } from 'vitest';
 import { CODE_DIGITS,DELIVERY_MESSAGES,KEEP_PLAYS,PlayRecorder,ROUND_TITLES,browserStore,makeCode,memoryStore,nameParts,playOf,resultRows,thinPoints,type BattleLike,type CastLike,type PlayContext } from '../src/game/record';
-import { ROUNDS } from '../src/game/rounds';
+import { FLOW, ROUNDS } from '../src/game/rounds';
 import type { Point,Recipe } from '../src/game/types';
 
 /** 試験用のレシピ。名前と属性だけを変えれば足りる。 */
@@ -47,12 +47,21 @@ describe('確認番号',()=>{
 });
 
 describe('このPCの中への保存',()=>{
+  it('名前を持たない古い記録も、声の円の有無から遊び方を読み戻せる',async()=>{
+    const old=playOf(battleOf(),'123456','以前');delete old.flow;
+    const store=memoryStore([old]),recorder=await PlayRecorder.open(store);
+    expect((await recorder.load(old.code))?.flow).toBe('together');
+    old.rounds[0].voiceColors=[];await store.save(old);
+    expect((await recorder.load(old.code))?.flow).toBe('sequential');
+    expect((await store.load(old.code))?.flow).toBeUndefined();
+  });
   it('保存して読み戻すと三件が同じになり、術式の点列と引き継いだ形も残る。声と映像そのものは残さない',async()=>{
     const store=memoryStore();
     const recorder=await PlayRecorder.open(store,()=>.42);
     const saved=await recorder.save(battleOf());
     const loaded=(await recorder.load())!;
     expect(loaded).not.toBeNull();
+    expect(saved.flow).toBe(FLOW);expect(loaded.flow).toBe(FLOW);
     expect(loaded.code).toBe(recorder.code);
     expect(loaded.rounds.map(round=>round.recipe?.name)).toEqual(['7つの雷の連弾','氷の壁','光の結界']);
     // 結果画面は、この保存だけから同じものを組み立てられる。

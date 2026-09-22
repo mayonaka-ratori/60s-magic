@@ -17,7 +17,7 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     const page=await context.newPage();const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
     const outsideAudio:string[]=[];
     page.on('websocket',socket=>{if(!socket.url().startsWith('ws://127.0.0.1:5173/'))outsideAudio.push(socket.url());});
-    await page.goto('http://127.0.0.1:5173/?dev=1');
+    await page.goto('http://127.0.0.1:5173/?dev=1&flow=together');
     await expect(page.locator('#use-voice')).toBeEnabled({timeout:15000});await expect(page.locator('#privacy')).toContainText('このPCの中だけ');
     await page.locator('#use-voice').check();await page.locator('#start').click();
     // マイクと音声認識のつなぎ込みが終わってから3秒の合図が出るので、まず合図の画面を待つ。
@@ -27,7 +27,7 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     await page.mouse.up();await expect(page.locator('#instruction')).toHaveText('描きながら、詠唱せよ',{timeout:17000});
     // 声は受付の17.3秒まで続く。線も同じところまで描き、締め切りの手前まで両方を受け付けているか見る。
     // コマ数ではなく時計で測る。遅いPCでコマ送りが重くなっても、締め切りを大きく過ぎない。
-    const 描き終わり=Date.now()+(ROUNDS[0].inputEnd-ROUNDS[0].chant);
+    const 描き終わり=Date.now()+(ROUNDS[0].inputEnd-ROUNDS[0].chant!);
     await page.mouse.move(540,480);await page.mouse.down();
     for(let i=0;Date.now()<描き終わり;i++){await page.mouse.move(540+Math.sin(i/7)*120,400+Math.cos(i/7)*110);await page.waitForTimeout(100);}
     await page.mouse.up();
@@ -43,9 +43,9 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     // 合成した声は受付の17.3秒（締め切りの0.7秒前）に終わる。scripts/prepare-browser-audio.mjs の END_MS と合わせてある。
     expect(first.speechEntries[0].final).toBe(true);expect(first.speechEntries[0].endMs).toBeGreaterThan(ROUNDS[0].inputEnd-2000);
     expect(first.rawPoints.at(-1).t).toBeGreaterThan(ROUNDS[0].inputEnd-1000);expect(first.recipe.count).toBe(7);
-    expect(report.audio.recordingQuiet).toBe(true);
-    // 録音している間は音を鳴らさない。一回目の音は、どれも締め切りより後に鳴る。
-    expect(report.audio.events.every((e:{atMs:number})=>e.atMs>=ROUNDS[0].inputEnd)).toBe(true);
+    expect(report.audio.recordingQuiet).toBe(false);
+    expect(report.audio.events.some((e:{name:string;atMs:number})=>e.name==='step'&&e.atMs<ROUNDS[0].inputEnd)).toBe(true);
+    expect(report.audio.events.some((e:{name:string})=>e.name==='clang')).toBe(true);
     expect(report.audio.events.some((e:{name:string})=>e.name==='impact')).toBe(true);
     expect(first.events.find((e:{name:string})=>e.name==='release').observedMs).toBeLessThan(ROUNDS[0].release+250);
     expect(errors).toEqual([]);expect(outsideAudio).toEqual([]);

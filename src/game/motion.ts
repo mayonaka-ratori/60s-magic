@@ -11,7 +11,7 @@ export class MotionRecorder {
   private first: Point | null = null;
   /** 一度でも最初の点から動いたか。毎コマ全点を集計せずに済むよう、点を足すときに覚える。 */
   hasMovement = false;
-  /** 受け付ける時刻の範囲。回ごとに変わる（一回目は0〜18秒、防御は30〜45秒）。 */
+  /** 受け付ける時刻の範囲。回ごとに変わる（その回の start から inputEnd まで）。 */
   constructor(private from = ROUNDS[0].start, private to = ROUNDS[0].inputEnd) {}
   add(x: number, y: number, t: number, hand = 0) {
     if (![x, y, t].every(Number.isFinite) || t < this.from || t >= this.to) return false;
@@ -51,7 +51,7 @@ export class MotionRecorder {
   }
 }
 
-export function summarizeMotion(points: Point[]): Motion {
+export function summarizeMotion(points: Point[], voiceOnly=false): Motion {
   const xs=points.map(p=>p.x), ys=points.map(p=>p.y);
   const width=points.length ? Math.max(...xs)-Math.min(...xs) : 0;
   const height=points.length ? Math.max(...ys)-Math.min(...ys) : 0;
@@ -78,7 +78,7 @@ export function summarizeMotion(points: Point[]): Motion {
     coverageWidth:width,coverageHeight:height,pathLength:length,closedness,convergence,
     smoothness:turnCount?clamp((turns/turnCount+1)/2):0.5,
     hasMovement: width>0.001 || height>0.001,
-    descriptions:{coverage:Math.max(width,height)>0.45?'広い':Math.max(width,height)>0.15?'中くらい':'小さい',outline:closedness>0.8?'囲う曲線':height<width*0.3?'横へ伸びる線':'自由な線',ending:convergence>0.65?'中心へ集めた':'線を描き足した'} };
+    descriptions:{coverage:Math.max(width,height)>0.45?'広い':Math.max(width,height)>0.15?'中くらい':'小さい',outline:voiceOnly?'線なし':closedness>0.8?'囲う曲線':height<width*0.3?'横へ伸びる線':'自由な線',ending:convergence>0.65?'中心へ集めた':'線を描き足した'} };
 }
 
 export function getNodes(points: Point[], max=12): Point[] {

@@ -9,7 +9,7 @@ import { FINAL_BLOW_MS } from '../../src/game/rounds';
  */
 test('誰も触らないと見本が流れ、体力が0になって騎士が倒れきり、触ると止まってタイトルへ戻る',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
+  await page.goto('/?flow=together');await expect(page.locator('#start')).toBeVisible();await expect(page.locator('#loading')).toBeHidden();
   // 30秒動きがなければ自動で始まる。通りすがりの人へ、何をする遊びかを見せるため。
   await expect(page.locator('#demo-tag')).toBeVisible({timeout:45000});
   await expect(page.locator('#hud')).toBeVisible();

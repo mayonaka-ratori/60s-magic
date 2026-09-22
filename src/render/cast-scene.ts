@@ -1,3 +1,6 @@
+import type { InheritedNode } from '../game/voice-growth';
+import { ANNOUNCEMENT_MS } from '../game/rounds';
+import { VOICE_ORIGIN } from '../game/voice-growth';
 import { CompletedSpell } from './completed-spell';
 import { spellPose } from './spell-layout';
 import { Knight } from './knight';
@@ -57,7 +60,7 @@ export class CastScene {
   setCalm(calm:boolean){this.calm=calm;this.effects.setCalm(calm);this.knight.setCalm(calm);}
   /** 今の演出の時刻（ms）。命中の停止を含む。render で更新するので、読むのは render の後。 */
   get effectMs(){return this.worldMs;}
-  render(points:Point[],ms:number,recipe:Recipe|null,voice:number,cursors:Array<{x:number;y:number}>,ready:boolean,live:LiveInput=emptyLive,guard:GuardPlan|null=null,inherited:XY[]=[]) {
+  render(points:Point[],ms:number,recipe:Recipe|null,voice:number,cursors:Array<{x:number;y:number}>,ready:boolean,live:LiveInput=emptyLive,guard:GuardPlan|null=null,inherited:InheritedNode[]=[]) {
     const width=this.canvas.clientWidth,height=this.canvas.clientHeight;
     const beat:Beat=beatAt(ms/1000);
     // 世界の時計は一つ。命中の停止は騎士と術式にも効く。体力表示も effectMs でこれを見る。
@@ -68,8 +71,9 @@ export class CastScene {
     // 入力の量を騎士へも渡す。同じ魔法でも、たくさん描いて唱えたほど大きく崩れる。
     // 防御の回の姿勢は、止め方（受け止め・弾き返し・かき消し）で変わる。
     this.knight.render(worldMs,!ready,recipe,live.amount,undefined,guard?.style??null);
-    const complete=ms>=beat.inputEnd*1000&&!ready;
-    const shape=ready?[]:points.length?points:complete?[{x:.5,y:.66,t:0,hand:0,stroke:0}]:[];
+    const drawEnd=beat.drawEnd??beat.inputEnd;
+    const complete=ms>=drawEnd*1000&&!ready;
+    const shape=ready?[]:points.length?points:complete?[{...VOICE_ORIGIN,t:0,hand:0,stroke:0}]:[];
     const key=`${this.revision}:${ready}:${complete}:${shape.length}:${shape.at(-1)?.t}:${shape.at(-1)?.x}:${shape.at(-1)?.y}`;
     // 毎フレーム管を作り直さず、入力が変わった時だけ更新。完成後は位置と光だけを変える。
     if(key!==this.lastKey&&(complete||ready||performance.now()-this.lastBuild>=25)) {
@@ -77,7 +81,8 @@ export class CastScene {
     }
     const pose=spellPose(shape,width,height,worldMs,beat),color=recipe?colors[recipe.element]:colors.neutral;
     const charge=clamp((ms-beat.inputEnd*1000)/((beat.release-beat.inputEnd)*1000));
-    const glow=.45+clamp((ms-beat.start*1000)/((beat.inputEnd-beat.start)*1000))*.25+charge*.55+voice*.45;
+    const switchGlow=drawEnd<beat.inputEnd&&ms>=drawEnd*1000?Math.max(0,1-(ms-drawEnd*1000)/ANNOUNCEMENT_MS)*.8:0;
+    const glow=switchGlow+.45+clamp((ms-beat.start*1000)/((beat.inputEnd-beat.start)*1000))*.25+charge*.55+voice*.45;
     this.spell.setGlow(glow);
     this.spell.present(pose.scale,pose.dx,pose.dy,ready?0:pose.opacity,color,pose.progress);
     this.spell.render();

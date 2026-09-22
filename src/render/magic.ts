@@ -1,3 +1,6 @@
+import type { InheritedNode } from '../game/voice-growth';
+import { drawVoiceGrowth } from './effects/voice-growth';
+import { FLOW } from '../game/rounds';
 import { clamp, getNodes } from '../game/motion';
 import type { Point, Recipe, Element } from '../game/types';
 import { fitSpell, smoothStroke } from './spell-layout';
@@ -133,12 +136,13 @@ export class MagicCanvas {
   /** 一コマ分の演出。時刻と確定した内容だけで決まるようにしてある。 */
   renderEffects(input: {
     points: Point[]; ms: number; recipe: Recipe | null; voice: number; cursors: XY[]; ready: boolean;
-    target: XY; origin: XY; live?: LiveInput; beat?: Beat; guard?: GuardPlan | null; inherited?: XY[];
+    target: XY; origin: XY; live?: LiveInput; beat?: Beat; guard?: GuardPlan | null; inherited?: InheritedNode[];
   }) {
-    const { points, ms, recipe, voice, cursors, ready, target, origin } = input;
+    const { points, ms, recipe, voice, ready, target, origin } = input;
     const live = input.live ?? emptyLive, guard = input.guard ?? null, inherited = input.inherited ?? [];
     const c = this.ctx, w = this.width, h = this.height, t = ms / 1000;
     const beat = input.beat ?? beatAt(t);
+    const drawEnd=beat.drawEnd??beat.inputEnd,cursors=t<drawEnd?input.cursors:[];
     c.clearRect(0, 0, w, h);
     // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前（29.5秒）で変わらない。
     const stopAt = stopAtOf(beat);
@@ -174,7 +178,7 @@ export class MagicCanvas {
     // 描いている間の光。線の節が光り、光が線の上を巡る。声で大きくなる。
     if (t >= beat.build && t < beat.release) {
       for (const p of nodes) this.sprites.draw(c, p.x * w, p.y * h, 2 + voice * 3, palette.core, palette.main, .5);
-      const runners = t >= beat.inputEnd ? 14 : 8;
+      const runners = t >= drawEnd ? 14 : 8;
       for (let i = 0; i < Math.min(runners, points.length); i++) {
         const index = Math.floor(((t * .16 + i / runners) % 1) * points.length), p = points[index];
         this.sprites.draw(c, p.x * w, p.y * h, 1.8, palette.core, palette.main, .7);
@@ -188,7 +192,7 @@ export class MagicCanvas {
         this.sprites.draw(c, a.x * w + (origin.x - a.x * w) * p, a.y * h + (origin.y - a.y * h) * p, 2, palette.core, palette.main, p * .7);
       }
     }
-    if (t < beat.inputEnd) for (const p of cursors) {
+    if (t < drawEnd) for (const p of cursors) {
       this.sprites.draw(c, p.x * w, p.y * h, 4 + voice * 2, palette.core, palette.main, 1);
       // 手の跡に小さな光を残す。
       if (dt > 0 && this.pool.random() < .6) this.pool.spawn({ x: p.x * w, y: p.y * h, vx: (this.pool.random() - .5) * 20, vy: -10 - this.pool.random() * 20, life: .5 + this.pool.random() * .5, size: 1 + this.pool.random() * 1.2, drag: .5, color: palette.main, core: palette.core, kind: 0 });
@@ -206,6 +210,7 @@ export class MagicCanvas {
     c.globalAlpha = fade;
     // 描いている間の即時反応。動きと言葉に、その場で光が応える。save と restore で濃さと重ね方は元に戻る。
     if (t < beat.release) { c.save(); drawStrokeReactions(frame, this.strokeMemory); drawWordReactions(frame); c.restore(); }
+    if(FLOW==='sequential'&&!beat.defend){c.save();drawVoiceGrowth(frame);c.restore();}
     // 防御の回は、狙いの印と盾と敵の一撃。魔法が確定する前から印を出す。
     if (beat.defend) { c.save(); drawGuard(frame); c.restore(); }
     if (recipe) {
@@ -258,6 +263,15 @@ export class MagicCanvas {
       this.darkGradient = g; this.darkKey = key;
     }
     return this.darkGradient;
+  }
+
+  /** 声だけの回は、土台の円と残った属性の色を描く。 */
+  voiceThumbnail(elements: readonly Element[]) {
+    this.resize();const c=this.ctx,w=this.width,h=this.height,r=Math.min(w,h)*.3;
+    c.clearRect(0,0,w,h);c.save();c.globalCompositeOperation='lighter';
+    c.strokeStyle=colors[elements[0]??'neutral'];c.lineWidth=2;c.beginPath();c.ellipse(w/2,h/2,r,r*.7,0,0,Math.PI*2);c.stroke();
+    elements.forEach((element,i)=>{const a=i*2.4,p=this.preset.palettes[element];this.sprites.draw(c,w/2+Math.cos(a)*r,h/2+Math.sin(a)*r*.7,5,p.core,p.main,.85);});
+    c.restore();
   }
 
   /** 結果の枠に、本人の線を縮めて描く。 */

@@ -26,8 +26,8 @@ describe('回の時刻表',()=>{
     // どちらも線が残り始める合図（build）を持たず、始まりから描ける。
     for(const round of [defend,finish]){
       expect(round.build).toBeNull();
-      const 境目:Array<[number,string]>=[[round.start-1,'ready'],[round.start,'draw'],[round.chant-1,'draw'],
-        [round.chant,'chant'],[round.inputEnd-1,'chant'],[round.inputEnd,'complete'],[round.release-1,'complete'],
+      const 境目:Array<[number,string]>=[[round.start-1,'ready'],[round.start,'draw'],[round.chant!-1,'draw'],
+        [round.chant!,'chant'],[round.inputEnd-1,'chant'],[round.inputEnd,'complete'],[round.release-1,'complete'],
         [round.release,'release'],[round.handoff-1,'release'],[round.handoff,'handoff'],[round.end,'finished']];
       for(const [time,phase] of 境目)expect(phaseAt(time,round),`${round.id} の ${time}ms`).toBe(phase);
     }
@@ -347,18 +347,17 @@ describe('防御の回の画面と姿勢',()=>{
 });
 
 describe('回ごとの音',()=>{
-  /** その回で、録音を止めてから音を鳴らし始めてよい時刻（ms）。合図の表が持つ値をそのまま使う。 */
-  const 静けさの終わり=(round:typeof first)=>soundCues.find(cue=>cue.round===round.id&&cue.name==='build')!.quietUntil;
+  /** 声の受付を終え、音量を元へ戻す時刻。 */
+  const 音量を戻す時刻=(round:typeof first)=>round.inputEnd;
   const names=(from:number,to:number,microphone:boolean)=>dueSounds(from,to,microphone).map(c=>c.name);
-  it('回ごとに、録音と認識結果を待つ間は鳴らさない',()=>{
+  it('録音中も合図が鳴り、締め切りで集まる音が鳴る',()=>{
     for(const round of ROUNDS){
-      const quiet=静けさの終わり(round);
-      // 録音を止めた後、確定より前に鳴らし始める。
-      expect(quiet).toBeGreaterThan(round.inputEnd);expect(quiet).toBeLessThan(round.lock);
-      // マイクを使う回は、線が残り始める合図も詠唱の案内も鳴らさない。録音していなければ詠唱の案内は鳴る。
-      if(round.build!==null)expect(names(round.build-100,round.build+10,true),round.id).toEqual([]);
-      expect(names(round.chant-100,round.chant+10,true),round.id).toEqual([]);
-      expect(names(round.chant-10,round.chant+10,false),round.id).toEqual(['chant']);
+      const quiet=音量を戻す時刻(round);
+      expect(soundCues.find(cue=>cue.round===round.id&&cue.name==='build')!.at).toBe(quiet);
+      // マイクがあっても、線が残り始める合図と詠唱の案内を鳴らす。
+      if(round.build!==null)expect(names(round.build-100,round.build+10,true),round.id).toEqual(['trace']);
+      expect(names(round.chant!-100,round.chant!+10,true),round.id).toEqual(['chant']);
+      expect(names(round.chant!-10,round.chant!+10,false),round.id).toEqual(['chant']);
       // 録音の終わりを待つ手前と直後。
       expect(names(quiet-50,quiet-10,true),round.id).toEqual([]);
       expect(names(quiet-10,quiet+10,true),round.id).toEqual(['build']);
@@ -367,11 +366,11 @@ describe('回ごとの音',()=>{
       expect(names(round.impact-10,round.impact+10,false),round.id).toEqual([round.id==='defend'?'block':'impact']);
     }
   });
-  it('受付の間だけ曲を下げ、録音の終わりを待ってから戻す',()=>{
+  it('声の受付の間だけ曲を下げ、締め切りで戻す',()=>{
     for(const round of ROUNDS){
-      expect(shouldDuck(round.chant),round.id).toBe(true);
-      expect(shouldDuck(静けさの終わり(round)-10),round.id).toBe(true);
-      expect(shouldDuck(静けさの終わり(round)),round.id).toBe(false);
+      expect(shouldDuck(round.chant!),round.id).toBe(true);
+      expect(shouldDuck(音量を戻す時刻(round)-10),round.id).toBe(true);
+      expect(shouldDuck(音量を戻す時刻(round)),round.id).toBe(false);
       expect(shouldDuck(round.lock),round.id).toBe(false);
     }
   });

@@ -5,20 +5,20 @@ import { connectLocalSpeech, speechSessionDiagnostics, type LocalRecognizer } fr
 import { speechModelName } from '../server/local-speech';
 import { SpeechBook } from '../src/game/speech-book';
 import { CastSession } from '../src/game/session';
-import { COUNTDOWN_MS,MAX_INPUT_MS,ROUNDS,SPEECH_WAIT_MS,VOICE_RECONNECT_MS,speechSocketMsOf,windowMsOf } from '../src/game/rounds';
+import { COUNTDOWN_MS,TOGETHER_ROUNDS,SEQUENTIAL_ROUNDS,MAX_INPUT_MS,ROUNDS,SPEECH_WAIT_MS,VOICE_RECONNECT_MS,speechSocketMsOf,windowMsOf } from '../src/game/rounds';
 
 class Socket extends EventEmitter {
   OPEN=1;readyState=1;messages:any[]=[];
   send(value:string){this.messages.push(JSON.parse(value));}
   close(){this.readyState=3;this.emit('close');}
-  start(){this.emit('message',Buffer.from(JSON.stringify({type:'start',sessionId:'test-session'})),false);}
+  start(windowMs?:number){this.emit('message',Buffer.from(JSON.stringify({type:'start',sessionId:'test-session',windowMs})),false);}
   end(waitMs?:number){this.emit('message',Buffer.from(JSON.stringify(waitMs===undefined?{type:'end'}:{type:'end',waitMs})),false);}
   audio(startMs:number){const b=Buffer.alloc(3208);b.writeDoubleLE(startMs);b.fill(5,8);this.emit('message',b,true);}
 }
-function setup(recognize=vi.fn(async()=>({text:'氷よ壁となれ',processingMs:150}))) {
+function setup(recognize=vi.fn(async()=>({text:'氷よ壁となれ',processingMs:150})),windowMs?:number) {
   vi.useFakeTimers({toFake:['setTimeout','clearTimeout','setInterval','clearInterval','performance']});
   const backend:LocalRecognizer={recognize,getStatus:()=>({state:'ready',message:'準備済み',model:'kotoba-whisper-v2.0',device:'cuda'}),reserve:vi.fn(()=>true),release:vi.fn()};
-  const socket=new Socket();connectLocalSpeech(socket as unknown as WebSocket,backend);socket.start();
+  const socket=new Socket();connectLocalSpeech(socket as unknown as WebSocket,backend);socket.start(windowMs);
   return {socket,backend,recognize};
 }
 afterEach(()=>vi.useRealTimers());
@@ -35,6 +35,18 @@ describe('声の接続を保つ長さ',()=>{
 });
 
 describe('ローカル音声認識の受付',()=>{
+  it('とどめの遅い録音開始でも時刻を保ち、締め切り直前の途中認識を止める',async()=>{
+    const round=SEQUENTIAL_ROUNDS[2],windowMs=windowMsOf(round),offset=round.voiceStart!-round.start;
+    const {socket,recognize}=setup(undefined,windowMs);
+    socket.audio(offset);socket.audio(offset+500);await vi.advanceTimersByTimeAsync(700);
+    expect(socket.messages.find(m=>m.type==='transcript').entry.startMs).toBe(offset);
+    const before=recognize.mock.calls.length;
+    socket.audio(windowMs-SPEECH_WAIT_MS);await vi.advanceTimersByTimeAsync(700);
+    expect(recognize.mock.calls.length).toBe(before);
+    socket.audio(windowMs-100);socket.end(SPEECH_WAIT_MS);await vi.advanceTimersByTimeAsync(1);
+    const last=socket.messages.filter(m=>m.type==='transcript').at(-1).entry;
+    expect(last.startMs).toBe(offset);expect(last.endMs).toBe(windowMs);expect(last.final).toBe(true);socket.close();
+  });
   it('同じ発話の途中結果を更新し、最後に一度だけ確定する',async()=>{
     const {socket,recognize}=setup();
     for(let i=0;i<7;i++){socket.audio(1000+i*100);await vi.advanceTimersByTimeAsync(100);}

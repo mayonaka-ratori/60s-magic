@@ -59,7 +59,7 @@ npm run benchmark:speech       # 準備できているモデルを全部測る
 npm run benchmark:speech kotoba-v2.0-mlx small   # モデルを選んで測る
 ```
 
-結果は `.local-speech/speed-report.json` に残ります。18秒ぶん（一回目の受付の長さ）の認識が、最後の声を待つ2秒以内なら、最後の言葉が魔法に間に合います。
+結果は `.local-speech/speed-report.json` に残ります。この測定は「同時に」の一回目（18秒）のものです。標準の「順番に」は14秒で、受付後に最後の声を待つ長さは同じ2秒です。その時間以内なら、最後の言葉が魔法に間に合います。
 
 ## 気をつけること
 

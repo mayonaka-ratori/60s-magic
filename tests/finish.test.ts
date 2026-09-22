@@ -131,7 +131,7 @@ describe('とどめの回の部品',()=>{
     expect(battle.inherited.length).toBeGreaterThan(3);
     expect(battle.inherited.length).toBeLessThanOrEqual(6);
     expect(battle.finish.previous?.name).toBe(battle.defend.recipe?.name);
-    now=finish.chant;battle.tick();
+    now=finish.chant!;battle.tick();
     expect(battle.inherited.length).toBeLessThanOrEqual(6);
     expect(battle.report().scope).toBe('full-90-seconds');
     expect(battle.report().rounds.length).toBe(3);

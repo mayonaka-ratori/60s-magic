@@ -216,4 +216,11 @@ export function guardStyleOf(...texts: Array<string | null | undefined>): GuardS
 }
 export const GUARD_LABELS: Record<GuardStyle, string> = { block: '受け止めた', reflect: '弾き返した', erase: 'かき消した' };
 
-export type GuardPlan = { shield: Shield; style: GuardStyle };
+export type GuardPlan = { shield: Shield; style: GuardStyle; surface?: 'membrane' | 'grid' | 'orb' };
+
+/** 手だけの防御。三段の判定を止め方へそのまま結びつけ、縁は変えない。 */
+export function drawnGuard(points: readonly Point[], aim: XY = AIM, aspect: number = DEFAULT_ASPECT): GuardPlan {
+  const shield=shieldOf(points,null,aim,aspect);
+  return shield.enclosed?{shield,style:'reflect',surface:'membrane'}
+    :shield.covering?{shield,style:'block',surface:'grid'}:{shield,style:'erase',surface:'orb'};
+}

@@ -11,3 +11,6 @@
 .fx-flash{mix-blend-mode:screen;background:radial-gradient(circle closest-side at 50% 50%,var(--fx-core,#ffffff80) 0%,transparent 44%),radial-gradient(circle closest-side at 50% 50%,#fff 0%,#ffffffe6 24%,#ffffff8c 52%,#ffffff33 78%,#ffffff1f 100%)}
 /* 命中の最初の2コマだけの反転。白との差分を取るので、下の絵がそのまま裏返る。閃光の上に置き、濃さ1の間だけ効く。 */
 .fx-invert{mix-blend-mode:difference;background:#fff}
+
+/* 順番に遊ぶ合図は中央の一か所へ出す。入力を隠さず、クリックも遮らない。 */
+#app[data-flow="sequential"] .act-title { inset: 38% 3% auto; transform: translateY(-50%); width: 94%; max-width: none; text-align: center; font-size: clamp(24px, 4vw, 64px); line-height: 1.5; pointer-events: none; animation: none; }

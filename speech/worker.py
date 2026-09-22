@@ -27,6 +27,8 @@ from download_model import default_preset, model_dir
 ROOT = Path(__file__).resolve().parents[1]
 PRESET = default_preset()
 MODEL_DIR = Path(os.environ.get('LOCAL_SPEECH_MODEL') or str(model_dir(PRESET)))
+# ゲーム側の受付上限を使う。単独の確認では、両方の遊び方を含む22秒分を受け付ける。
+MAX_PCM_BYTES = int(os.environ.get('LOCAL_SPEECH_MAX_PCM_BYTES', 22 * 16000 * 2))
 
 
 def send(value):
@@ -58,7 +60,7 @@ def main():
             message = json.loads(line)
             request_id = message['id']
             pcm = base64.b64decode(message['pcm'], validate=True)
-            if not 0 < len(pcm) <= 448000 or len(pcm) % 2:
+            if not 0 < len(pcm) <= MAX_PCM_BYTES or len(pcm) % 2:
                 raise ValueError('音声の長さが正しくありません')
             audio = np.frombuffer(pcm, dtype='<i2').astype(np.float32) / 32768.0
             started = time.perf_counter()

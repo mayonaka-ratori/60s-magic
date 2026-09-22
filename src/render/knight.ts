@@ -285,7 +285,7 @@ export function debrisMotion(dt:number,height:number,v:{vx:number;vy:number;vz:n
  * 確定の0.4秒前から1秒かけて最大の明るさまで上げ、そのあとは最大のままにする。
  */
 export function coreBlink(t:number) {
-  const start=FINISH.start/1000,fast=FINISH.chant/1000,aim=FINISH.lock/1000-.4;
+  const start=FINISH.start/1000,fast=FINISH.chant!/1000,aim=FINISH.lock/1000-.4;
   if(t<start)return 0;
   if(t<fast)return .5+.5*Math.sin((t-start)*Math.PI*2/2);
   if(t<aim)return .5+.5*Math.sin((t-fast)*Math.PI*2);

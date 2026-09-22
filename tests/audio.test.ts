@@ -1,16 +1,16 @@
 import { describe,it,expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { ROUNDS, SAMPLES_PER_MS, windowMsOf } from '../src/game/rounds';
+import { SAMPLES_PER_MS, SEQUENTIAL_ROUNDS, ROUNDS, windowMsOf } from '../src/game/rounds';
 
 type Packet={type:string;pcm?:Int16Array;startMs?:number;value?:number};
 type Processor={port:{onmessage:(event:{data:object})=>void};process:(inputs:Float32Array[][])=>boolean};
-function processor(rate:number,windowMs?:number) {
+function processor(rate:number,windowMs?:number,offset=0) {
   const packets:Packet[]=[];let Constructor:new()=>Processor;
   class Base {port={postMessage:(data:Packet)=>packets.push(data),onmessage:()=>{}};}
   runInNewContext(readFileSync('public/audio-worklet.js','utf8'),{sampleRate:rate,AudioWorkletProcessor:Base,registerProcessor:(_name:string,c:new()=>Processor)=>{Constructor=c;}});
   const instance=new Constructor!();
-  instance.port.onmessage({data:{type:'start',offset:0,windowMs}});
+  instance.port.onmessage({data:{type:'start',offset,windowMs}});
   let sample=0;
   const feed=(seconds:number,amplitude:number)=>{
     for(let frame=0;frame<rate*seconds;frame+=128){const chunk=new Float32Array(Math.min(128,Math.round(rate*seconds)-frame));for(let i=0;i<chunk.length;i++)chunk[i]=Math.sin((sample++)/rate*Math.PI*2*440)*amplitude;instance.process([[chunk]]);}
@@ -18,6 +18,17 @@ function processor(rate:number,windowMs?:number) {
   return {instance,packets,feed};
 }
 describe('実際の音の取り込み',()=>{
+  it('とどめの途中から録音しても回の開始からの時刻で締め切る',()=>{
+    const round=SEQUENTIAL_ROUNDS[2],offset=round.voiceStart!-round.start;
+    const input=processor(48000,windowMsOf(round),offset);
+    input.feed((round.inputEnd-round.voiceStart!)/1000+1,.1);
+    const packets=input.packets.filter(p=>p.type==='audio');
+    expect(packets[0].startMs).toBe(offset);
+    const last=packets.at(-1)!;
+    expect(last.startMs!+last.pcm!.length/SAMPLES_PER_MS).toBe(windowMsOf(round));
+    const count=input.packets.length;input.feed(.1,.1);expect(input.packets).toHaveLength(count);
+    input.instance.port.onmessage({data:{type:'stop'}});expect(input.packets.at(-1)?.type).toBe('stopped');
+  });
   it.each([44100,48000])('%i Hz のマイクを16kHzに変え、先頭の音と短い間を残す',rate=>{
     const {feed,instance,packets}=processor(rate);feed(.5,0);feed(.5,.1);feed(.15,0);feed(.5,.1);instance.port.onmessage({data:{type:'stop'}});
     const audio=packets.filter(p=>p.type==='audio');expect(audio[0].startMs).toBe(200);expect(audio.at(-1)!.startMs).toBeLessThan(1700);

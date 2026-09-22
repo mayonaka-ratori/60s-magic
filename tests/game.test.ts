@@ -12,15 +12,15 @@ const first=ROUNDS[0];
 function state(text=''):SpellState {
   const s=new CastSession(()=>0);
   s.motion.add(0.2,0.5,0);s.motion.add(0.5,0.55,100);
-  if(text)s.speech.add({id:1,revision:1,startMs:first.chant,endMs:first.inputEnd-1,text,final:true,stability:1,source:'typed'});
+  if(text)s.speech.add({id:1,revision:1,startMs:first.chant!,endMs:first.inputEnd-1,text,final:true,stability:1,source:'typed'});
   return s.freeze();
 }
 const text=(b:SpeechBook)=>b.snapshot().map(e=>e.text).join('、');
 const reply=(s:SpellState,answers:JevReply['answers']):JevReply=>({sessionId:s.sessionId,castId:s.castId,inputRevision:s.inputRevision,status:'ok',model:'test-model',answers});
 describe('最初の30秒',()=>{
   it('全ての受付と演出の境目を固定する',()=>{
-    const 境目:Array<[number,string]>=[[0,'draw'],[first.build!-1,'draw'],[first.build!,'build'],[first.chant-1,'build'],
-      [first.chant,'chant'],[first.inputEnd-1,'chant'],[first.inputEnd,'complete'],[first.release-1,'complete'],
+    const 境目:Array<[number,string]>=[[0,'draw'],[first.build!-1,'draw'],[first.build!,'build'],[first.chant!-1,'build'],
+      [first.chant!,'chant'],[first.inputEnd-1,'chant'],[first.inputEnd,'complete'],[first.release-1,'complete'],
       [first.release,'release'],[first.handoff-1,'release'],[first.handoff,'handoff'],[first.end,'finished']];
     for(const [time,phase] of 境目)expect(phaseAt(time)).toBe(phase);
   });

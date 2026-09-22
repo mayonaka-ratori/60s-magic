@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { MAX_INPUT_SAMPLES } from '../src/game/rounds';
 
 export type LocalSpeechResult = {text:string;processingMs:number};
 export type LocalSpeechStatus = {state:'missing'|'loading'|'ready'|'error';message:string;model:string;device:string;engine?:string;preset?:string;computeType?:string;threads?:number|null;loadMs?:number};
@@ -50,7 +51,7 @@ export class LocalSpeech {
     if(!existsSync(this.python)||!modelReady(this.model))return;
     this.status={...this.status,state:'loading',message:'このPCの音声認識を準備しています'};this.startedAt=performance.now();
     const child=spawn(this.python,['-X','utf8',resolve('speech/worker.py')],{
-      windowsHide:true,stdio:'pipe',env:{...process.env,LOCAL_SPEECH_MODEL:this.model,PYTHONIOENCODING:'utf-8',HF_HUB_OFFLINE:'1',HF_HUB_DISABLE_TELEMETRY:'1'},
+      windowsHide:true,stdio:'pipe',env:{...process.env,LOCAL_SPEECH_MODEL:this.model,LOCAL_SPEECH_MAX_PCM_BYTES:String(MAX_INPUT_SAMPLES*2),PYTHONIOENCODING:'utf-8',HF_HUB_OFFLINE:'1',HF_HUB_DISABLE_TELEMETRY:'1'},
     });
     this.process=child;
     // CPUだけのPCでは読み込みに時間がかかるため、長めに待つ。

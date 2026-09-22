@@ -32,7 +32,7 @@ test('90秒を最後まで遊び、七つの雷と、印を囲んだ盾と、と
     new MutationObserver(()=>{if(document.getElementById('composite')?.dataset.on==='true')(window as any).__合成を見せた=true;})
       .observe(document,{subtree:true,attributes:true,attributeFilter:['data-on']});
   });
-  await page.goto('/?dev=1');await expect(page.locator('#loading')).toBeHidden();await page.screenshot({path:'test-results/01-ready.png'});
+  await page.goto('/?dev=1&flow=together');await expect(page.locator('#loading')).toBeHidden();await page.screenshot({path:'test-results/01-ready.png'});
   await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await expect(page.locator('#hud')).toBeVisible();
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
   await page.mouse.move(460,450);await page.mouse.down();
@@ -44,7 +44,7 @@ test('90秒を最後まで遊び、七つの雷と、印を囲んだ盾と、と
   // 詠唱の案内から締め切りまで、手を止めずに描く。これで下の rawPoints が
   // 「締め切り近くまで受け付けていた」ことを見られる。締め切りを過ぎた点は記録側が落とす。
   // コマ数ではなく時計で測る。遅いPCでコマ送りが重くなっても、締め切りを大きく過ぎない。
-  const 描き終わり=Date.now()+(ROUNDS[0].inputEnd-ROUNDS[0].chant);
+  const 描き終わり=Date.now()+(ROUNDS[0].inputEnd-ROUNDS[0].chant!);
   await page.mouse.move(550,480);await page.mouse.down();
   for(let i=0;Date.now()<描き終わり;i++){await page.mouse.move(550+Math.sin(i/7)*130,400+Math.cos(i/7)*110);await page.waitForTimeout(100);}
   await page.mouse.up();
@@ -118,7 +118,7 @@ test('90秒を最後まで遊び、七つの雷と、印を囲んだ盾と、と
 
 test('カメラの認識を別の処理場所で準備し、中止すると解放する',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/');await page.locator('input[value="camera"]').check();await page.locator('#start').click();
+  await page.goto('/?flow=together');await page.locator('input[value="camera"]').check();await page.locator('#start').click();
   await expect(page.locator('#hud')).toBeVisible({timeout:30000});await page.waitForTimeout(1500);await page.locator('#cancel').click();
   await expect(page.locator('#welcome')).toBeVisible();expect(errors).toEqual([]);
 });
@@ -133,7 +133,7 @@ test('Jevの期限内の回答で曖昧な言葉を反映し、発動時刻は�
       element:{type:'choice',choice:'ice',probabilities:{ice:.9,unknown:.1}},form:{type:'choice',choice:'wall',probabilities:{wall:.9,orb:.1}},purpose:{type:'choice',choice:'defend',probabilities:{defend:.9,unknown:.1}},
     }}});
   });
-  await page.goto('/?dev=1');await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await page.locator('#chant').fill('冬の静けさよ、前に立て');
+  await page.goto('/?dev=1&flow=together');await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});await page.locator('#chant').fill('冬の静けさよ、前に立て');
   await expect(page.locator('#recognized')).toBeVisible({timeout:24000});await expect(page.locator('#step-complete')).toHaveClass('active');
   // 見るのは一回目だけなので、90秒の終わりまでは待たない。発動したところで中止して記録を読む。
   await expect(page.locator('#step-release')).toHaveClass('active',{timeout:8000});

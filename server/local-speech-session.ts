@@ -14,7 +14,7 @@ const recentSessions:SessionRecord[]=[];
 /** 確認用の記録。直近の受付の要求と結果の時刻。音声も、聞き取った言葉も含まない（文字数だけ）。 */
 export function speechSessionDiagnostics(){return recentSessions.map(s=>({...s,requests:[...s.requests]}));}
 
-/** いちばん長い受付（一回目の18秒）を上限に最新の音を保持。古い認識要求を積み上げない。 */
+/** 両方の表のいちばん長い受付を上限に最新の音を保持。古い認識要求を積み上げない。 */
 export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
   const owner={};
   /** その回の受付の長さ（ms）。画面側が知らせる。届かなければ一回目の長さとして扱う。 */

@@ -83,6 +83,7 @@ export class CompletedSpell {
     for(const mesh of this.meshes)mesh.visibility=opacity*(mesh.metadata?.detail?details:1);
   }
 
+  /** 形だけ更新する。描画は呼び出し元か、自動描画の次のコマで一度だけ行う。 */
   setShape(points: readonly Point[], complete = true) {
     this.meshes.forEach(mesh => { this.glow.removeExcludedMesh(mesh); mesh.dispose(); }); this.meshes = [];
     const vector = (p: { x: number; y: number }) => new Vector3((p.x - .5) * this.width, (.5 - p.y) * this.height, 0);
@@ -121,8 +122,8 @@ export class CompletedSpell {
       tube('本人が描いた線の帯', smoothStroke(stroke).map(vector), 5.5, this.band);
       if (stroke.length === 1) dot(vector(stroke[0]), 2.5);
     }
-    if (!points.length) { this.render(); return; }
-    if (!complete) { dot(vector(points[points.length - 1]), 3.4); this.render(); return; }
+    if (!points.length) return;
+    if (!complete) { dot(vector(points[points.length - 1]), 3.4); return; }
 
     const positions = points.map(vector);
     const minX = Math.min(...positions.map(p => p.x)), maxX = Math.max(...positions.map(p => p.x));
@@ -156,7 +157,6 @@ export class CompletedSpell {
     dot(center, 5); ring(center, 14, this.line, .6); ring(center, 25); ring(center, 33);
     tube('中心の縦線', [center.add(new Vector3(0, -40, 0)), center.add(new Vector3(0, 40, 0))], .3, this.guide);
     tube('中心の横線', [center.add(new Vector3(-40, 0, 0)), center.add(new Vector3(40, 0, 0))], .3, this.guide);
-    this.render();
   }
   render() { this.scene.render(); }
   async ready() { await this.scene.whenReadyAsync(true); this.render(); }

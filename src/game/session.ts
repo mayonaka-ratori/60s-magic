@@ -1,10 +1,12 @@
+import { VoiceGrowth } from './voice-growth';
+import { liveWords } from './live-words';
 import { MotionRecorder, summarizeMotion } from './motion';
 import { SpeechBook } from './speech-book';
 import { affirmativeText, explicitCount, makeRecipe } from './recipe';
-import { AIM, DEFAULT_ASPECT, guardStyleOf, shieldOf, type GuardPlan } from './guard';
+import { AIM, DEFAULT_ASPECT, drawnGuard, guardStyleOf, shieldOf, type GuardPlan } from './guard';
 import type { JevReply, Phase, Recipe, SpellState } from './types';
 import { readChant, type ChantCorrection } from './chant-dictionary';
-import { ROUNDS, SPEECH_WAIT_MS, phaseAt, replyLimitOf, speechLimitOf, type Round } from './rounds';
+import { FLOW, ROUNDS, SPEECH_WAIT_MS, acceptsDrawing, acceptsVoice, phaseAt, replyLimitOf, speechLimitOf, type Round } from './rounds';
 
 export { phaseAt, SPEECH_WAIT_MS };
 // 確定の時刻は仕様の決まりなので動かさない。その手前をどう割るかだけを決める。
@@ -28,6 +30,8 @@ export class CastSession {
   readonly round:Round;
   readonly motion:MotionRecorder;
   readonly speech:SpeechBook;
+  readonly growth=new VoiceGrowth();
+  private growthRevision:string|null=null;
   readonly events:Array<{name:string; atMs:number; observedMs:number}>=[];
   readonly startMs:number;
   state:SpellState|null=null;
@@ -48,8 +52,8 @@ export class CastSession {
   corrections:ChantCorrection[]=[];
   constructor(private clock:()=>number=()=>performance.now(), id:string=crypto.randomUUID(), round:Round=ROUNDS[0], startMs?:number) {
     this.round=round;this.id=id;this.startMs=startMs??clock();
-    this.motion=new MotionRecorder(round.start,round.inputEnd);
-    this.speech=new SpeechBook(round.inputEnd-round.start);
+    this.motion=new MotionRecorder(round.start,round.drawEnd??round.start);
+    this.speech=new SpeechBook(round.inputEnd-round.start,round.voiceStart===null?null:round.voiceStart-round.start);
     this.phase=phaseAt(0,round);
   }
   /** 声の時刻は回ごとに0から数え直す。戦いの時刻へ直すときはこれを足す。 */
@@ -57,6 +61,12 @@ export class CastSession {
   tick() {
     if(this.cancelled)return;
     this.elapsed=Math.max(0,this.clock()-this.startMs);
+    if(FLOW==='sequential'&&acceptsVoice(this.round,this.elapsed)) {
+      // 認識結果が変わったときだけ読み直す。見本の未来の言葉は、その時刻まで待つ。
+      const entries=this.speech.live().filter(e=>e.endMs+this.speechOffset<=this.elapsed);
+      const revision=entries.map(e=>`${e.id}:${e.revision}`).join(',');
+      if(revision!==this.growthRevision){this.growthRevision=revision;this.growth.update(liveWords(entries,this.speechOffset),this.elapsed,this.round.voiceStart,this.round.inputEnd);}
+    }
     const next=phaseAt(this.elapsed,this.round);
     const marks:Partial<Record<Phase,number>>={complete:this.round.inputEnd,release:this.round.release,handoff:this.round.handoff,finished:this.round.end};
     if(next!==this.phase) {this.phase=next;this.events.push({name:next,atMs:marks[next]??this.elapsed,observedMs:this.elapsed});}
@@ -64,9 +74,11 @@ export class CastSession {
     // 締め切りから1秒で終わるので、声の確定を待つ freeze() では間に合わない。
     // 形は締め切り後に動かないが、層の数と止め方は言葉が要るので freeze() で入れ直す。
     if(this.round.id==='defend'&&!this.guard&&this.elapsed>=this.round.inputEnd)
-      this.guard={shield:shieldOf(this.motion.raw,null,AIM,this.aspect),style:'block'};
+      this.guard=this.round.voiceStart===null?drawnGuard(this.motion.raw,AIM,this.aspect):{shield:shieldOf(this.motion.raw,null,AIM,this.aspect),style:'block'};
     if(this.elapsed>=this.round.lock&&!this.locked)this.lock();
   }
+  get acceptingDrawing() {return !this.cancelled&&acceptsDrawing(this.round,this.clock()-this.startMs);}
+  get acceptingVoice() {return !this.cancelled&&acceptsVoice(this.round,this.clock()-this.startMs);}
   get accepting() {
     const elapsed=this.clock()-this.startMs;
     return !this.cancelled&&elapsed>=this.round.start&&elapsed<this.round.inputEnd;
@@ -78,29 +90,29 @@ export class CastSession {
     const text=entries.map(e=>e.text).join('、');
     const chant=readChant(text);
     this.corrections=chant.corrections;
-    const motion=summarizeMotion(this.motion.raw);
+    const motion=summarizeMotion(this.motion.raw,round.drawEnd===null);
     const defend=round.id==='defend',final=round.id==='finish';
     this.state={schemaVersion:'spell-state-2',sessionId:this.id,castId:round.castId,inputRevision:1,phase:defend?'defend':final?'final':'free',
       currentTask:round.id==='defend'
-        ?'自分の線と言葉から守る魔法を作り、狙いの印へ来る騎士の一撃を切り抜ける'
+        ?(round.voiceStart===null?'自分の線から守る魔法を作り、狙いの印へ来る騎士の一撃を切り抜ける':'自分の線と言葉から守る魔法を作り、狙いの印へ来る騎士の一撃を切り抜ける')
         :round.id==='finish'
         ?'自分の線と言葉からとどめの魔法を作り、崩れかけた騎士の胸の核へ届かせる'
-        :'自分の線と言葉から最初の魔法を作り、目の前の騎士へ作用させる',
-      inputWindow:{startSessionMs:round.start,endSessionMs:round.inputEnd,chantPromptSessionMs:round.chant,motionAndSpeechConcurrent:true},motion,
+        :round.drawEnd===null?'自分の言葉から最初の魔法を作り、目の前の騎士へ作用させる':'自分の線と言葉から最初の魔法を作り、目の前の騎士へ作用させる',
+      inputWindow:{startSessionMs:round.start,endSessionMs:round.inputEnd,chantPromptSessionMs:round.chant,motionAndSpeechConcurrent:FLOW==='together',drawEndSessionMs:round.drawEnd,voiceStartSessionMs:round.voiceStart},motion,
       timedEvents:[...this.motionEvents(),...entries.map(e=>({startMs:e.startMs+round.start,endMs:e.endMs+round.start,speech:e.text,speechTiming:e.source==='typed'?'typed' as const:'utterance' as const}))].sort((a,b)=>a.startMs-b.startMs),
       speech:{status:entries.length?(entries.some(e=>e.source!=='typed')?'recognized':'typed'):'unavailable',provider:entries[0]?.source??null,locale:'ja-JP',rawTranscript:text,normalizedTranscript:chant.normalized,explicitCount:explicitCount(affirmativeText(chant.meaning)),explicitNegation:/ない|なく|するな/.test(text)},previous:this.previous,
       enemy:{attackKind:defend?'slash':'none',encounterMode:'exhibition_success'}};
     // 盾の形は締め切りの時点で決めてある（tick）。ここでは、言葉が要る層の数と止め方だけを入れ直す。
     // 点はもう増えないので、同じ形が出る。
-    if(defend)this.guard={shield:shieldOf(this.motion.raw,this.state.speech.explicitCount,AIM,this.aspect),
+    if(defend)this.guard=round.voiceStart===null?drawnGuard(this.motion.raw,AIM,this.aspect):{shield:shieldOf(this.motion.raw,this.state.speech.explicitCount,AIM,this.aspect),
       style:guardStyleOf(chant.meaning,text)};
     this.frozen=true;return this.state;
   }
   private motionEvents() {
     const result:Array<{startMs:number;endMs:number;motion:string}>=[];
-    for(let start=this.round.start;start<this.round.inputEnd;start+=1000) {
+    for(let start=this.round.start;start<(this.round.drawEnd??this.round.start);start+=1000) {
       const p=this.motion.raw.filter(p=>p.t>=start&&p.t<start+1000);
-      if(p.length)result.push({startMs:start,endMs:Math.min(this.round.inputEnd,start+1000),motion:summarizeMotion(p).descriptions.outline});
+      if(p.length)result.push({startMs:start,endMs:Math.min(this.round.drawEnd!,start+1000),motion:summarizeMotion(p).descriptions.outline});
     }
     return result;
   }
@@ -123,6 +135,6 @@ export class CastSession {
     return {round:this.round.id,castId:this.round.castId,state:this.state,recipe:this.recipe,jev:this.reply??null,
       guard:this.guard?{style:this.guard.style,kind:this.guard.shield.kind,layers:this.guard.shield.layers,enclosed:this.guard.shield.enclosed,rings:this.guard.shield.rings,moved:this.guard.shield.moved}:null,
       speechEntries:this.speech.snapshot(),usedFallback:this.speech.usedFallback,corrections:this.corrections,events:this.events,
-      rawPoints:this.motion.raw,displayPoints:this.motion.display};
+      voiceLayers:this.growth.snapshot(),rawPoints:this.motion.raw,displayPoints:this.motion.display};
   }
 }

@@ -1,4 +1,5 @@
 import type { Element, Form, Purpose } from './types';
+import { chantDictionary } from './chant-dictionary';
 
 /**
  * 唱えた言葉から魔法を読み取るための語彙表。
@@ -13,7 +14,7 @@ import type { Element, Form, Purpose } from './types';
  */
 
 /** 言葉の種類。演出はこれを見て反応を選ぶ。 */
-export type WordKind = 'element' | 'form' | 'purpose' | 'count' | 'change' | 'other';
+export type WordKind = 'element' | 'form' | 'purpose' | 'count' | 'change' | 'invocation' | 'other';
 
 export type SpellTerm = {
   /** 文字そのまま。この並びで探す。 */
@@ -40,6 +41,8 @@ export const KANJI_NUMBERS: Record<string, number> =
 
 /** 語彙の表。行の並びは意味ごとにまとめてある。 */
 const SPELL_TERMS: readonly SpellTerm[] = [
+  ...chantDictionary.entries.filter(word=>['呼び掛け','飾りの言葉'].includes(word.group)&&!word.meaning)
+    .map(word=>({word:word.term,kind:'invocation' as const})),
   // 属性の言葉
   { word: '炎', kind: 'element', element: 'fire' },
   { word: '火', kind: 'element', element: 'fire' },

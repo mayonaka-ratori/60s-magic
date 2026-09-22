@@ -1,3 +1,4 @@
+import { VOICE_ORIGIN } from '../game/voice-growth';
 import type { Point } from '../game/types';
 import { clamp } from '../game/motion';
 import { BEATS, type Beat } from '../game/rounds';
@@ -90,8 +91,8 @@ export function completedSpellFrame(width: number, height: number, beat: Beat = 
   const box = boxOf(points, width, height);
   // 防御の回は狙いの印の場所（画面の左寄り）に置く。画面が狭くて置ける範囲からはみ出すぶんは中へ寄せる。
   if (!hasSize(box)) {
-    const x = clamp(width * (beat.defend ? AIM.x : .5), bounds.x - bounds.width / 2 + minWidth / 2, bounds.x + bounds.width / 2 - minWidth / 2);
-    return { x, y: height * (beat.defend ? AIM.y : .66), width: minWidth, height: minHeight };
+    const x = clamp(width * (beat.defend ? AIM.x : VOICE_ORIGIN.x), bounds.x - bounds.width / 2 + minWidth / 2, bounds.x + bounds.width / 2 - minWidth / 2);
+    return { x, y: height * (beat.defend ? AIM.y : VOICE_ORIGIN.y), width: minWidth, height: minHeight };
   }
   // 幅も高さも下限より小さいときだけ広げる。どちらかが下限に届いたところで止めるので、境目で倍率が跳ねない。
   const grow = clamp(Math.min(minWidth / Math.max(1, box.width), minHeight / Math.max(1, box.height)), 1, SPELL_MIN.scale);
@@ -112,7 +113,8 @@ export function spellPose(points:readonly Point[],width:number,height:number,ms:
   const box=boxOf(points,width,height),frame=completedSpellFrame(width,height,beat,points);
   const cx=box?box.x:frame.x,cy=box?box.y:frame.y;
   const scaleTo=hasSize(box)?scaleBetween(box,frame):1;
-  const p=clamp((ms-beat.inputEnd*1000)/((beat.release-beat.inputEnd)*1000)),progress=p*p*(3-2*p);
+  const drawEnd=beat.drawEnd??beat.inputEnd;
+  const p=clamp((ms-drawEnd*1000)/((beat.release-drawEnd)*1000)),progress=p*p*(3-2*p);
   const scale=1+(scaleTo-1)*progress;
   const center={x:cx+(frame.x-cx)*progress,y:cy+(frame.y-cy)*progress};
   const dx=center.x-width/2-(cx-width/2)*scale,dy=center.y-height/2-(cy-height/2)*scale;
