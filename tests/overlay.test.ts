@@ -11,15 +11,18 @@ function run(flash: number[], calm = false, start = 100) {
 }
 
 describe('閃光の濃さ', () => {
-  it('上限は0.85で、それ以上の値が来ても頭打ちになる', () => {
+  it('上限は0.85で、それ以上の値が来ても頭打ちになる。控えめモードでは上限が3分の1まで下がり、同じ入力でも薄くなる', () => {
     expect(FLASH_MAX).toBeCloseTo(.85, 6);
     expect(flashTarget(1, false)).toBe(FLASH_MAX);
     expect(flashTarget(.4, false)).toBeCloseTo(.4, 6);
     expect(flashTarget(-1, false)).toBe(0);
-  });
-  it('控えめモードでは上限が3分の1まで下がる', () => {
     expect(flashTarget(1, true)).toBeCloseTo(FLASH_MAX / 3, 6);
     expect(flashTarget(1, true)).toBeLessThan(flashTarget(1, false) / 2);
+    // コマを進めても、控えめでは上限の3分の1より濃くならない。
+    const normal = run(new Array(20).fill(FLASH_MAX));
+    const calm = run(new Array(20).fill(FLASH_MAX), true);
+    expect(Math.max(...calm)).toBeCloseTo(FLASH_MAX / 3, 6);
+    expect(Math.max(...calm)).toBeLessThan(Math.max(...normal) / 2);
   });
 
   it('立ち上がりは約2コマ、戻りは約10コマの非対称になる', () => {
@@ -41,17 +44,11 @@ describe('閃光の濃さ', () => {
     for (let i = 1; i < 8; i++) expect(tail[i]).toBeLessThan(tail[i - 1]);
   });
 
-  it('控えめモードでは同じ入力でも薄くなる', () => {
-    const normal = run(new Array(20).fill(FLASH_MAX));
-    const calm = run(new Array(20).fill(FLASH_MAX), true);
-    expect(Math.max(...calm)).toBeCloseTo(FLASH_MAX / 3, 6);
-    expect(Math.max(...calm)).toBeLessThan(Math.max(...normal) / 2);
-  });
-
-  it('間隔が近すぎる閃光は光らせない（1秒に3回を超えない）', () => {
-    const memory = newFlashMemory(), dt = 1 / 60;
-    let now = 0, starts = 0, lit = false;
+  it('間隔が近すぎる閃光は光らせない。消えきらない多段の閃光でも、光り始めは1秒に3回まで', () => {
+    const dt = 1 / 60;
     // 0.1秒ごとに一瞬だけ明るい値を入れる。10回分＝1秒。
+    const memory = newFlashMemory();
+    let now = 0, starts = 0, lit = false;
     for (let i = 0; i < 60; i++) {
       const bright = i % 6 === 0;
       const v = stepFlash(memory, bright ? FLASH_MAX : 0, false, dt, now);
@@ -61,6 +58,14 @@ describe('閃光の濃さ', () => {
     }
     expect(starts).toBeLessThanOrEqual(3);
     expect(FLASH_GAP).toBeGreaterThanOrEqual(1 / 3);
+    // 0.1秒ごとに強い閃光。その合間も薄く光らせ続けて、完全には消さない。
+    const layered = newFlashMemory();
+    let restarts = 0, previous = layered.startedAt;
+    for (let i = 0; i < 60; i++) {
+      stepFlash(layered, i % 6 === 0 ? FLASH_MAX : .15, false, dt, i * dt);
+      if (layered.startedAt !== previous) { restarts++; previous = layered.startedAt; }
+    }
+    expect(restarts).toBeLessThanOrEqual(3);
   });
 
   it('前の閃光が消えきっていなくても、0.34秒未満なら濃くならない', () => {
@@ -87,25 +92,6 @@ describe('閃光の濃さ', () => {
     const remaining = memory.value;
     expect(remaining).toBeCloseTo(.2, 3);
     expect(stepFlash(memory, FLASH_MAX, false, dt, now)).toBeGreaterThan(remaining);
-  });
-
-  it('消えきらない多段の閃光でも、光り始めは1秒に3回までに収まる', () => {
-    const memory = newFlashMemory(), dt = 1 / 60;
-    let starts = 0, previous = memory.startedAt;
-    // 0.1秒ごとに強い閃光。その合間も薄く光らせ続けて、完全には消さない。
-    for (let i = 0; i < 60; i++) {
-      stepFlash(memory, i % 6 === 0 ? FLASH_MAX : .15, false, dt, i * dt);
-      if (memory.startedAt !== previous) { starts++; previous = memory.startedAt; }
-    }
-    expect(starts).toBeLessThanOrEqual(3);
-  });
-
-  it('十分に間を空ければ次の閃光は光る', () => {
-    const memory = newFlashMemory();
-    expect(stepFlash(memory, FLASH_MAX, false, 1 / 60, 0)).toBeGreaterThan(0);
-    for (let i = 1; i < 30; i++) stepFlash(memory, 0, false, 1 / 60, i / 60);
-    expect(memory.value).toBe(0);
-    expect(stepFlash(memory, FLASH_MAX, false, 1 / 60, 2)).toBeGreaterThan(0);
   });
 });
 

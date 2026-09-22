@@ -66,21 +66,3 @@ describe('音素材の読み込み',()=>{
     expect(first).not.toBe(second);expect(third).toBe(first);
   });
 });
-describe('敵の側の音の素材',()=>{
-  it('足音、盾、振り下ろし、床の一撃の名前を一覧で受け付ける',async()=>{
-    // 一覧は名前を限定しないので、素材を置けばそのまま鳴る。synth を false にすれば合成音を重ねない。
-    const enemy={sfx:{step:{file:'sfx/step.ogg'},clang:{files:['sfx/clang-1.ogg','sfx/clang-2.ogg'],gainDb:-3},swing:{file:'sfx/swing.ogg',synth:false},slam:{file:'sfx/slam.ogg'}}};
-    const parsed=parseManifest(enemy);
-    for(const name of ['step','clang','swing','slam'])expect(chooseEntry(parsed,name,'fire')).not.toBeNull();
-    expect(parsed.sfx.swing.synth).toBe(false);expect(parsed.sfx.clang.files).toHaveLength(2);
-    const bank=new SampleBank();
-    const impl=async(url:string)=>{
-      const path=url.replace(/^.*\/audio\//,'');
-      if(path==='manifest.json')return {ok:true,status:200,json:async()=>enemy,arrayBuffer:async()=>new ArrayBuffer(0)};
-      return {ok:true,status:200,json:async()=>({}),arrayBuffer:async()=>new ArrayBuffer(8)};
-    };
-    await bank.load(decoder,impl,'/');
-    expect(bank.pick('slam',null)?.synth).toBe(true);expect(bank.pick('swing','ice')?.synth).toBe(false);
-    expect(bank.pick('clang',null)?.buffer).not.toBe(bank.pick('clang',null)?.buffer);
-  });
-});

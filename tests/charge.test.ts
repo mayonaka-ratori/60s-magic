@@ -1,25 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { BEATS } from '../src/game/rounds';
-import { AIM } from '../src/game/guard';
 import { presets } from '../src/render/effects/presets';
 import { ParticlePool, type Particle } from '../src/render/effects/particles';
 import { drawCharge } from '../src/render/effects/charge';
 import type { Box, Frame, XY } from '../src/render/effects/frame';
-import type { Recipe } from '../src/game/types';
+// 仮のcanvas（命令と数の指定を記録する）、試験用の魔法、仮の Frame は tests/helpers.ts にまとめてある。
+import { stubContext, testFrame, testRecipe } from './helpers';
 
-/** 描く命令を受け流すだけの仮のcanvas。命令と数の指定を記録用の配列に書き出す。node には本物のcanvasがないため。 */
-const digits = (v: number) => Math.round(v * 1000) / 1000;
-const stubContext = (log: string[]) => {
-  const held: Record<string, unknown> = {};
-  const fake: unknown = new Proxy(held, {
-    get: (target, key: string) => (key in target ? target[key] : (...args: unknown[]) => {
-      log.push(key + ':' + args.filter(a => typeof a === 'number').map(a => digits(a as number)).join(','));
-      return fake;
-    }),
-    set: (target, key: string, value) => { target[key] = value; return true; },
-  });
-  return fake as CanvasRenderingContext2D;
-};
 /** 光の絵の呼び出しを記録する。 */
 type Glow = { x: number; y: number; r: number; core: string; main: string; alpha: number };
 const stubSprites = (glows: Glow[]) => ({ draw: (_c: unknown, x: number, y: number, r: number, core: string, main: string, alpha: number) => { glows.push({ x, y, r, core, main, alpha }); } }) as unknown as Frame['sprites'];
@@ -29,9 +16,6 @@ class RecordingPool extends ParticlePool {
   at = 0;
   spawn(init: Partial<Particle>) { this.spawned.push({ ...init, at: this.at }); return super.spawn(init); }
 }
-
-const recipe: Recipe = { version: 'recipe-1', element: 'fire', purpose: 'attack', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .3, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null };
 
 const W = 1280, H = 720;
 /** 一回目の締め切りと発動（秒）。蓄積はこの間だけ描くので、試験の時刻はここから作る。 */
@@ -45,12 +29,10 @@ const EXTENT: Box = { x: 500, y: 300, width: 400, height: 300 };
 type Setup = { log: string[]; glows: Glow[]; pool: RecordingPool; frame: (t: number, dt: number) => Frame };
 function setup(over: Partial<Frame> = {}, max = 2000): Setup {
   const log: string[] = [], glows: Glow[] = [], pool = new RecordingPool(max); pool.reseed(7);
-  const frame = (t: number, dt: number): Frame => ({
+  const recipe = testRecipe();
+  const frame = (t: number, dt: number): Frame => testFrame({
     c: stubContext(log), w: W, h: H, t, dt, sprites: stubSprites(glows), pool,
-    preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
-    recipe, locked: true, origin: ORIGIN, origins: ORIGINS, extent: EXTENT, target: { x: 900, y: 360 },
-    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points: [], cursors: [], beat: BEATS[0], guard: null, aim: AIM, inherited: [], calm: false,
-    once: (_key, run) => run(), ...over,
+    recipe, origin: ORIGIN, origins: ORIGINS, extent: EXTENT, ...over,
   });
   return { log, glows, pool, frame };
 }
