@@ -1,9 +1,26 @@
 import { describe, expect, it } from 'vitest';
+import { announcementAt, inputDeadline } from '../src/game/guidance';
+import { ANNOUNCEMENT_HOLD_MS, ANNOUNCEMENT_MS } from '../src/game/rounds';
 import { Battle } from '../src/game/battle';
 import { CastSession } from '../src/game/session';
 import { FLOW, ROUNDS, TOGETHER_ROUNDS, SEQUENTIAL_ROUNDS, MAX_INPUT_MS, MAX_INPUT_SAMPLES, SAMPLES_PER_MS, flowOf, beatOf, windowMsOf } from '../src/game/rounds';
 
 describe('二つの遊び方', () => {
+  it('合図を読んでいる間も受け付け、締め切りの表示を切り替える', () => {
+    const round={...ROUNDS[2],drawEnd:ROUNDS[2].start+windowMsOf(ROUNDS[2])/2};
+    expect(inputDeadline(round,round.drawEnd-1)).toBe(round.drawEnd);
+    expect(inputDeadline(round,round.drawEnd)).toBe(round.inputEnd);
+    if(FLOW==='sequential') {
+      const cast=new CastSession(()=>round.start,'合図',round,0);
+      expect(cast.acceptingDrawing).toBe(true);
+      expect(announcementAt(round,round.start).text).toBe('第三幕　魔法陣を描こう！');
+      expect(announcementAt(round,round.start+ANNOUNCEMENT_HOLD_MS).opacity).toBe(1);
+      expect(announcementAt(round,round.start+ANNOUNCEMENT_MS-1).opacity).toBeLessThan(.01);
+      expect(announcementAt(round,round.start+ANNOUNCEMENT_MS).text).toBe('');
+      expect(announcementAt(round,round.drawEnd).text).toBe('手を止めて、詠唱を始めよう！');
+      expect(announcementAt(round,round.drawEnd+ANNOUNCEMENT_MS).text).toBe('');
+    } else expect(announcementAt(ROUNDS[0],ROUNDS[0].start).text).toBe('');
+  });
   it('手と声の境目を分けても言葉の時刻は回の開始から数える', () => {
     const base=ROUNDS[2], change=base.start+(base.inputEnd-base.start)/2;
     const round={...base,drawEnd:change,voiceStart:change};

@@ -118,6 +118,10 @@ export const SAMPLES_PER_MS = 16;
 export const MAX_INPUT_SAMPLES = MAX_INPUT_MS * SAMPLES_PER_MS;
 /** 準備の合図の長さ（ms）。90秒には含めない。一回目はこの前に音声認識へつなぐ。 */
 export const COUNTDOWN_MS = 3000;
+/** 順番に遊ぶ合図。読める間と消えていく間を、表示側も同じ表から使う。 */
+export const ANNOUNCEMENT_HOLD_MS = 1500;
+export const ANNOUNCEMENT_FADE_MS = 500;
+export const ANNOUNCEMENT_MS = ANNOUNCEMENT_HOLD_MS + ANNOUNCEMENT_FADE_MS;
 /** 二回目からの回で、声の受付を作り直し始める時刻（回の始まりより前、ms）。 */
 export const VOICE_RECONNECT_MS = 2500;
 /**

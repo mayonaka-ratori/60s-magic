@@ -1,4 +1,5 @@
 import './style.css';
+import { announcementAt, inputDeadline } from './game/guidance';
 import { Battle } from './game/battle';
 import type { CastSession } from './game/session';
 import { BATTLE_END, FLOW, COUNTDOWN_MS, GUARD_STAGGER_MS, ROUNDS, SPEECH_WAIT_MS, voiceConnectAt, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
@@ -52,6 +53,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
 
 const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
 const params=new URLSearchParams(location.search);
+el('app').dataset.flow=FLOW;
+if(FLOW==='sequential')document.querySelector('.countdown-title')!.textContent='まもなく始まる。手を画面の前に';
 for(const option of document.querySelectorAll<HTMLInputElement>('input[name="flow"]')) {
   option.checked=option.value===FLOW;
   option.addEventListener('change',()=>{
@@ -287,8 +290,6 @@ function addTypedChant() {
 }
 el('chant').addEventListener('input',()=>{diag?.log('文字を入力',{length:el<HTMLInputElement>('chant').value.length});addTypedChant();});
 
-/** 回の始まりに出す幕の名前。一回目は出さない。 */
-const ACT_NAMES:Record<string,string>={defend:'防御',finish:'とどめ'};
 
 /**
  * 体力の枠をゆらす世界の時刻（ms）。一回目の命中、防御の反撃、とどめの一発目、とどめの直撃。
@@ -314,7 +315,7 @@ function updateUi() {
   const battle=session,cast=battle.active,round=cast.round,recipe=cast.recipe;
   const t=battle.elapsed/1000,phase=battle.phase,limit=BATTLE_END/1000;
   // のこり秒は、その回で描いて唱えられる時刻までを数える。過ぎたら消して、画面を魔法に渡す。
-  const toDeadline=round.inputEnd/1000-t,left=Math.max(0,Math.ceil(toDeadline));
+  const toDeadline=inputDeadline(round,battle.elapsed)/1000-t,left=Math.max(0,Math.ceil(toDeadline));
   if(timerValue.textContent!==String(left))timerValue.textContent=String(left);
   show('timer',toDeadline>0);
   const urgency=toDeadline>0&&toDeadline<=5?1-toDeadline/5:0;
@@ -360,10 +361,9 @@ function updateUi() {
   if(phase==='chant'&&!cast.speech.snapshot().length)el('hint').textContent=CHANT_EXAMPLES[round.id];
   // 手が見つからないことは、描けていない状態そのものなので一番強く出す。
   if(mode==='camera'&&drawing&&!cursors.length&&performance.now()-lastHandAt>800)el('hint').textContent='手を画面の前に戻そう。描いた線は消えません';
-  // 幕の表示。回の切り替わりで0.8秒だけ大きく出す。
-  const actName=ACT_NAMES[round.id]??'';
-  const act=actName&&t>=round.start/1000&&t<round.start/1000+.8?`第${'一二三'[round.index-1]}幕　${actName}`:'';
+  const announcement=announcementAt(round,battle.elapsed),act=announcement.text;
   if(act!==actShown){actShown=act;el('act-title').textContent=act;show('act-title',!!act);}
+  el('act-title').style.opacity=String(announcement.opacity);
   const steps=ROUND_STEPS[round.id];
   for(let i=0;i<3;i++)el(`step-${i+1}-label`).textContent=steps[i];
   const heard=voice?cast.speech.latest():null;
