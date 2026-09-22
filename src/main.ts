@@ -153,6 +153,8 @@ const clearThumb=(canvas:HTMLCanvasElement)=>canvas.getContext('2d')?.clearRect(
 let session:Battle|null=null,camera:HandCamera|null=null,voice:VoiceInput|null=null;
 let cursors:Array<{x:number;y:number}>=[],lastHandAt=0,mode='pointer',demo=false,preparing=false;
 let resultShown=false,lastUi=0,feedback:string|null=null,lastCameraLatency=0;
+// 結果の背景は静止画。切り替えたときと、画面の大きさが変わったときだけ描く。
+let resultNeedsRender=false;
 // 回ごとに一度だけ行うことの覚え書き。魔法名の表示と体力の揺れもここで数える。
 const begun=new Set<string>(),ended=new Set<string>(),requested=new Set<string>(),lockLog=new Set<string>(),revealed=new Set<string>(),damaged=new Set<number>();
 // 声をいま受け付けている回。回が変わるたびに接続し直す。
@@ -202,6 +204,7 @@ function toReady(message='') {
     // 途中でやめたことを記録にも残す。すでに保存した回があるときだけ、一度だけ書き足す。
     const battle=session;if(recorder)void recorder.saveCancelled(battle);}
   prepareVersion++;session?.cancel();cleanup();session=null;preparing=false;countingDown=false;show('countdown',false);
+  resultShown=false;resultNeedsRender=false;
   show('last-record',!!lastReport);
   show('welcome',true);show('hud',false);show('result',false);show('timer',false);show('sheet',false);show('reveal',false);
   revealed.clear();el('reveal').classList.remove('in');el('deadline').style.opacity='0';el('app').dataset.deadline='';el('result').classList.remove('name-only');
@@ -212,7 +215,7 @@ function toReady(message='') {
 }
 async function begin(isDemo=false) {
   if(!isDemo&&FLOW==='sequential'&&!voiceChoice.checked){reloadFlow('together','マイクを使わないので「同時に」に切り替えました。');return;}
-  if(preparing)return;preparing=true;markActive();clearTimeout(attractReturn);const version=++prepareVersion;
+  if(preparing)return;preparing=true;resultShown=false;resultNeedsRender=false;markActive();clearTimeout(attractReturn);const version=++prepareVersion;
   void sound.prepare();
   cleanup();session=null;demo=isDemo;mode=(document.querySelector<HTMLInputElement>('input[name="mode"]:checked')?.value??'pointer');
   diag=new Diagnostics(performance.now());diag.log('準備を開始',{mode,voice:el<HTMLInputElement>('use-voice').checked,speechProvider:status.speechProvider,localSpeech:status.localSpeech});
@@ -545,7 +548,7 @@ function fillSpellList(rows:ResultRow[]) {
 function finish() {
   const battle=session;if(!battle||resultShown)return;
   // 先に「結果を出した」を立てる。魔法が一つも出来ていなくても、毎コマここへ来ないようにする。
-  resultShown=true;sound.stop();voice?.dispose();voice=null;camera?.dispose();camera=null;cursors=[];
+  resultShown=true;resultNeedsRender=true;sound.stop();voice?.dispose();voice=null;camera?.dispose();camera=null;cursors=[];
   const last=battle.finish.recipe?battle.finish:battle.defend.recipe?battle.defend:battle.first;
   const main=last.recipe;
   // 三回とも魔法が出来なかったときは、出すものがないのでタイトルへ戻す。
@@ -634,7 +637,7 @@ el('sheet-close').addEventListener('click',closeSheet);
 el('sheet').addEventListener('click',event=>{if(event.target===el('sheet'))closeSheet();});
 window.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!el('sheet').hidden)closeSheet();else if((session||preparing)&&!resultShown&&document.activeElement!==el('chant'))toReady('中止しました');}if(event.key==='Tab'&&!el('sheet').hidden){event.preventDefault();el('sheet-close').focus();}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&(preparing||session&&!resultShown))toReady('画面が隠れたため中止しました。最初から始められます。');});
-window.addEventListener('resize',()=>{stage.resize();magic.resize();if(resultShown)drawResult();});
+window.addEventListener('resize',()=>{stage.resize();magic.resize();if(resultShown){resultNeedsRender=true;drawResult();}});
 window.addEventListener('pagehide',()=>{clearInterval(statusTimer);cleanup();});
 
 /** 前のコマで計算した、いまの入力。発話と点の数が同じなら作り直さない。 */
@@ -648,7 +651,9 @@ function animate(now:number) {
   }
   if(session&&!resultShown){frameIntervals.push(now-lastFrame);if(frameIntervals.length>4000)frameIntervals.shift();diag?.frame(now-lastFrame);}
   lastFrame=now;
-  if(session) {
+  // 自動でタイトルへ戻る判定は続け、結果の背景と終わった戦いの更新を省く。
+  if(session&&resultShown&&!resultNeedsRender)return;
+  if(session&&!resultShown) {
     const battle=session;
     // 盾の判定を、実際に見えている輪と同じ形にするため、画面の横と縦の比を先に知らせる。
     // まだ大きさが決まっていないときは知らせない（既定の比のまま使う）。
@@ -685,6 +690,7 @@ function animate(now:number) {
   lastCovered=live.covered;
   if(cast)sound.update(ms,cast.recipe??session!.first.recipe,magic.preset,live.amount);
   stage.render(cast?.motion.display??[],ms,cast?.recipe??null,FLOW==='sequential'?0:voice?.level??0,cast&&!showsCursor(cast.round,ms)?[]:cursors,!session&&!countingDown,live,session?.defend.guard??null,session?.inherited??[]);
+  if(resultShown)resultNeedsRender=false;
   // 閃光、ビネット、グレイン、暗転、背景の彩度はHTMLの層で出す。
   overlay.update(magic.screen,magic.preset.palettes[cast?.recipe?.element??'neutral'],calmMode);
   // 体力も世界の時計で減らす。命中で止めている間は先へ進まない（stage.render の後に読む）。
