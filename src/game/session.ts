@@ -1,3 +1,5 @@
+import { VoiceGrowth } from './voice-growth';
+import { liveWords } from './live-words';
 import { MotionRecorder, summarizeMotion } from './motion';
 import { SpeechBook } from './speech-book';
 import { affirmativeText, explicitCount, makeRecipe } from './recipe';
@@ -28,6 +30,7 @@ export class CastSession {
   readonly round:Round;
   readonly motion:MotionRecorder;
   readonly speech:SpeechBook;
+  readonly growth=new VoiceGrowth();
   readonly events:Array<{name:string; atMs:number; observedMs:number}>=[];
   readonly startMs:number;
   state:SpellState|null=null;
@@ -57,6 +60,7 @@ export class CastSession {
   tick() {
     if(this.cancelled)return;
     this.elapsed=Math.max(0,this.clock()-this.startMs);
+    if(FLOW==='sequential')this.growth.update(liveWords(this.speech.live(),this.speechOffset),this.elapsed,this.round.voiceStart,this.round.inputEnd);
     const next=phaseAt(this.elapsed,this.round);
     const marks:Partial<Record<Phase,number>>={complete:this.round.inputEnd,release:this.round.release,handoff:this.round.handoff,finished:this.round.end};
     if(next!==this.phase) {this.phase=next;this.events.push({name:next,atMs:marks[next]??this.elapsed,observedMs:this.elapsed});}
@@ -80,14 +84,14 @@ export class CastSession {
     const text=entries.map(e=>e.text).join('、');
     const chant=readChant(text);
     this.corrections=chant.corrections;
-    const motion=summarizeMotion(this.motion.raw);
+    const motion=summarizeMotion(this.motion.raw,round.drawEnd===null);
     const defend=round.id==='defend',final=round.id==='finish';
     this.state={schemaVersion:'spell-state-2',sessionId:this.id,castId:round.castId,inputRevision:1,phase:defend?'defend':final?'final':'free',
       currentTask:round.id==='defend'
         ?'自分の線と言葉から守る魔法を作り、狙いの印へ来る騎士の一撃を切り抜ける'
         :round.id==='finish'
         ?'自分の線と言葉からとどめの魔法を作り、崩れかけた騎士の胸の核へ届かせる'
-        :'自分の線と言葉から最初の魔法を作り、目の前の騎士へ作用させる',
+        :round.drawEnd===null?'自分の言葉から最初の魔法を作り、目の前の騎士へ作用させる':'自分の線と言葉から最初の魔法を作り、目の前の騎士へ作用させる',
       inputWindow:{startSessionMs:round.start,endSessionMs:round.inputEnd,chantPromptSessionMs:round.chant,motionAndSpeechConcurrent:FLOW==='together',drawEndSessionMs:round.drawEnd,voiceStartSessionMs:round.voiceStart},motion,
       timedEvents:[...this.motionEvents(),...entries.map(e=>({startMs:e.startMs+round.start,endMs:e.endMs+round.start,speech:e.text,speechTiming:e.source==='typed'?'typed' as const:'utterance' as const}))].sort((a,b)=>a.startMs-b.startMs),
       speech:{status:entries.length?(entries.some(e=>e.source!=='typed')?'recognized':'typed'):'unavailable',provider:entries[0]?.source??null,locale:'ja-JP',rawTranscript:text,normalizedTranscript:chant.normalized,explicitCount:explicitCount(affirmativeText(chant.meaning)),explicitNegation:/ない|なく|するな/.test(text)},previous:this.previous,

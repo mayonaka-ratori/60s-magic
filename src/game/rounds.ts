@@ -49,7 +49,7 @@ export const TOGETHER_ROUNDS: Round[] = [
 
 /** 順番に遊ぶ時刻。手と声を分ける前も、この表で三回を進める。 */
 export const SEQUENTIAL_ROUNDS: Round[] = [
-  { id: 'first', index: 1, castId: 'cast-01', start: 0, drawEnd: 14000, voiceStart: 0, build: 0, chant: 0, inputEnd: 14000, lock: 17000, release: 18000, impact: 19500, finalBlow: null, handoff: 24000, end: 26000 },
+  { id: 'first', index: 1, castId: 'cast-01', start: 0, drawEnd: null, voiceStart: 0, build: null, chant: null, inputEnd: 14000, lock: 17000, release: 18000, impact: 19500, finalBlow: null, handoff: 24000, end: 26000 },
   { id: 'defend', index: 2, castId: 'cast-02', start: 26000, drawEnd: 38000, voiceStart: 26000, build: 26000, chant: 26000, inputEnd: 38000, lock: 40000, release: 41000, impact: 42400, finalBlow: null, handoff: 46000, end: 50000 },
   { id: 'finish', index: 3, castId: 'cast-03', start: 50000, drawEnd: 72000, voiceStart: 50000, build: 50000, chant: 62000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
 ];
@@ -150,6 +150,7 @@ export const voiceConnectAt = (round: Round) => round.voiceStart === null ? null
 export function phaseAt(ms: number, round: Round = ROUNDS[0]): Phase {
   if (ms < round.start) return 'ready';
   if (ms < round.inputEnd) {
+    if (round.drawEnd === null && acceptsVoice(round,ms)) return 'chant';
     if (round.build !== null && ms < round.build) return 'draw';
     if (round.chant === null || ms < round.chant) return round.build === null || round.build === round.start ? 'draw' : 'build';
     return 'chant';

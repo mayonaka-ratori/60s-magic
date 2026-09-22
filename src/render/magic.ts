@@ -1,3 +1,5 @@
+import { drawVoiceGrowth } from './effects/voice-growth';
+import { FLOW } from '../game/rounds';
 import { clamp, getNodes } from '../game/motion';
 import type { Point, Recipe, Element } from '../game/types';
 import { fitSpell, smoothStroke } from './spell-layout';
@@ -206,6 +208,7 @@ export class MagicCanvas {
     c.globalAlpha = fade;
     // 描いている間の即時反応。動きと言葉に、その場で光が応える。save と restore で濃さと重ね方は元に戻る。
     if (t < beat.release) { c.save(); drawStrokeReactions(frame, this.strokeMemory); drawWordReactions(frame); c.restore(); }
+    if(FLOW==='sequential'&&!beat.defend){c.save();drawVoiceGrowth(frame);c.restore();}
     // 防御の回は、狙いの印と盾と敵の一撃。魔法が確定する前から印を出す。
     if (beat.defend) { c.save(); drawGuard(frame); c.restore(); }
     if (recipe) {
@@ -258,6 +261,15 @@ export class MagicCanvas {
       this.darkGradient = g; this.darkKey = key;
     }
     return this.darkGradient;
+  }
+
+  /** 声だけの回は、土台の円と残った属性の色を描く。 */
+  voiceThumbnail(elements: readonly Element[]) {
+    this.resize();const c=this.ctx,w=this.width,h=this.height,r=Math.min(w,h)*.3;
+    c.clearRect(0,0,w,h);c.save();c.globalCompositeOperation='lighter';
+    c.strokeStyle=colors[elements[0]??'neutral'];c.lineWidth=2;c.beginPath();c.ellipse(w/2,h/2,r,r*.7,0,0,Math.PI*2);c.stroke();
+    elements.forEach((element,i)=>{const a=i*2.4,p=this.preset.palettes[element];this.sprites.draw(c,w/2+Math.cos(a)*r,h/2+Math.sin(a)*r*.7,5,p.core,p.main,.85);});
+    c.restore();
   }
 
   /** 結果の枠に、本人の線を縮めて描く。 */

@@ -3,9 +3,52 @@ import { announcementAt, inputDeadline } from '../src/game/guidance';
 import { ANNOUNCEMENT_HOLD_MS, ANNOUNCEMENT_MS } from '../src/game/rounds';
 import { Battle } from '../src/game/battle';
 import { CastSession } from '../src/game/session';
+import { VoiceGrowth } from '../src/game/voice-growth';
+import { liveWords, resetLiveWords } from '../src/game/live-words';
+import { playOf, resultRows } from '../src/game/record';
+import { drawVoiceGrowth } from '../src/render/effects/voice-growth';
+import { testFrame, stubContext } from './helpers';
 import { FLOW, ROUNDS, TOGETHER_ROUNDS, SEQUENTIAL_ROUNDS, MAX_INPUT_MS, MAX_INPUT_SAMPLES, SAMPLES_PER_MS, flowOf, beatOf, windowMsOf } from '../src/game/rounds';
 
 describe('二つの遊び方', () => {
+  it('声だけの回では線を残さず、言葉の色と結果の円を残す', () => {
+    const round={...ROUNDS[0],drawEnd:null,voiceStart:ROUNDS[0].start,chant:null};
+    let now=round.start; const cast=new CastSession(()=>now,'声だけ',round,0);
+    expect(cast.motion.add(.2,.3,now)).toBe(false);
+    expect(cast.acceptingVoice).toBe(true);
+    cast.speech.add({id:1,revision:1,startMs:0,endMs:1,text:'氷よ、球となれ',final:true,stability:1,source:'typed'});
+    now=round.start+2;cast.tick();const state=cast.freeze();
+    cast.receive({sessionId:state.sessionId,castId:state.castId,inputRevision:1,status:'ok',answers:{motionSpeechAligned:{type:'noul',noul:1}}});
+    cast.lock();
+    expect(state.motion.descriptions.outline).toBe('線なし');
+    expect(cast.recipe?.decisions.form.reason).toBe('言葉から決めた');
+    expect(cast.recipe?.motionSpeechAligned).toBeNull();
+    const row=resultRows(playOf({id:'声だけ',casts:[cast],inherited:[]},'123456','今'))[0];
+    expect(row.voiceColors).toEqual(FLOW==='sequential'?['ice']:[]);
+    expect(row.points).toHaveLength(0);
+    const silent=new CastSession(()=>0,'無言',round,0);silent.lock();
+    expect(silent.recipe?.element).toBe('neutral');
+    expect(silent.recipe?.assistance).toContain('詠唱を記録できませんでした');
+  });
+  it('同じ言葉を重ねず、言い直しを薄く残し、締め切り後は部品を足さない', () => {
+    resetLiveWords();const growth=new VoiceGrowth(),round=ROUNDS[0];
+    const words=(text:string,revision:number)=>liveWords([{id:0,revision,startMs:0,endMs:1,text,final:false,stability:.5,source:'local'}]);
+    growth.update(words('炎',1),2,0,round.inputEnd);
+    growth.update(words('炎',2),3,0,round.inputEnd);
+    expect(growth.snapshot()).toHaveLength(1);
+    growth.update(words('氷',3),4,0,round.inputEnd);
+    expect(growth.snapshot().map(p=>[p.element,p.active])).toEqual([['fire',false],['ice',true]]);
+    growth.update(words('雷',4),round.inputEnd,0,round.inputEnd);
+    expect(growth.snapshot()).toHaveLength(2);
+  });
+  it('無言でも円が育ち、声の大きさで描く内容は変わらない', () => {
+    const beat=beatOf({...ROUNDS[0],drawEnd:null,voiceStart:0});
+    const render=(t:number,voice:number)=>{const log:string[]=[];const f=testFrame({c:stubContext(log),beat,t});f.live.voice=voice;drawVoiceGrowth(f);return log;};
+    const first=render(beat.start,0),later=render((beat.start+beat.inputEnd)/2,0);
+    expect(first.some(s=>s.startsWith('ellipse:'))).toBe(true);expect(later).not.toEqual(first);
+    expect(later).toEqual(render((beat.start+beat.inputEnd)/2,1));
+    expect(render(beat.release,0)).toHaveLength(0);
+  });
   it('合図を読んでいる間も受け付け、締め切りの表示を切り替える', () => {
     const round={...ROUNDS[2],drawEnd:ROUNDS[2].start+windowMsOf(ROUNDS[2])/2};
     expect(inputDeadline(round,round.drawEnd-1)).toBe(round.drawEnd);

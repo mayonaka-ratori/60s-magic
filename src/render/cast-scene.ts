@@ -1,3 +1,4 @@
+import { VOICE_ORIGIN } from '../game/voice-growth';
 import { CompletedSpell } from './completed-spell';
 import { spellPose } from './spell-layout';
 import { Knight } from './knight';
@@ -69,7 +70,7 @@ export class CastScene {
     // 防御の回の姿勢は、止め方（受け止め・弾き返し・かき消し）で変わる。
     this.knight.render(worldMs,!ready,recipe,live.amount,undefined,guard?.style??null);
     const complete=ms>=beat.inputEnd*1000&&!ready;
-    const shape=ready?[]:points.length?points:complete?[{x:.5,y:.66,t:0,hand:0,stroke:0}]:[];
+    const shape=ready?[]:points.length?points:complete?[{...VOICE_ORIGIN,t:0,hand:0,stroke:0}]:[];
     const key=`${this.revision}:${ready}:${complete}:${shape.length}:${shape.at(-1)?.t}:${shape.at(-1)?.x}:${shape.at(-1)?.y}`;
     // 毎フレーム管を作り直さず、入力が変わった時だけ更新。完成後は位置と光だけを変える。
     if(key!==this.lastKey&&(complete||ready||performance.now()-this.lastBuild>=25)) {

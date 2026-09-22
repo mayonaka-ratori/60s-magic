@@ -55,14 +55,30 @@ const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById
 const params=new URLSearchParams(location.search);
 el('app').dataset.flow=FLOW;
 if(FLOW==='sequential')document.querySelector('.countdown-title')!.textContent='まもなく始まる。手を画面の前に';
+const voiceChoice=el<HTMLInputElement>('use-voice');
+voiceChoice.checked=FLOW==='sequential';
+try {if(sessionStorage.getItem('flow-microphone')==='on')voiceChoice.checked=true;el('notice').textContent=sessionStorage.getItem('flow-notice')??'';sessionStorage.removeItem('flow-notice');}catch{/* 保存先が無くても選べる。 */}
+function reloadFlow(flow:string,notice='') {
+  try {sessionStorage.setItem('flow-microphone',voiceChoice.checked?'on':'off');sessionStorage.setItem('flow-notice',notice);}catch{/* 選択はURLで渡る。 */}
+  const url=new URL(location.href);
+  if(flow==='together')url.searchParams.set('flow','together');else url.searchParams.delete('flow');
+  location.assign(url.href);
+}
+function updateFlowChoice() {
+  const sequential=document.querySelector<HTMLInputElement>('input[name="flow"][value="sequential"]')!;
+  sequential.disabled=!voiceChoice.checked;
+  if(FLOW==='sequential'&&!voiceChoice.checked)el('notice').textContent='マイクを使わない場合は「同時に」で遊びます。';
+}
 for(const option of document.querySelectorAll<HTMLInputElement>('input[name="flow"]')) {
   option.checked=option.value===FLOW;
-  option.addEventListener('change',()=>{
-    const url=new URL(location.href);
-    if(option.value==='together')url.searchParams.set('flow','together');else url.searchParams.delete('flow');
-    location.assign(url.href);
-  });
+  option.addEventListener('change',()=>reloadFlow(option.value));
 }
+voiceChoice.addEventListener('change',()=>{
+  updateFlowChoice();
+  if(FLOW==='sequential'&&!voiceChoice.checked)reloadFlow('together','マイクを使わないので「同時に」に切り替えました。');
+});
+updateFlowChoice();
+if(FLOW==='sequential')document.querySelector('.intro')!.innerHTML='まずは声で、次は手で魔法をつくろう。<br>最後は手で描いて、合図のあとに唱えよう。<br>二回目は、左に浮かぶ輪を守ります';
 // 会場で待ち時間を変えられるよう、秒数をURLでも指定できる。5秒から10分の間に収める。
 const seconds=(name:string,fallback:number)=>{
   const value=Number(params.get(name));
@@ -168,6 +184,7 @@ async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json
   el('voice-availability').textContent=status.speech?(status.speechProvider==='local'?'（このPCで聞き取ります）':'（Googleで聞き取ります）'):status.localSpeech?.state==='loading'?'（準備中です）':'（いまは使えません）';
   el<HTMLInputElement>('use-voice').disabled=!status.speech;
   if(!status.speech)el<HTMLInputElement>('use-voice').checked=false;
+  updateFlowChoice();
   el('privacy').textContent=`${status.speechProvider==='google'?'カメラの映像はこのPCの中だけで扱います。声はGoogleへ送って文字に変えます。':'カメラの映像も声も、このPCの中だけで扱い、外へ送りません。'}${status.jev?'文字にした言葉と動きの形だけ、魔法を決める処理へ送ります。':''}描いた線と唱えた言葉は、このPCの中にだけ残します。カメラの映像と声そのものは残しません。`;}
 void readStatus();
 const statusTimer=setInterval(()=>{if(!session&&!preparing)void readStatus();},3000);
@@ -194,6 +211,7 @@ function toReady(message='') {
   el<HTMLButtonElement>('start').disabled=false;el<HTMLButtonElement>('demo').disabled=false;el('notice').textContent=message;
 }
 async function begin(isDemo=false) {
+  if(!isDemo&&FLOW==='sequential'&&!voiceChoice.checked){reloadFlow('together','マイクを使わないので「同時に」に切り替えました。');return;}
   if(preparing)return;preparing=true;markActive();clearTimeout(attractReturn);const version=++prepareVersion;
   void sound.prepare();
   cleanup();session=null;demo=isDemo;mode=(document.querySelector<HTMLInputElement>('input[name="mode"]:checked')?.value??'pointer');
@@ -260,9 +278,12 @@ async function begin(isDemo=false) {
   el<HTMLInputElement>('chant').value='';el<HTMLInputElement>('chant').disabled=false;healthBar.reset();
   document.querySelectorAll('[data-feedback]').forEach(button=>button.classList.remove('selected'));
   if(demo) {
-    session.first.speech.add({id:0,revision:1,startMs:11000,endMs:13500,text:'雷よ、七つに分かれろ',final:true,stability:1,source:'typed'});
-    session.defend.speech.add({id:0,revision:1,startMs:4000,endMs:6500,text:'氷よ、壁となれ、弾き返せ',final:true,stability:1,source:'typed'});
-    session.finish.speech.add({id:0,revision:1,startMs:4000,endMs:8500,text:'光よ、集まれ、貫け',final:true,stability:1,source:'typed'});
+    const examples=['雷よ、七つに分かれろ','氷よ、壁となれ、弾き返せ','光よ、集まれ、貫け'];
+    for(const cast of session.casts) {
+      const round=cast.round;if(round.voiceStart===null)continue;
+      const start=round.voiceStart-round.start,end=start+(round.inputEnd-round.voiceStart)*.7;
+      cast.speech.add({id:0,revision:1,startMs:start,endMs:end,text:examples[round.index-1],final:true,stability:1,source:'typed'});
+    }
   }
   updateUi();
 }
@@ -352,9 +373,14 @@ function updateUi() {
     release:['放て','あなたの一番大きい魔法が、騎士の核へ届きます'],
     handoff:['',''],
   };
+  if(round.drawEnd===null){
+    first.chant=['好きな言葉を唱えよう','言葉に合わせて、円に色が加わります'];
+    first.complete=['唱えた言葉が、魔法になる','もう声を止めても大丈夫'];
+    first.release=[recipe?.name??'魔法を解き放つ','あなたの言葉から、騎士へ放たれる'];
+  }
   const label=(round.id==='finish'?lastRound:round.id==='defend'?defend:first)[phase];
   if(label){el('instruction').textContent=label[0];el('hint').textContent=label[1];}
-  const drawing=t<round.inputEnd/1000;
+  const drawing=cast.acceptingDrawing,accepting=cast.accepting;
   // 描き始めの4秒で線が動いていなければ、描き方をもう一度伝える。
   if(t>=round.start/1000+2&&t<round.start/1000+6&&drawing&&!cast.motion.hasMovement)el('hint').textContent=mode==='pointer'?'画面を押したまま、少し動かそう':'片手を少し動かそう';
   // まだ何も唱えていない人には、唱える時間になったところで例をひとつ出す。
@@ -364,19 +390,19 @@ function updateUi() {
   const announcement=announcementAt(round,battle.elapsed),act=announcement.text;
   if(act!==actShown){actShown=act;el('act-title').textContent=act;show('act-title',!!act);}
   el('act-title').style.opacity=String(announcement.opacity);
-  const steps=ROUND_STEPS[round.id];
+  const steps=round.drawEnd===null?['唱える','形になる','放つ']:ROUND_STEPS[round.id];
   for(let i=0;i<3;i++)el(`step-${i+1}-label`).textContent=steps[i];
   const heard=voice?cast.speech.latest():null;
   if(heard&&heard.source!=='typed'&&t<round.lock/1000)el('voice-label').textContent=`聞き取り：「${heard.text.slice(-40)}」${heard.final?'':'（途中）'}`;
   el('service-notice').textContent=serviceNotice;
-  show('voice-label',!!voice&&!demo&&voiceRound===round.id&&t<round.lock/1000&&(!!heard||drawing));
-  el('step-input').classList.toggle('active',drawing);
-  el('step-complete').classList.toggle('active',!drawing&&t<round.release/1000);
+  show('voice-label',!!voice&&!demo&&voiceRound===round.id&&t<round.lock/1000&&(!!heard||cast.acceptingVoice));
+  el('step-input').classList.toggle('active',accepting);
+  el('step-complete').classList.toggle('active',!accepting&&t<round.release/1000);
   el('step-release').classList.toggle('active',t>=round.release/1000);
   // 声を使えない回（マイクなし、またはつなぎ直せなかったとき）は、文字で入れられるようにする。
   if(voice?.lost&&!voiceLost){voiceLost=true;diag?.log('声の接続が切れた',{round:round.id});}
-  const typing=(!voice||voiceLost)&&!demo;
-  el<HTMLInputElement>('chant').disabled=!drawing;show('input-panel',typing&&drawing);
+  const typing=(!voice||voiceLost)&&!demo&&cast.acceptingVoice;
+  el<HTMLInputElement>('chant').disabled=!cast.acceptingVoice;show('input-panel',typing);
   show('meter',!!voice&&!voiceLost);
   showReveal(t,round,recipe);
   if(cast.locked&&recipe&&t>=round.lock/1000&&t<round.release/1000){show('recognized',true);el('recognized').textContent=[ELEMENT_LABELS[recipe.element],recipe.count>1?`${recipe.count}つ`:PURPOSE_LABELS[recipe.purpose]].join('　・　');}
@@ -553,7 +579,8 @@ function drawResult() {
   // 描かなかった回の枠は必ず消す。消さないと前の人の術式が残る。
   rowCanvases.forEach((canvas,index)=>{
     const row=shownRows[index];
-    if(row&&drawable(row))rowMagic[index].thumbnail(row.points,colors[row.element!],source);
+    if(row?.voiceColors)rowMagic[index].voiceThumbnail(row.voiceColors);
+    else if(row&&drawable(row))rowMagic[index].thumbnail(row.points,colors[row.element!],source);
     else clearThumb(canvas);
   });
 }
@@ -642,13 +669,13 @@ function animate(now:number) {
     if(key!==liveKey){liveKey=key;liveBase=liveInput(cast.motion.raw,entries,0,defending&&cast.accepting?session!.aim:null,cast.speechOffset,session!.aspect);}
     // 発動より後は言葉を使わないので空にする。入力の量はそのまま残す。声の大きさは毎コマ入れ直す。
     const base=ms>=cast.round.release?wordless(liveBase):liveBase;
-    live={...base,voice:voice?.level??0};
+    live={...base,colorLayers:cast.growth.snapshot(),voice:FLOW==='sequential'?0:voice?.level??0};
   }
   // 囲えた瞬間に音で返す。数が増えるたびに一度だけ鳴らす。
   if(live.rings!==lastRings){if(live.rings>lastRings)sound.ring(live.rings);lastRings=live.rings;}
   lastCovered=live.covered;
   if(cast)sound.update(ms,cast.recipe??session!.first.recipe,magic.preset,live.amount);
-  stage.render(cast?.motion.display??[],ms,cast?.recipe??null,voice?.level??0,cursors,!session&&!countingDown,live,session?.defend.guard??null,session?.inherited??[]);
+  stage.render(cast?.motion.display??[],ms,cast?.recipe??null,FLOW==='sequential'?0:voice?.level??0,cursors,!session&&!countingDown,live,session?.defend.guard??null,session?.inherited??[]);
   // 閃光、ビネット、グレイン、暗転、背景の彩度はHTMLの層で出す。
   overlay.update(magic.screen,magic.preset.palettes[cast?.recipe?.element??'neutral'],calmMode);
   // 体力も世界の時計で減らす。命中で止めている間は先へ進まない（stage.render の後に読む）。
