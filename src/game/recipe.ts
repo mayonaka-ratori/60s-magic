@@ -34,7 +34,7 @@ function noul(a:Answer|undefined) {return a?.type==='noul'&&typeof a.noul==='num
 export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   const text=affirmativeText(readChant(state.speech.normalizedTranscript).meaning);
   const motion=state.motion,voiceOnly=state.inputWindow.drawEndSessionMs===null;
-  const oneInput=voiceOnly||state.inputWindow.voiceStartSessionMs===null;
+  const handOnly=state.inputWindow.voiceStartSessionMs===null,oneInput=voiceOnly||handOnly;
   // 属性語は言った順に並べる。先頭が主属性、二つ目は飾り色。3つ以上あっても最初の2つだけ使う。
   const matchedElements=elementWords.filter(([,re])=>re.test(text)).sort((a,b)=>text.search(a[1])-text.search(b[1]));
   const wordElement=matchedElements[0]?.[0]??null;
@@ -66,6 +66,7 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   const answers=valid?reply.answers??{}:{};
   let used=0;
   for(const [key,allowed] of [['element',ELEMENTS],['purpose',PURPOSES],['form',FORMS],['trajectory',TRAJECTORIES]] as const) {
+    if(handOnly&&(key==='element'||key==='purpose'))continue;
     if(recipe.decisions[key].source==='word')continue;
     const value=choice(answers[key],allowed);
     if(value!==null) { (recipe as unknown as Record<string,unknown>)[key]=value;recipe.decisions[key]={source:'jev',reason:'候補の確率と差が基準以上'};used++; }
@@ -90,13 +91,18 @@ export function makeRecipe(state:SpellState, reply?:JevReply):Recipe {
   if(recipe.form==='wall'&&recipe.trajectory==='homing')recipe.trajectory='straight';
   if(recipe.split&&count===null&&['orb','beam','swarm'].includes(recipe.form))recipe.count=4;
   if(recipe.form==='swarm'&&count===null)recipe.count=recipe.split?4:3;
+  if(handOnly){
+    recipe.element='neutral';recipe.accent=null;recipe.blend=null;recipe.purpose='defend';
+    recipe.decisions.element={source:'default',reason:'手だけの防御は無属性に固定'};
+    recipe.decisions.purpose={source:'default',reason:'手だけで騎士の一撃を防ぐ回'};
+  }
   if(voiceOnly) {
     recipe.decisions.form={source:wordForm?'word':recipe.decisions.form.source==='jev'?'jev':'default',reason:'言葉から決めた'};
     for(const key of ['area','concentration'])if(recipe.decisions[key].source==='motion')recipe.decisions[key]={source:'default',reason:'線を使わない回の既定値'};
     if(!state.speech.rawTranscript){recipe.element='neutral';recipe.accent=null;recipe.blend=null;recipe.decisions.element={source:'default',reason:'詠唱を記録できなかったため無属性'};}
   }
   if(!motion.hasMovement&&!voiceOnly)recipe.assistance.push('動きがないため中央の光点を使用');
-  if(!state.speech.rawTranscript)recipe.assistance.push('詠唱を記録できませんでした');
+  if(!state.speech.rawTranscript&&!handOnly)recipe.assistance.push('詠唱を記録できませんでした');
   if(!valid)recipe.assistance.push(reply?.status==='unconfigured'?'Jev未設定のためPC内の規則を使用':'Jevの回答を使用せずPC内の規則を使用');
   recipe.source=used===0?'local':Object.values(recipe.decisions).every(d=>d.source==='jev')?'jev':'mixed';
   recipe.model=used?reply?.model??null:null;

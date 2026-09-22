@@ -8,9 +8,39 @@ import { liveWords, resetLiveWords } from '../src/game/live-words';
 import { playOf, resultRows } from '../src/game/record';
 import { drawVoiceGrowth } from '../src/render/effects/voice-growth';
 import { testFrame, stubContext } from './helpers';
+import { AIM, drawnGuard, shieldOf } from '../src/game/guard';
+import { interpretAtOf, replyLimitOf, speechLimitOf, voiceConnectAt } from '../src/game/rounds';
 import { FLOW, ROUNDS, TOGETHER_ROUNDS, SEQUENTIAL_ROUNDS, MAX_INPUT_MS, MAX_INPUT_SAMPLES, SAMPLES_PER_MS, flowOf, beatOf, windowMsOf } from '../src/game/rounds';
 
 describe('二つの遊び方', () => {
+  it('三段の描き方と無入力で止め方が決まり、描いた縁を変えない', () => {
+    const ring=Array.from({length:33},(_,i)=>({x:AIM.x+Math.cos(i/32*Math.PI*2)*.1,y:AIM.y+Math.sin(i/32*Math.PI*2)*.15,t:i,hand:0,stroke:0}));
+    const covered=[{x:AIM.x-.1,y:AIM.y,t:0,hand:0,stroke:0},{x:AIM.x,y:AIM.y,t:1,hand:0,stroke:0}];
+    const far=covered.map(p=>({...p,x:p.x+.4}));
+    for(const [points,style,surface] of [[ring,'reflect','membrane'],[covered,'block','grid'],[far,'erase','orb'],[[],'erase','orb']] as const) {
+      const plan=drawnGuard(points);
+      expect(plan.style).toBe(style);expect(plan.surface).toBe(surface);
+      expect(plan.shield).toEqual(shieldOf(points,null));
+    }
+  });
+  it('手だけの防御は声を待たず、Jevが色を返しても無属性にする', () => {
+    const round={...ROUNDS[1],voiceStart:null,chant:null};
+    let now=round.start;const cast=new CastSession(()=>now,'手だけ',round,0);
+    expect(voiceConnectAt(round)).toBeNull();expect(cast.acceptingVoice).toBe(false);
+    expect(speechLimitOf(round)).toBe(round.inputEnd);
+    expect(interpretAtOf(round)).toBeLessThan(replyLimitOf(round));
+    now=round.inputEnd;cast.tick();expect(cast.guard?.style).toBe('erase');
+    const state=cast.freeze();
+    cast.receive({sessionId:state.sessionId,castId:state.castId,inputRevision:1,status:'ok',answers:{
+      element:{type:'choice',choice:'fire',probabilities:{fire:1}},
+      purpose:{type:'choice',choice:'attack',probabilities:{attack:1}},motionSpeechAligned:{type:'noul',noul:1},
+    }});
+    now=round.lock;cast.tick();
+    expect(cast.recipe?.element).toBe('neutral');expect(cast.recipe?.accent).toBeNull();
+    expect(cast.recipe?.purpose).toBe('defend');expect(cast.recipe?.motionSpeechAligned).toBeNull();
+    expect(cast.recipe?.name).not.toContain('炎');
+    expect(cast.recipe?.assistance).not.toContain('詠唱を記録できませんでした');
+  });
   it('声だけの回では線を残さず、言葉の色と結果の円を残す', () => {
     const round={...ROUNDS[0],drawEnd:null,voiceStart:ROUNDS[0].start,chant:null};
     let now=round.start; const cast=new CastSession(()=>now,'声だけ',round,0);

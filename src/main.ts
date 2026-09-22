@@ -2,7 +2,7 @@ import './style.css';
 import { announcementAt, inputDeadline } from './game/guidance';
 import { Battle } from './game/battle';
 import type { CastSession } from './game/session';
-import { BATTLE_END, FLOW, COUNTDOWN_MS, GUARD_STAGGER_MS, ROUNDS, SPEECH_WAIT_MS, voiceConnectAt, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
+import { BATTLE_END, FLOW, COUNTDOWN_MS, GUARD_STAGGER_MS, ROUNDS, SPEECH_WAIT_MS, voiceConnectAt, interpretAtOf, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
 import { GUARD_LABELS } from './game/guard';
 import { ELEMENT_LABELS, PURPOSE_LABELS, FORM_LABELS, type Phase } from './game/types';
 import { HandCamera } from './input/camera';
@@ -378,6 +378,7 @@ function updateUi() {
     first.complete=['唱えた言葉が、魔法になる','もう声を止めても大丈夫'];
     first.release=[recipe?.name??'魔法を解き放つ','あなたの言葉から、騎士へ放たれる'];
   }
+  if(round.voiceStart===null)defend.draw=['左の輪の中に、守る形を描け',rings?'囲えた。その形が盾になります':covered?'その線が、そのまま盾になります':'輪から離れていても大丈夫。一番近い線が輪の前へ動きます'];
   const label=(round.id==='finish'?lastRound:round.id==='defend'?defend:first)[phase];
   if(label){el('instruction').textContent=label[0];el('hint').textContent=label[1];}
   const drawing=cast.acceptingDrawing,accepting=cast.accepting;
@@ -403,7 +404,7 @@ function updateUi() {
   if(voice?.lost&&!voiceLost){voiceLost=true;diag?.log('声の接続が切れた',{round:round.id});}
   const typing=(!voice||voiceLost)&&!demo&&cast.acceptingVoice;
   el<HTMLInputElement>('chant').disabled=!cast.acceptingVoice;show('input-panel',typing);
-  show('meter',!!voice&&!voiceLost);
+  show('meter',!!voice&&!voiceLost&&cast.acceptingVoice);
   showReveal(t,round,recipe);
   if(cast.locked&&recipe&&t>=round.lock/1000&&t<round.release/1000){show('recognized',true);el('recognized').textContent=[ELEMENT_LABELS[recipe.element],recipe.count>1?`${recipe.count}つ`:PURPOSE_LABELS[recipe.purpose]].join('　・　');}
   else show('recognized',false);
@@ -450,7 +451,7 @@ function driveRound(battle:Battle,cast:CastSession) {
     cursors=[];diag?.log('入力の受付を終了',{round:round.id,points:cast.motion.raw.length});
   }
   // 声の最後の文字が届いたら、待たずにJevへ送る。届かないときだけ決めた時刻まで待つ。
-  if(!requested.has(round.id)&&ms>=round.inputEnd+100&&(voiceRound!==round.id||voice?.settled||ms>=speechLimitOf(round))) {
+  if(!requested.has(round.id)&&ms>=interpretAtOf(round)&&(round.voiceStart===null||voiceRound!==round.id||voice?.settled||ms>=speechLimitOf(round))) {
     requested.add(round.id);const state=cast.freeze();
     if(voiceRound===round.id){voice?.disconnect();voiceRound=null;}
     const abort=new AbortController();requestAbort=abort;

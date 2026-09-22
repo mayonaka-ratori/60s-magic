@@ -50,7 +50,7 @@ export const TOGETHER_ROUNDS: Round[] = [
 /** 順番に遊ぶ時刻。手と声を分ける前も、この表で三回を進める。 */
 export const SEQUENTIAL_ROUNDS: Round[] = [
   { id: 'first', index: 1, castId: 'cast-01', start: 0, drawEnd: null, voiceStart: 0, build: null, chant: null, inputEnd: 14000, lock: 17000, release: 18000, impact: 19500, finalBlow: null, handoff: 24000, end: 26000 },
-  { id: 'defend', index: 2, castId: 'cast-02', start: 26000, drawEnd: 38000, voiceStart: 26000, build: 26000, chant: 26000, inputEnd: 38000, lock: 40000, release: 41000, impact: 42400, finalBlow: null, handoff: 46000, end: 50000 },
+  { id: 'defend', index: 2, castId: 'cast-02', start: 26000, drawEnd: 38000, voiceStart: null, build: 26000, chant: null, inputEnd: 38000, lock: 40000, release: 41000, impact: 42400, finalBlow: null, handoff: 46000, end: 50000 },
   { id: 'finish', index: 3, castId: 'cast-03', start: 50000, drawEnd: 72000, voiceStart: 50000, build: 50000, chant: 62000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
 ];
 export const ROUNDS = FLOW === 'together' ? TOGETHER_ROUNDS : SEQUENTIAL_ROUNDS;
@@ -131,7 +131,9 @@ export const VOICE_RECONNECT_MS = 2500;
 export const speechSocketMsOf = (windowMs: number = MAX_INPUT_MS) =>
   Math.max(COUNTDOWN_MS, VOICE_RECONNECT_MS) + windowMs + SPEECH_WAIT_MS + 5000;
 /** 声を待つのをやめ、Jevへ送る時刻。声が先に届けばもっと早く送る。 */
-export const speechLimitOf = (round: Round) => round.inputEnd + SPEECH_WAIT_MS;
+export const speechLimitOf = (round: Round) => round.inputEnd + (round.voiceStart === null ? 0 : SPEECH_WAIT_MS);
+/** 入力を締めてから、Jevへ送れる最初の時刻。 */
+export const interpretAtOf = (round: Round) => round.inputEnd + 100;
 /** Jevの返事を受け取れる最後の時刻。確定の手前で必ず打ち切る。 */
 export const replyLimitOf = (round: Round) => round.lock - 100;
 /**
