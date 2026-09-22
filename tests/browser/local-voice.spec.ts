@@ -43,9 +43,9 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     // 合成した声は受付の17.3秒（締め切りの0.7秒前）に終わる。scripts/prepare-browser-audio.mjs の END_MS と合わせてある。
     expect(first.speechEntries[0].final).toBe(true);expect(first.speechEntries[0].endMs).toBeGreaterThan(ROUNDS[0].inputEnd-2000);
     expect(first.rawPoints.at(-1).t).toBeGreaterThan(ROUNDS[0].inputEnd-1000);expect(first.recipe.count).toBe(7);
-    expect(report.audio.recordingQuiet).toBe(true);
-    // 750は src/audio/cues.ts の QUIET_TAIL（録音を止めてから鳴らし始めるまでの余裕）。書き出していないので同じ値をここに置く。
-    expect(report.audio.events.every((e:{atMs:number})=>e.atMs>=ROUNDS[0].inputEnd+750)).toBe(true);
+    expect(report.audio.recordingQuiet).toBe(false);
+    expect(report.audio.events.some((e:{name:string;atMs:number})=>e.name==='step'&&e.atMs<ROUNDS[0].inputEnd)).toBe(true);
+    expect(report.audio.events.some((e:{name:string})=>e.name==='clang')).toBe(true);
     expect(report.audio.events.some((e:{name:string})=>e.name==='impact')).toBe(true);
     expect(first.events.find((e:{name:string})=>e.name==='release').observedMs).toBeLessThan(ROUNDS[0].release+250);
     expect(errors).toEqual([]);expect(outsideAudio).toEqual([]);

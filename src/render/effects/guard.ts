@@ -207,7 +207,8 @@ function drawInherited(f: Frame) {
     const node = f.inherited[i], a = i / Math.max(1, f.inherited.length) * Math.PI * 2 + t * .25;
     const x = node.x * f.w + (g.x + Math.cos(a) * reach - node.x * f.w) * appear;
     const y = node.y * f.h + (g.y + Math.sin(a) * reach * .6 - node.y * f.h) * appear;
-    glow(f, x, y, 2 + Math.sin(t * 2 + i) * .5, .25 + appear * .2);
+    const pal=node.element?f.preset.palettes[node.element]:f.palette;
+    glow(f, x, y, 2 + Math.sin(t * 2 + i) * .5, .25 + appear * .2,pal.main,pal.core);
   }
 }
 

@@ -60,7 +60,9 @@ function standsAlone(kana:string,at:string|number,length:number) {
  */
 export function readChant(text:string) {
   const original=text.normalize('NFKC'),kana=hiragana(original);
-  let normalized='',meaning='';const matched:string[]=[],corrections:ChantCorrection[]=[];
+  let normalized='',meaning='',effects='';const matched:string[]=[],corrections:ChantCorrection[]=[];
+  // 呼び掛けと飾りは演出にだけ渡す。魔法の属性や形の判定には混ぜない。
+  const effectText=(word:ChantWord)=>word.meaning??(['呼び掛け','飾りの言葉'].includes(word.group)?word.term:' ');
   // 同じ場所の同じ長さを何度も作り直さない。
   const keys=new Map<number,string>();
   for(let at=0;at<original.length;) {
@@ -75,6 +77,7 @@ export function readChant(text:string) {
       normalized+=found.word.term;
       // 飾りや作品名の一文字だけを「光」「波」などと誤解しない。
       meaning+=found.word.meaning??' ';
+      effects+=effectText(found.word);
       matched.push(found.word.term);at+=found.value.length;continue;
     }
     // 四文字までは書き方の揺れだけを直す。五文字以上は一文字の違いまで許す。
@@ -89,12 +92,13 @@ export function readChant(text:string) {
     if(near){
       const from=original.slice(at,at+near.key.length);
       normalized+=near.word.term;meaning+=near.word.meaning??' ';matched.push(near.word.term);
+      effects+=effectText(near.word);
       if(from!==near.word.term)corrections.push({from,to:near.word.term,reading:near.value});
       at+=near.key.length;continue;
     }
-    normalized+=original[at];meaning+=original[at];at++;
+    normalized+=original[at];meaning+=original[at];effects+=original[at];at++;
   }
-  return {normalized,meaning,matched:[...new Set(matched)],corrections};
+  return {normalized,meaning,effects,matched:[...new Set(matched)],corrections};
 }
 
 export const speechPhrases=[...new Set(chantDictionary.entries.flatMap(w=>[w.term,w.reading]).concat([

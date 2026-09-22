@@ -597,7 +597,7 @@ function drawResult() {
 function report() {
   const sorted=[...frameIntervals].sort((a,b)=>a-b),lags=[...inputLags].sort((a,b)=>a-b);
   const at=(list:number[],ratio:number)=>list.length?list[Math.min(list.length-1,Math.floor(list.length*ratio))]:null;
-  return {...session?.report(),mode:demo?'demo':mode,feedback,calmMode,audio:sound.snapshot,composite:stage.composite?stage.composite.report:{used:false,reason:new URLSearchParams(location.search).get('composite')==='0'?'?composite=0 で切っている':'WebGLを用意できず、HTMLの層のまま'},speechFallback:session?session.casts.some(cast=>cast.speech.usedFallback):false,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:at(sorted,0.99),cameraProcessingMs:lastCameraLatency||null,
+  return {...session?.report(),flow:FLOW,mode:demo?'demo':mode,feedback,calmMode,audio:sound.snapshot,composite:stage.composite?stage.composite.report:{used:false,reason:new URLSearchParams(location.search).get('composite')==='0'?'?composite=0 で切っている':'WebGLを用意できず、HTMLの層のまま'},speechFallback:session?session.casts.some(cast=>cast.speech.usedFallback):false,measurement:{averageFps:sorted.length?1000/(sorted.reduce((a,b)=>a+b,0)/sorted.length):null,p99FrameMs:at(sorted,0.99),cameraProcessingMs:lastCameraLatency||null,
     inputToDrawMs:{median:at(lags,0.5),p95:at(lags,0.95),samples:lags.length},
     note:'inputToDrawMsは、入力を受け取った時刻から、その入力を含む描画を終えるまでの時間。0.1秒以内を目安にする。カメラ処理時間とは別。'},
     // 確認番号は、あとから記録どうしを突き合わせるために入れる。個人を指す値は入れない。
@@ -678,7 +678,7 @@ function animate(now:number) {
     if(key!==liveKey){liveKey=key;liveBase=liveInput(cast.motion.raw,entries,0,defending&&cast.accepting?session!.aim:null,cast.speechOffset,session!.aspect);}
     // 発動より後は言葉を使わないので空にする。入力の量はそのまま残す。声の大きさは毎コマ入れ直す。
     const base=ms>=cast.round.release?wordless(liveBase):liveBase;
-    live={...base,colorLayers:cast.growth.snapshot(),voice:FLOW==='sequential'?0:voice?.level??0};
+    live={...base,voiceLayers:cast.growth.snapshot(),voice:FLOW==='sequential'?0:voice?.level??0};
   }
   // 囲えた瞬間に音で返す。数が増えるたびに一度だけ鳴らす。
   if(live.rings!==lastRings){if(live.rings>lastRings)sound.ring(live.rings);lastRings=live.rings;}

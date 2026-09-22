@@ -1,4 +1,4 @@
-import type { ColorLayer } from './voice-growth';
+import type { VoiceLayer } from './voice-growth';
 import type { Point, SpeechEntry } from './types';
 import { liveWords, type LiveWord } from './live-words';
 import { inputAmount } from './input-amount';
@@ -6,7 +6,7 @@ import { DEFAULT_ASPECT, coversAim, enclosingStrokes, type XY } from './guard';
 
 /** 描いている最中に演出へ渡す、いまの入力。魔法の確定前から使える。 */
 export type LiveInput = {
-  colorLayers?: readonly ColorLayer[];
+  voiceLayers?: readonly VoiceLayer[];
   words: LiveWord[]; amount: number; voice: number;
   /** 狙いの印を囲めている筆の数。防御の回だけ数える。 */
   rings: number;

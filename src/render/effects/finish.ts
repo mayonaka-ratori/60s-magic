@@ -479,7 +479,8 @@ function drawInherited(f: Frame) {
   const time = f.t - f.beat.start, count = Math.min(f.inherited.length, FINISH_INHERITED.max);
   for (let i = 0; i < count; i++) {
     const spot = inheritedSpot(i, count, time, f.w, f.h, f.origin);
-    glow(f, spot.x, spot.y, 2.2 + noise(i, 31) * .8, spot.alpha);
+    const element=f.inherited[i].element,pal=element?f.preset.palettes[element]:f.palette;
+    glow(f, spot.x, spot.y, 2.2 + noise(i, 31) * .8, spot.alpha,pal.main,pal.core);
   }
 }
 

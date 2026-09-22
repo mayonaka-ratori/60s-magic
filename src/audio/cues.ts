@@ -9,10 +9,7 @@ export type SoundCue='trace'|'chant'|'build'|'complete'|'release'|'impact'|'fini
   |'step'|'clang'|'swing'|'slam';
 /** 敵の側の音。素材の表で受け付ける名前の確認や、鳴らし方の分岐に使う。 */
 export const ENEMY_CUES:ReadonlyArray<SoundCue>=['step','clang','swing','slam'];
-export type Cue={name:SoundCue;at:number;quietUntil:number;round:Round['id']};
-
-/** 録音を止めてから効果音を鳴らし始めるまでの余裕（ms）。 */
-const QUIET_TAIL=750;
+export type Cue={name:SoundCue;at:number;round:Round['id']};
 
 /**
  * 崩れ落ちる音。剣が落ちる、膝をつく、倒れる。時刻は回の表から作る世界の時刻（ms）で、
@@ -34,11 +31,10 @@ const BOOK_BEFORE=600;
 
 /** 一回分の音の時刻。回の表から作るので、回を足しても書き足さなくてよい。 */
 function cuesOf(round:Round,calm:boolean):Cue[] {
-  const quietUntil=round.inputEnd+QUIET_TAIL;
   const list:Array<[SoundCue,number]>=[];
   if(round.build!==null)list.push(['trace',round.build]);
   if(round.chant!==null)list.push(['chant',round.chant]);
-  list.push(['build',quietUntil],['complete',round.lock],['release',round.release],
+  list.push(['build',round.inputEnd],['complete',round.lock],['release',round.release],
     [round.id==='defend'?'block':'impact',round.impact]);
   // とどめの一撃と、そのあとの崩れ落ちる音。持たない回は飛ばす。
   if(round.finalBlow!==null) {
@@ -49,14 +45,14 @@ function cuesOf(round:Round,calm:boolean):Cue[] {
   // 静かな音への切り替え。一回目と防御は今までどおり命中の3.5秒後、とどめは余韻の始まり（84秒）。
   list.push(['settle',round.finalBlow!==null?round.handoff:round.impact+3500]);
   // 敵の側の音。時刻は回の表（rounds.ts）が持ち、画面の揺れと騎士の動きも同じ表を見る。
-  // 一回目の足音と盾の音は受付中なので、マイクを使う回では quietUntil の決まりでそのまま鳴らない（マウスで遊ぶときだけ鳴る）。
+  // 口元のマイクを使うため、受付中の足音と盾の音も鳴らす。
   if(round.id==='first')for(const move of ENEMY_MOVES)list.push([move.kind,move.at]);
   // 防御の回は、確定の時刻に剣を振り下ろし（swing）、その0.55秒後に床を打つ（slam）。どちらも録音の後なので必ず鳴る。
   if(round.id==='defend')list.push(['swing',round.lock],['slam',ENEMY_SLAM_MS]);
   // 魔導書の静かな一音。魔導書の枠が浮かび始める89.4秒に鳴らす。
   // 90秒ちょうどに置くと、そのコマでは結果画面へ移っていて永遠に鳴らない。
   if(round.finalBlow!==null)list.push(['book',round.end-BOOK_BEFORE]);
-  return list.map(([name,at])=>({name,at,quietUntil,round:round.id})).sort((a,b)=>a.at-b.at);
+  return list.map(([name,at])=>({name,at,round:round.id})).sort((a,b)=>a.at-b.at);
 }
 /** 一回の遊びで鳴る音の並び。時刻の順。試験や画面の確認からも読む。 */
 export const soundCues:Cue[]=ROUNDS.flatMap(round=>cuesOf(round,false));
@@ -68,14 +64,14 @@ export const calmSoundCues:Cue[]=ROUNDS.flatMap(round=>cuesOf(round,true));
  * 90秒に届いたコマは結果画面へ移る（main.ts の animate が finish を呼ぶ）ので、そこでは何も鳴らさない。
  * 合図をこの時刻に置いても鳴らないので、魔導書の一音は手前に置いてある。
  */
-export function dueSounds(previous:number,now:number,microphone:boolean,calm=false) {
+export function dueSounds(previous:number,now:number,_microphone:boolean,calm=false) {
   if(now>=BATTLE_END)return [];
-  // 録音終了と最後の文字を待つ間は鳴らさない。遅れた音をまとめて鳴らさない。
-  return (calm?calmSoundCues:soundCues).filter(cue=>cue.at>previous&&cue.at<=now&&now-cue.at<300&&(!microphone||cue.at>=cue.quietUntil));
+  // 録音中も鳴らす。遅れた音をまとめて鳴らさない。
+  return (calm?calmSoundCues:soundCues).filter(cue=>cue.at>previous&&cue.at<=now&&now-cue.at<300);
 }
-/** その時刻に録音していて、曲を下げておくべきか。回ごとの受付の間だけ下げる。 */
+/** その時刻に録音していて、曲と効果音を下げておくべきか。回ごとの受付の間だけ下げる。 */
 export function shouldDuck(ms:number) {
-  return ROUNDS.some(round=>ms>=round.start&&ms<round.inputEnd+QUIET_TAIL);
+  return ROUNDS.some(round=>round.voiceStart!==null&&ms>=round.voiceStart&&ms<round.inputEnd);
 }
 
 /** とどめの回で音を抜く間（実際のms）。発動前の「間」と暗転、直撃の直前。 */

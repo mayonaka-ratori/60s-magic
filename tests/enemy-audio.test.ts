@@ -6,8 +6,8 @@ import { dbToGain } from '../src/audio/sample-bank';
 
 const defend = ROUNDS[1];
 const step = ENEMY_MOVES[0].at, clang = ENEMY_MOVES[1].at;
-/** 防御の回で、録音を止めてから音を鳴らし始めてよい時刻（ms）。合図の表が持つ値をそのまま使う。 */
-const defendQuietUntil = soundCues.find(cue => cue.round === 'defend' && cue.name === 'build')!.quietUntil;
+/** 「同時に」の防御で声の受付を終え、音量を元へ戻す時刻（ms）。 */
+const defendVoiceEnd = defend.inputEnd;
 /** うなりの長さのうち、どこまで進んだか（0〜1）を時刻（ms）に直す。 */
 const humAt = (u: number) => HUM.from + (HUM.to - HUM.from) * u;
 const names = (from: number, to: number, microphone: boolean) => dueSounds(from, to, microphone).map(cue => cue.name);
@@ -40,9 +40,9 @@ describe('敵の側の音の合図', () => {
   it('控えめモードの並びでも同じ時刻にある', () => {
     for (const name of ENEMY_CUES) expect(至(calmSoundCues, name)).toBe(至(soundCues, name));
   });
-  it('マイクを使う回では足音と盾の音は鳴らず、マウスなら鳴る', () => {
-    expect(names(step - 10, step + 10, true)).toEqual([]);
-    expect(names(clang - 10, clang + 10, true)).toEqual([]);
+  it('マイクを使う回も足音と盾の音が鳴る', () => {
+    expect(names(step - 10, step + 10, true)).toEqual(['step']);
+    expect(names(clang - 10, clang + 10, true)).toEqual(['clang']);
     expect(names(step - 10, step + 10, false)).toEqual(['step']);
     expect(names(clang - 10, clang + 10, false)).toEqual(['clang']);
   });
@@ -74,11 +74,11 @@ describe('溜めのうなり', () => {
     expect(enemyHumLevel(humAt(.4))).toBeLessThan(.25);
     expect(enemyHumLevel(humAt(.8))).toBeGreaterThan(.5);
   });
-  it('録音中の下げは曲と同じ範囲に掛かり、録音の終わりを待ってから戻る', () => {
+  it('録音中の下げは曲と同じ範囲に掛かり、声の受付の終わりで戻る', () => {
     const recording = defend.start + 2000;
     expect(enemyHum(recording, true).ducked).toBe(true);
-    expect(enemyHum(defendQuietUntil - 10, true).ducked).toBe(true);
-    expect(enemyHum(defendQuietUntil, true).ducked).toBe(false);
+    expect(enemyHum(defendVoiceEnd - 10, true).ducked).toBe(true);
+    expect(enemyHum(defendVoiceEnd, true).ducked).toBe(false);
     expect(enemyHum(recording, false).ducked).toBe(false);
     expect(enemyHum(recording, true).ducked).toBe(shouldDuck(recording));
     expect(enemyHum(HUM.to, true)).toEqual({ level: 0, ducked: false });
@@ -161,12 +161,12 @@ describe('うなりの経路と止め方', () => {
     expect(audio.snapshot.activeSources).toBe(0);
     const lows = humOscillators(); expect(lows.map(startHz).sort()).toEqual([38, 55]);
     expect(lows.every(o => o.startedAt !== null && o.stoppedAt === null)).toBe(true);
-    // 低い正弦波から出口までの道に、録音中の下げの段がある。効果音は通らない段。
+    // 低い正弦波から出口までの道に、録音中の下げの段がある。効果音も同じ段を通る。
     const duck = duckNode(); expect(duck).toBeDefined();
     expect(chain(lows[0]).has(duck)).toBe(true);
     expect(chain(lows[0]).has(ctx.destination)).toBe(true);
-    // 録音中は下げたまま、録音の終わりを待ってから戻す。
-    const recording = defend.start + 2000, afterQuiet = defendQuietUntil + 250;
+    // 録音中は下げたまま、声の受付の終わりで戻す。
+    const recording = defend.start + 2000, afterQuiet = defendVoiceEnd + 250;
     audio.update(recording, null); expect(audio.snapshot.ducked).toBe(true); expect(duck.gain.target).toBeCloseTo(dbToGain(-8), 6);
     expect(audio.snapshot.enemyHum.level).toBeCloseTo(enemyHumLevel(recording), 9);
     expect(audio.snapshot.enemyHum.gain).toBeGreaterThan(0);
@@ -203,11 +203,16 @@ describe('うなりの経路と止め方', () => {
     again.update(humAt(.7), null); expect(again.snapshot.enemyHum.playing).toBe(false);
     again.stop();
   });
-  it('マイクを使う回では足音と盾の音を合成せず、マウスなら合成する', async () => {
+  it('マイクを使う回も足音と盾の音を合成し、音量を下げる', async () => {
     const withMic = await begin(true);
     withMic.update(step - 100, null); withMic.update(step + 10, null); withMic.update(clang - 100, null); withMic.update(clang + 10, null);
-    expect(withMic.snapshot.events).toEqual([]);
+    expect(withMic.snapshot.events.map(e=>e.name)).toEqual(['step','clang']);
+    expect(withMic.snapshot.ducked).toBe(true);
+    expect(chain(ctx.oscillators.find(o=>startHz(o)===900)!).has(duckNode())).toBe(true);
+    withMic.ring(1);expect(withMic.snapshot.events.at(-1)?.name).toBe('ring');
     withMic.stop();
+    // 録音中に中止しても、開始画面で試す音が小さいままにならない。
+    expect(duckNode().gain.target).toBe(1);
     const mouse = await begin(false);
     mouse.update(step - 100, null); mouse.update(step + 10, null); mouse.update(clang - 100, null); mouse.update(clang + 10, null);
     expect(mouse.snapshot.events.map(e => e.name)).toEqual(['step', 'clang']);

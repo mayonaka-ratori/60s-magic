@@ -135,6 +135,6 @@ export class CastSession {
     return {round:this.round.id,castId:this.round.castId,state:this.state,recipe:this.recipe,jev:this.reply??null,
       guard:this.guard?{style:this.guard.style,kind:this.guard.shield.kind,layers:this.guard.shield.layers,enclosed:this.guard.shield.enclosed,rings:this.guard.shield.rings,moved:this.guard.shield.moved}:null,
       speechEntries:this.speech.snapshot(),usedFallback:this.speech.usedFallback,corrections:this.corrections,events:this.events,
-      rawPoints:this.motion.raw,displayPoints:this.motion.display};
+      voiceLayers:this.growth.snapshot(),rawPoints:this.motion.raw,displayPoints:this.motion.display};
   }
 }

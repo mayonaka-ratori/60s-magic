@@ -1,8 +1,9 @@
 import { CastSession } from './session';
 import { getNodes } from './motion';
 import { AIM, type XY } from './guard';
-import { BATTLE_END, ROUNDS, phaseAt, roundAt } from './rounds';
-import type { Phase, Point } from './types';
+import { BATTLE_END, FLOW, ROUNDS, phaseAt, roundAt } from './rounds';
+import type { InheritedPoint } from './voice-growth';
+import type { Phase } from './types';
 
 /**
  * 90秒の進行役。回ごとの仕組み（CastSession）を並べ、今どの回かを決めるだけ。
@@ -15,7 +16,7 @@ export class Battle {
   elapsed=0;
   cancelled=false;
   /** 前の回から引き継ぐ光点。一回目の分を29秒、防御の分を55秒で決め、あとの回の間ずっと薄く残す。 */
-  inherited:Point[]=[];
+  inherited:InheritedPoint[]=[];
   /** 光点をもう受け取った回の名前。同じ回から二度取らないための覚え書き。魔法の引き継ぎとは別に数える。 */
   private handedOff=new Set<string>();
   constructor(private clock:()=>number=()=>performance.now(), id:string=crypto.randomUUID()) {
@@ -58,15 +59,15 @@ export class Battle {
   private handOff(index:number,from:CastSession,to:CastSession) {
     const round=ROUNDS[index];
     if(this.elapsed<round.handoff)return;
-    if(from.motion.display.length&&!this.handedOff.has(round.id)) {
+    if((from.motion.display.length||round.drawEnd===null)&&!this.handedOff.has(round.id)) {
       this.handedOff.add(round.id);
-      this.inherited=[...this.inherited,...getNodes(from.motion.display,3)];
+      this.inherited=[...this.inherited,...(round.drawEnd===null?from.growth.inherited(round.handoff,from.aspect):getNodes(from.motion.display,3))];
     }
     if(!to.previous&&from.summary)to.previous=from.summary;
   }
   cancel() {this.cancelled=true;for(const cast of this.casts)cast.cancel();}
   report() {
-    return {sessionId:this.id,scope:'full-90-seconds',rounds:this.casts.map(cast=>cast.report()),
+    return {sessionId:this.id,flow:FLOW,scope:'full-90-seconds',rounds:this.casts.map(cast=>cast.report()),
       cancelled:this.cancelled,inheritedNodes:this.inherited.length};
   }
 }

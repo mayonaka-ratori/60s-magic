@@ -1,6 +1,8 @@
 import { chantDictionary } from './chant-dictionary';
 import { GUARD_LABELS, type GuardStyle } from './guard';
 import type { Element, Point, Recipe } from './types';
+import { FLOW, type Flow } from './rounds';
+import type { InheritedPoint } from './voice-growth';
 
 /**
  * 遊んだ一回分を、このPCのブラウザーの中（IndexedDB）へ残す仕組み。
@@ -69,12 +71,18 @@ export type PlayContext = {
 };
 export type StoredPlay = PlayContext & {
   version: 'play-1'; code: string; sessionId: string; startedAt: string;
+  /** 古い記録では無いことがある。その場合は一回目の声の円の有無から読む。 */
+  flow?: Flow;
   /** 最後まで遊ばずに中止したか。 */
   cancelled: boolean;
   /** 魔法が確定した回の数。 */
   completedRounds: number;
-  inherited: Point[]; rounds: StoredRound[];
+  inherited: InheritedPoint[]; rounds: StoredRound[];
 };
+
+/** 名前の追加前にも声だけの回はあった。円の記録があれば「順番に」、それ以前は「同時に」。 */
+export const storedFlow=(play:Pick<StoredPlay,'flow'|'rounds'>):Flow=>play.flow??
+  (play.rounds.some(round=>round.round==='first'&&round.voiceColors!==undefined)?'sequential':'together');
 
 /** 付帯情報が分からないときの既定。試験や、画面の大きさを取れない場所で使う。 */
 export const UNKNOWN_CONTEXT: PlayContext = {
@@ -108,7 +116,7 @@ export type CastLike = {
   recipe: Recipe | null;
   motion: { raw: readonly Point[]; display: readonly Point[] };
   state: { speech: { rawTranscript: string }; inputWindow?: {drawEndSessionMs: number | null} } | null;
-  growth?: { snapshot(): Array<{element:Element;active:boolean}> };
+  growth?: { snapshot(): Array<{element:Element|null;active:boolean}> };
   guard: { shield: { enclosed: boolean; rings: number; layers: number; moved: boolean; outline: ReadonlyArray<{ x: number; y: number }> }; style: GuardStyle } | null;
 };
 export type BattleLike = { id: string; casts: readonly CastLike[]; inherited: readonly Point[] };
@@ -116,7 +124,7 @@ export type BattleLike = { id: string; casts: readonly CastLike[]; inherited: re
 /** 戦いの今の中身を、保存できる形に写し取る。あとから書き換わらないよう点は複製する。 */
 export function playOf(battle: BattleLike, code: string, startedAt: string, context: PlayContext = UNKNOWN_CONTEXT, cancelled = false): StoredPlay {
   return {
-    version: 'play-1', code, sessionId: battle.id, startedAt,
+    version: 'play-1', code, sessionId: battle.id, startedAt, flow:FLOW,
     ...context, cancelled,
     completedRounds: battle.casts.filter(cast => cast.recipe).length,
     inherited: battle.inherited.map(p => ({ ...p })),
@@ -124,7 +132,7 @@ export function playOf(battle: BattleLike, code: string, startedAt: string, cont
       round: cast.round.id as RoundId, castId: cast.round.castId,
       recipe: cast.recipe ? { ...cast.recipe } : null,
       transcript: cast.state?.speech.rawTranscript ?? '',
-      ...(cast.state?.inputWindow?.drawEndSessionMs===null?{voiceColors:cast.growth?.snapshot().filter(p=>p.active).map(p=>p.element)??[]}:{}),
+      ...(cast.state?.inputWindow?.drawEndSessionMs===null?{voiceColors:[...new Set(cast.growth?.snapshot().filter(p=>p.active&&p.element).map(p=>p.element!)??[])]}:{}),
       rawPoints: thinPoints(cast.motion.raw),
       displayPoints: cast.motion.display.map(p => ({ ...p })),
       guard: cast.guard ? {
@@ -361,7 +369,7 @@ export class PlayRecorder {
 
   /** 保存してあるものを読み戻す。結果画面はこれだけで組み立てられる。 */
   load(code: string = this.code): Promise<StoredPlay | null> {
-    return this.store.load(code).catch(() => null);
+    return this.store.load(code).then(play=>play?{...play,flow:storedFlow(play)}:null).catch(() => null);
   }
 
   /**

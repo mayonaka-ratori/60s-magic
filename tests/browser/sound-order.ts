@@ -13,3 +13,11 @@ export const 鳴る音=[
   'chant','build','complete','release','impact','finish',
   'collapse-sword','collapse-knee','collapse-fall','settle','book',
 ];
+
+/** 順番に。声だけの最初と手だけの防御には、詠唱開始の音が無い。 */
+export const 順番に鳴る音=[
+  'step','clang','build','complete','release','impact','settle',
+  'trace','build','complete','swing','slam','release','block','settle',
+  'trace','chant','build','complete','release','impact','finish',
+  'collapse-sword','collapse-knee','collapse-fall','settle','book',
+];

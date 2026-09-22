@@ -3,6 +3,7 @@ import type { EffectPreset, Palette } from './presets';
 import type { GlowSprites } from './sprites';
 import type { ParticlePool } from './particles';
 import type { LiveInput } from '../../game/live-input';
+import type { InheritedNode } from '../../game/voice-growth';
 import type { Point } from '../../game/types';
 import type { Beat } from '../../game/rounds';
 import type { GuardPlan, XY as AimPoint } from '../../game/guard';
@@ -45,7 +46,7 @@ export type Frame = {
   /** 狙いの印の位置（正規化）。防御の回だけ使う */
   aim: AimPoint;
   /** 前の回から引き継いだ光点（正規化）。防御の回の間ずっと薄く残す */
-  inherited: AimPoint[];
+  inherited: InheritedNode[];
   /** 一度だけ実行する。粒の発生などに使う */
   once: (key: string, run: () => void) => void;
   /** 控えめモード。粒と火花を3分の1にし、脈動をゆっくりにする */

@@ -4,7 +4,7 @@ import { ENEMY_CHARGE_FROM_MS, ROUNDS } from '../game/rounds';
 import type { Recipe } from '../game/types';
 import { intensityOf, getPreset, type EffectPreset } from '../render/effects/presets';
 
-/** 詠唱中に曲を下げる量。仕様の6〜10dBの中を取る。 */
+/** 詠唱中に曲と効果音を下げる量。仕様の6〜10dBの中を取る。 */
 const DUCK_DB=8;
 /** 使い回す雑音の長さ（秒）。いちばん長い雑音（0.8秒）より長くしておく。 */
 const NOISE_SECONDS=1;
@@ -15,8 +15,8 @@ export function soundIntensity(recipe:Recipe|null,preset:EffectPreset=getPreset(
 }
 
 /**
- * 防御の回の溜めのうなり。騎士が溜めの姿勢に入る時刻（30.2秒）から振り下ろし（48秒）まで、低く続く。
- * 曲と同じ段（music）を通すので、録音中に曲を下げる処理がそのまま効く。効果音の段には入れない。
+ * 防御の回の溜めのうなり。騎士が溜めの姿勢に入る時刻から振り下ろしまで、低く続く。
+ * 曲と同じ段（music）を通すので、録音中に曲と効果音を下げる処理がそのまま効く。効果音の段には入れない。
  */
 export const HUM={
   /** 始まりと終わり（ms）。回の表から取るので、ここに秒数は書かない。 */ from:ENEMY_CHARGE_FROM_MS,to:ROUNDS[1].lock,
@@ -24,11 +24,11 @@ export const HUM={
   /** ゆっくりした揺らぎ。毎秒0.4回、音量を3割だけ上下させる。光に弱い人への配慮と同じ理由で速くしない。 */ wobbleHz:.4,wobbleDepth:.3,
   /** いちばん大きいとき、曲の音量の何割か。 */ ratio:.3,
   /** 曲の素材が無いときに「曲の音量」とみなすdB。音素材の入れ方で勧めている曲の値と同じ。 */ musicDbWithoutBgm:-9,
-  /** 上げるときのなめらかさ（秒）と、33秒で切るときの長さ（秒）。切るのは速く、ただし音が割れない程度に。 */ riseSeconds:.1,cutSeconds:.03,
+  /** 上げるときのなめらかさ（秒）と、振り下ろしで切るときの長さ（秒）。切るのは速く、ただし音が割れない程度に。 */ riseSeconds:.1,cutSeconds:.03,
 };
 /**
  * 溜めのうなりの大きさ（0〜1）。溜めの始まりで0から始め、振り下ろしに向けてだんだん速く上がり、振り下ろしの時刻ちょうどで0になる。
- * 二乗で上げるのは、前半を控えめにして「溜めが強まる」28秒以降で伸びるようにするため。純粋な計算なので試験から呼べる。
+ * 二乗で上げるのは、前半を控えめにして溜めの後半で伸びるようにするため。純粋な計算なので試験から呼べる。
  */
 export function enemyHumLevel(ms:number) {
   if(ms<HUM.from||ms>=HUM.to)return 0;
@@ -83,9 +83,9 @@ export class CastAudio {
         this.context=new AudioContext();this.master=this.context.createGain();
         const limiter=this.context.createDynamicsCompressor();limiter.threshold.value=-12;limiter.knee.value=6;limiter.ratio.value=12;limiter.attack.value=.003;limiter.release.value=.15;
         this.master.connect(limiter);limiter.connect(this.context.destination);
-        // 曲は「下げる」用の段を通してから合流する。効果音は直接合流する。
+        // 曲と効果音は、どちらも声の受付中だけ下げる。
         this.duck=this.context.createGain();this.music=this.context.createGain();this.sfx=this.context.createGain();
-        this.music.connect(this.duck);this.duck.connect(this.master);this.sfx.connect(this.master);this.applyVolume();
+        this.music.connect(this.duck);this.duck.connect(this.master);this.sfx.connect(this.duck);this.applyVolume();
         const base=typeof document==='undefined'?'/':new URL(import.meta.env.BASE_URL??'/',document.baseURI).href;
         void this.bank.load(this.context,url=>fetch(url),base);
       }
@@ -110,14 +110,12 @@ export class CastAudio {
   }
   start(microphone:boolean) {
     this.stop();this.running=true;this.microphone=microphone;this.lastMs=-1;this.events=[];
-    this.setDuck(microphone,.05);this.bgmStarted=false;this.bgmStartedAtMs=null;this.hush=1;this.applyVolume();
+    this.setDuck(microphone&&shouldDuck(0),.05);this.bgmStarted=false;this.bgmStartedAtMs=null;this.hush=1;this.applyVolume();
   }
-  stop(){this.previewVersion++;this.running=false;this.ducked=false;this.bgmStarted=false;this.hush=1;this.applyVolume();this.fadeBgm(.35);this.clearSources();}
+  stop(){this.previewVersion++;this.running=false;this.setDuck(false,.05);this.bgmStarted=false;this.hush=1;this.applyVolume();this.fadeBgm(.35);this.clearSources();}
   /** 狙いの印を囲えた合図。時刻ではなく出来事で鳴らすので、cues の表には入れない。 */
   ring(count:number) {
     if(!this.running||!this.enabled||!this.volume||this.context?.state!=='running'||!this.master)return;
-    // 録音している間も、この音だけは鳴らさない（マイクへ回り込むため）。
-    if(this.microphone)return;
     this.play('ring',null,count);
     this.events.push({name:'ring',atMs:this.lastMs,sample:false});
   }
@@ -130,13 +128,13 @@ export class CastAudio {
   update(ms:number,recipe:Recipe|null,preset:EffectPreset=getPreset(null),amount=0) {
     if(!this.running)return;
     const cues=dueSounds(this.lastMs,ms,this.microphone,this.calm);this.lastMs=ms;
-    // 録音している回の間だけ曲を下げる。回ごとに下げ直す。
+    // 声を受け付けている間だけ曲と効果音を下げる。回ごとに下げ直す。
     const duck=this.microphone&&shouldDuck(ms);
     if(duck!==this.ducked)this.setDuck(duck,duck?.05:.4);
     // とどめの発動前の「間」と直撃の直前だけ、全体の音を抜く。抜くのは速く、戻すのは0.05秒で直線に。
     const hush=hushAt(ms,this.calm);
     if(hush!==this.hush){const down=hush<this.hush;this.hush=hush;this.applyVolume(down?.02:.05,!down);}
-    // 溜めのうなりの終わり（33秒）は、音を出せない状態でも見る。止め忘れて次の回まで残さない。
+    // 溜めのうなりの終わりは、音を出せない状態でも見る。止め忘れて次の回まで残さない。
     this.humLevel=enemyHumLevel(ms);
     if(this.humLevel<=0&&this.hum)this.stopHum(HUM.cutSeconds);
     if(!this.enabled||!this.volume||this.context?.state!=='running'||!this.master)return;
@@ -146,7 +144,7 @@ export class CastAudio {
     const intensity=soundIntensity(recipe,preset,amount);
     for(const cue of cues){const sample=this.play(cue.name,recipe,intensity);this.events.push({name:cue.name,atMs:ms,sample});}
   }
-  /** 曲を下げる／戻す。下げるときは速く、戻すときはゆっくり。 */
+  /** 曲と効果音を下げる／戻す。下げるときは速く、戻すときはゆっくり。 */
   private setDuck(on:boolean,seconds:number) {
     this.ducked=on;
     if(this.context&&this.duck)this.duck.gain.setTargetAtTime(on?Math.pow(10,-DUCK_DB/20):1,this.context.currentTime,seconds);
@@ -203,7 +201,7 @@ export class CastAudio {
     if(Math.abs(target-this.humGain)<.001)return;
     this.humGain=target;hum.level.gain.setTargetAtTime(target,ctx.currentTime,HUM.riseSeconds);
   }
-  /** うなりを止める。33秒の切り、停止、消音、中止、画面を隠す、のすべてがここを通る。 */
+  /** うなりを止める。振り下ろしでの切り、停止、消音、中止、画面を隠す、のすべてがここを通る。 */
   private stopHum(seconds:number) {
     const ctx=this.context,hum=this.hum;if(!hum)return;this.hum=null;this.humGain=0;
     if(!ctx){hum.oscillators.forEach(osc=>osc.disconnect());hum.nodes.forEach(node=>node.disconnect());return;}
@@ -340,7 +338,7 @@ export class CastAudio {
   get snapshot() {
     return {
       enabled:this.enabled,volume:this.volume,state:this.unavailable?'unavailable':this.context?.state??'not-started',
-      activeSources:this.sources.size,recordingQuiet:this.microphone,ducked:this.ducked,bgm:this.bgm?'playing':'none',bgmStartedAtMs:this.bgmStartedAtMs,
+      activeSources:this.sources.size,recordingQuiet:false,microphone:this.microphone,ducked:this.ducked,bgm:this.bgm?'playing':'none',bgmStartedAtMs:this.bgmStartedAtMs,
       enemyHum:{playing:this.hum!==null,level:this.humLevel,gain:this.humGain},
       samples:this.bank.report,credits:this.bank.manifest.credits,events:[...this.events],
     };

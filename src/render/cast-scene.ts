@@ -1,3 +1,4 @@
+import type { InheritedNode } from '../game/voice-growth';
 import { ANNOUNCEMENT_MS } from '../game/rounds';
 import { VOICE_ORIGIN } from '../game/voice-growth';
 import { CompletedSpell } from './completed-spell';
@@ -59,7 +60,7 @@ export class CastScene {
   setCalm(calm:boolean){this.calm=calm;this.effects.setCalm(calm);this.knight.setCalm(calm);}
   /** 今の演出の時刻（ms）。命中の停止を含む。render で更新するので、読むのは render の後。 */
   get effectMs(){return this.worldMs;}
-  render(points:Point[],ms:number,recipe:Recipe|null,voice:number,cursors:Array<{x:number;y:number}>,ready:boolean,live:LiveInput=emptyLive,guard:GuardPlan|null=null,inherited:XY[]=[]) {
+  render(points:Point[],ms:number,recipe:Recipe|null,voice:number,cursors:Array<{x:number;y:number}>,ready:boolean,live:LiveInput=emptyLive,guard:GuardPlan|null=null,inherited:InheritedNode[]=[]) {
     const width=this.canvas.clientWidth,height=this.canvas.clientHeight;
     const beat:Beat=beatAt(ms/1000);
     // 世界の時計は一つ。命中の停止は騎士と術式にも効く。体力表示も effectMs でこれを見る。

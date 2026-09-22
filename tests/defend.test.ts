@@ -391,10 +391,10 @@ describe('防御の回の画面と姿勢',()=>{
 });
 
 describe('防御の回の音',()=>{
-  it('回ごとに、録音の間は鳴らさない',()=>{
-    // 録音を止めてから0.75秒は鳴らさない。その手前と直後を見る。
-    const quiet=defend.inputEnd+750;
-    expect(dueSounds(defend.chant!,defend.chant!+100,true)).toEqual([]);
+  it('録音中も合図が鳴り、締め切りで集まる音が鳴る',()=>{
+    // 締め切りと同時に、光が集まる音を鳴らす。
+    const quiet=defend.inputEnd;
+    expect(dueSounds(defend.chant!-10,defend.chant!+10,true).map(c=>c.name)).toEqual(['chant']);
     expect(dueSounds(quiet-50,quiet-10,true)).toEqual([]);
     expect(dueSounds(quiet-10,quiet+10,true).map(c=>c.name)).toEqual(['build']);
     expect(dueSounds(defend.release-10,defend.release+10,false).map(c=>c.name)).toEqual(['release']);

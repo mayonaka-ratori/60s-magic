@@ -1,3 +1,4 @@
+import type { InheritedNode } from '../game/voice-growth';
 import { drawVoiceGrowth } from './effects/voice-growth';
 import { FLOW } from '../game/rounds';
 import { clamp, getNodes } from '../game/motion';
@@ -135,7 +136,7 @@ export class MagicCanvas {
   /** 一コマ分の演出。時刻と確定した内容だけで決まるようにしてある。 */
   renderEffects(input: {
     points: Point[]; ms: number; recipe: Recipe | null; voice: number; cursors: XY[]; ready: boolean;
-    target: XY; origin: XY; live?: LiveInput; beat?: Beat; guard?: GuardPlan | null; inherited?: XY[];
+    target: XY; origin: XY; live?: LiveInput; beat?: Beat; guard?: GuardPlan | null; inherited?: InheritedNode[];
   }) {
     const { points, ms, recipe, voice, ready, target, origin } = input;
     const live = input.live ?? emptyLive, guard = input.guard ?? null, inherited = input.inherited ?? [];

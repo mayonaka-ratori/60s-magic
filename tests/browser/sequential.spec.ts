@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { SEQUENTIAL_ROUNDS as rounds, windowMsOf } from '../../src/game/rounds';
 
+import { 順番に鳴る音 } from './sound-order';
+
 const status={jev:false,speech:true,handModel:false,model:'',speechProvider:'local',localSpeech:{state:'ready',message:'試験用の受け皿',model:'試験用',device:'cpu'}};
 
 test('遊び方を切り替えると読み込み直し、マイクを外すと同時に戻る',async({page})=>{
@@ -68,6 +70,9 @@ test('順番に90秒を通し、合図と受付を確認する（認識の返事
   await expect(page.locator('#result')).toBeVisible({timeout:rounds[2].end-rounds[2].drawEnd!+5000});
   await page.locator('#record').click();
   const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
+  expect(report.flow).toBe('sequential');
+  expect(report.audio.recordingQuiet).toBe(false);
+  expect(report.audio.events.filter((e:{name:string})=>e.name!=='ring').map((e:{name:string})=>e.name)).toEqual(順番に鳴る音);
   expect(report.rounds[0].rawPoints).toHaveLength(0);
   expect(report.rounds[1].speechEntries).toHaveLength(0);expect(report.rounds[1].recipe.element).toBe('neutral');
   expect(report.rounds[2].rawPoints.length).toBeGreaterThan(0);
