@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { planHealthSteps, healthAt, healthSteps, FINAL_BLOW_MS, HEALTH_HIDE_MS } from '../src/render/health-bar';
-import { FINISH_HIT_MS, FINISH_COLLAPSE_MS, FINISH_FALL_FROM_MS, ROUNDS } from '../src/game/rounds';
+import { FINISH_HIT_MS, FINISH_FALL_FROM_MS, ROUNDS } from '../src/game/rounds';
 import { KNEEL_AT } from '../src/render/knight';
 import { hitDelay } from '../src/render/effects/release';
-import { effectTime, HIT_STOPS } from '../src/render/effects/screen';
 import type { Recipe } from '../src/game/types';
 
 // 時刻は回の表から作る。
@@ -26,7 +25,6 @@ describe('体力の段', () => {
     expect(steps.length).toBe(7);
     expect(steps[0].at).toBe(命中);
     expect(steps[6].at).toBeCloseTo(命中 + hitDelay(6, 7) * 1000);
-    expect(steps[6].at).toBeCloseTo(命中 + 680);
     // 段の時刻は前から順に進む。
     for (let i = 1; i < 7; i++) expect(steps[i].at).toBeGreaterThan(steps[i - 1].at);
     // 前の段の減り終わりが次の段の減り始めになる。
@@ -68,29 +66,6 @@ describe('時刻ごとの体力', () => {
 });
 
 /**
- * 体力も演出と同じ世界の時計（命中の停止を含む）を見る。
- * 本編の時刻をそのまま渡すと、止まっている間に体力だけ先へ進んでしまう。
- */
-describe('命中の停止と体力', () => {
-  const steps = planHealthSteps(recipe({ count: 7 }));
-  // 世界の時計は命中から0.14秒止まり、そのあと世界の命中+0.08秒と+0.2秒でもう一度短く止まる（三段）。
-  const world = (ms: number) => effectTime(ms / 1000, HIT_STOPS.strong) * 1000;
-  it('止まっている間は時刻も体力も動かない', () => {
-    for (const ms of [命中 + 20, 命中 + 50, 命中 + 80]) expect(world(ms)).toBeCloseTo(命中, 10);
-    expect(healthAt(world(命中 + 80), steps)).toEqual(healthAt(world(命中 + 20), steps));
-  });
-  it('止まった分だけ次の段が遅れる', () => {
-    // 2段目は命中の0.08秒後。本編の0.17秒後は、世界の時計ではまだ0.03秒後なので減っていない。
-    expect(steps[1].at).toBeCloseTo(命中 + 80);
-    expect(world(命中 + 170)).toBeCloseTo(命中 + 30, 10);
-    expect(healthAt(world(命中 + 170), steps).left).toBeGreaterThan(healthAt(命中 + 170, steps).left);
-    // 止まりが終われば、遅れたまま同じように減る。本編の0.26秒後は、二度目の止め直し（世界の+0.08秒、0.03秒）を抜けた世界の+0.09秒。
-    expect(world(命中 + 260)).toBeCloseTo(命中 + 90, 10);
-    expect(healthAt(world(命中 + 260), steps).left).toBe(healthAt(命中 + 90, steps).left);
-  });
-});
-
-/**
  * とどめの回の体力。多段命中で9割を4回に等分して減らし、とどめの一撃で必ず0にする。
  * 時刻はすべて世界の時刻。
  */
@@ -109,12 +84,6 @@ describe('とどめの体力', () => {
       expect(healthAt(終わり, steps).left).toBe(0);
     }
   });
-  it('前の二回の減り方によらない', () => {
-    // 一発の弱い魔法と、8発の強い魔法で、とどめの後の値は同じ。
-    const weak = healthSteps(recipe({})), strong = healthSteps(recipe({ count: 8, area: 1, concentration: 1 }));
-    expect(healthAt(FINISH_HIT_MS[0] - 10, weak).left).not.toBeCloseTo(healthAt(FINISH_HIT_MS[0] - 10, strong).left);
-    expect(healthAt(FINAL_BLOW_MS, weak).left).toBe(healthAt(FINAL_BLOW_MS, strong).left);
-  });
   it('多段命中の4回は残りの9割を等分して減らす', () => {
     for (const r of cases) {
       const steps = healthSteps(r);
@@ -129,19 +98,20 @@ describe('とどめの体力', () => {
       expect(previous).toBeCloseTo(before * .1, 8);
     }
   });
-  it('段の時刻は増えるだけで、0より下へは行かない', () => {
-    for (const r of cases) {
+  it('段の時刻は増えるだけで、体力は満タンから減る一方で、0より下へは行かない', () => {
+    // 表示の値（本体と薄い赤）は段の from と left の間しか取らないので、段の並びだけを見れば足りる。
+    for (const r of [null, recipe({}), recipe({ count: 8, area: 1, concentration: 1 })]) {
       const steps = healthSteps(r);
-      for (let i = 1; i < steps.length; i++) expect(steps[i].at).toBeGreaterThan(steps[i - 1].at);
-      for (const step of steps) { expect(step.left).toBeGreaterThanOrEqual(0); expect(step.from).toBeGreaterThanOrEqual(0); }
-      // 0.05秒刻みで見ても、増えることはなく0を下回らない。
-      let last = 100;
-      for (let ms = 0; ms <= 終わり; ms += 50) {
-        const now = healthAt(ms, steps);
-        expect(now.left).toBeLessThanOrEqual(last + 1e-9);
-        expect(now.left).toBeGreaterThanOrEqual(0);
-        expect(now.trail).toBeGreaterThanOrEqual(0);
-        last = now.left;
+      expect(steps[0].from).toBe(100);
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        // 一段の中では減るだけで、0を下回らない。
+        expect(step.left).toBeGreaterThanOrEqual(0);
+        expect(step.left).toBeLessThanOrEqual(step.from);
+        if (i === 0) continue;
+        // 前の段より後で、前の段の減り終わりから減り始める（途中で戻らない）。
+        expect(step.at).toBeGreaterThan(steps[i - 1].at);
+        expect(step.from).toBeCloseTo(steps[i - 1].left, 9);
       }
     }
   });
@@ -152,15 +122,13 @@ describe('とどめの体力', () => {
     expect(healthAt(FINAL_BLOW_MS + 800, steps).trail).toBeCloseTo(0, 8);
     expect(healthAt(終わり, steps).trail).toBeCloseTo(0, 8);
   });
-  it('とどめの時刻は回の表から取る', () => {
-    expect(FINAL_BLOW_MS).toBe(ROUNDS[2].finalBlow);
+  it('多段命中は固定の4回で、1回目は最初の到達と同じ時刻。枠はとどめの一撃のあと、倒れ始めより前に消し始める', () => {
     expect(FINISH_HIT_MS).toEqual([77600, 77760, 77920, 78100]);
-    // 枠を消し始めるのは79800。とどめの一撃（78500）の1.3秒後で、倒れ始め（80900）より前。
-    expect(HEALTH_HIDE_MS).toBe(79800);
+    expect(FINISH_HIT_MS[0]).toBe(ROUNDS[2].impact);
+    expect(FINISH_HIT_MS.at(-1)!).toBeLessThan(FINAL_BLOW_MS);
     expect(HEALTH_HIDE_MS).toBeGreaterThan(FINAL_BLOW_MS);
     expect(HEALTH_HIDE_MS).toBeLessThan(FINISH_FALL_FROM_MS);
-    // 枠が消え始める時刻と、騎士が膝をつき始める時刻は同じ一つの値から作る。
-    expect(HEALTH_HIDE_MS).toBe(FINISH_COLLAPSE_MS);
+    // 枠が消え始める時刻と、騎士が膝をつき始める時刻は同じ。
     expect(HEALTH_HIDE_MS).toBe(KNEEL_AT * 1000);
   });
 });

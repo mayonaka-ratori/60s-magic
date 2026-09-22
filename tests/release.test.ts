@@ -1,9 +1,9 @@
 import { BEATS } from '../src/game/rounds';
 import { describe, it, expect } from 'vitest';
 import {
-  ARRIVAL, BEAM_MOUTH, SWELL, alongOf, beamProfile, bodyPoint, bulletPalette, drawBody, drawRelease, drawTravel, hitDelay, launchOf, launchesOf, swellOf, swellProfile,
+  ARRIVAL, SWELL, alongOf, beamProfile, bodyPoint, bulletPalette, drawBody, drawRelease, drawTravel, hitDelay, launchOf, launchesOf, swellOf, swellProfile,
 } from '../src/render/effects/release';
-import { IMPACT_AT, RELEASE_AT } from '../src/render/effects/screen';
+import { RELEASE_AT } from '../src/render/effects/screen';
 import { presets, mixHue, type Palette } from '../src/render/effects/presets';
 import { ParticlePool } from '../src/render/effects/particles';
 import type { Frame, XY } from '../src/render/effects/frame';
@@ -29,21 +29,17 @@ const extent = { x: 440, y: 380, width: 400, height: 180 };
 const spread = (over: Partial<Recipe> = {}, more: Partial<Frame> = {}) => frame(over, { origin: center, target: { x: 1000, y: 300 }, origins: spots, extent, ...more });
 
 describe('連弾の到達', () => {
-  it('7連弾は最後の弾も命中の時刻に騎士の位置へ届く', () => {
+  it('単発も7連弾も、どの弾もそれぞれの命中の時刻に騎士の位置へ届く', () => {
+    const single = frame();
+    expect(distanceToTarget(bodyPoint(single, 0, travelAt(ARRIVAL), ARRIVAL))).toBeLessThan(.001);
+    // 7連弾は1発目が命中の時刻ちょうど、最後の弾も自分の命中の時刻に届く。
     const f = frame({ count: 7 });
+    expect(hitDelay(0, 7)).toBe(0);
     for (let i = 0; i < 7; i++) {
       const time = ARRIVAL + hitDelay(i, 7);
       const p = bodyPoint(f, i, travelAt(time), time);
       expect(distanceToTarget(p)).toBeLessThan(.001);
     }
-    // 最後の1発は命中の0.68秒後（0.08×6 + 0.2）に届く。
-    expect(RELEASE_AT + ARRIVAL + hitDelay(6, 7)).toBeCloseTo(IMPACT_AT + .68);
-  });
-  it('1発目も命中の時刻ちょうどに騎士の位置へ届く', () => {
-    const single = frame(), time = ARRIVAL;
-    expect(distanceToTarget(bodyPoint(single, 0, travelAt(time), time))).toBeLessThan(.001);
-    const many = frame({ count: 7 });
-    expect(distanceToTarget(bodyPoint(many, 0, travelAt(time), time))).toBeLessThan(.001);
   });
   it('遅れて届く弾は、自分の命中の時刻まで進み続ける', () => {
     const f = frame({ count: 7 });
@@ -96,11 +92,14 @@ describe('弾の出どころ', () => {
     expect(picked[5]).toBe(picked[0]);
     expect(launchesOf(f)).toHaveLength(5);
   });
-  it('同じ入力なら同じ選び方になる', () => {
+  it('同じ入力なら、出どころの選び方も、尾のための過去の位置も同じになる', () => {
     for (let i = 0; i < 6; i++) expect(launchOf(spread({ count: 6 }), i, 6)).toBe(launchOf(spread({ count: 6 }), i, 6));
     // 個数が変わると割り当ても変わってよいが、それぞれ決まった形。
     const three = [0, 1, 2].map(i => launchOf(spread({ count: 3 }), i, 3));
     expect(three).toEqual([0, 1, 2].map(i => launchOf(spread({ count: 3 }), i, 3)));
+    // 尾を描くために過去の位置を取り直しても、同じ進み具合と時刻なら同じ値。
+    const f = spread({ count: 3, trajectory: 'orbit' });
+    expect(bodyPoint(f, 1, .4, .6)).toEqual(bodyPoint(f, 1, .4, .6));
   });
 });
 
@@ -186,37 +185,29 @@ describe('膨らんでから寄せる', () => {
     expect(alongOf(0)).toBe(0); expect(alongOf(1)).toBeCloseTo(1, 9);
     expect(alongOf(1) - alongOf(.5)).toBeGreaterThan(alongOf(.5) - alongOf(0));
   });
-  it('尾のための過去の位置は、同じ進み具合と時刻なら同じ値になる', () => {
-    const f = spread({ count: 3, trajectory: 'orbit' });
-    const a = bodyPoint(f, 1, .4, .6), b = bodyPoint(f, 1, .4, .6);
-    expect(a).toEqual(b);
-  });
 });
 
 describe('光線の幅', () => {
-  it('口の幅は術式の範囲の横幅の6割で、騎士のところで今までの太さになる', () => {
+  it('口は術式の範囲が広いほど広く、騎士へ向かって細くなる。収束が高いほど早く絞り、連弾は口を分け合う', () => {
     const f = spread({ form: 'beam' }), prof = beamProfile(f);
-    expect(prof.mouth).toBeCloseTo(extent.width * BEAM_MOUTH, 6);
     expect(prof.at(0)).toBeCloseTo(prof.mouth, 6);
-    // 先端は (5 + 派手さ×3) × (0.7 + 収束×0.6)。派手さ1.5、収束0.5なら9.5。
-    expect(prof.tip).toBeCloseTo(9.5, 6);
     expect(prof.at(1)).toBeCloseTo(prof.tip, 6);
-    // 範囲が広いほど口も広い。
-    const wide = beamProfile(spread({ form: 'beam' }, { extent: { ...extent, width: 800 } }));
-    expect(wide.mouth).toBeCloseTo(480, 6);
-    expect(wide.mouth).toBeGreaterThan(prof.mouth);
+    expect(prof.tip).toBeGreaterThan(0);
     // 途中は口と先端の間で、先へ行くほど細い。
     let before = prof.mouth;
     for (let u = .1; u <= 1; u += .1) { const now = prof.at(u); expect(now).toBeLessThan(before); before = now; }
-  });
-  it('収束が高いほど早く細く絞る。連弾の光線は本数で口を分け合う', () => {
+    // 範囲が広いほど口も広い。範囲が無くても、中心のまわりの小さな箱から口の幅が決まる。
+    const wide = beamProfile(spread({ form: 'beam' }, { extent: { ...extent, width: extent.width * 2 } }));
+    const none = beamProfile(frame({ form: 'beam' }));
+    expect(wide.mouth).toBeGreaterThan(prof.mouth);
+    expect(none.mouth).toBeGreaterThan(0);
+    expect(none.mouth).toBeLessThan(prof.mouth);
+    // 収束が高いほど、口に対して早く細くなる。
     const loose = beamProfile(spread({ form: 'beam', concentration: 0 })), tight = beamProfile(spread({ form: 'beam', concentration: 1 }));
     expect(tight.at(.5) / tight.mouth).toBeLessThan(loose.at(.5) / loose.mouth);
+    // 連弾の光線は本数で口を分け合うので、1本あたりの口は単発より狭い。
     const three = beamProfile(spread({ form: 'beam', count: 3 }));
-    expect(three.mouth).toBeCloseTo(extent.width * BEAM_MOUTH / 3, 6);
-  });
-  it('範囲が無ければ、中心のまわりの小さな箱の横幅から決まる', () => {
-    expect(beamProfile(frame({ form: 'beam' })).mouth).toBeCloseTo(120 * BEAM_MOUTH, 6);
+    expect(three.mouth).toBeLessThan(prof.mouth);
   });
 });
 

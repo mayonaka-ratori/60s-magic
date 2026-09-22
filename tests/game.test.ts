@@ -64,6 +64,8 @@ describe('Jevへ渡す回ごとの説明',()=>{
       expect(state.inputWindow.endSessionMs).toBe(round.inputEnd);
       expect(state.castId).toBe(round.castId);
     }
+    // とどめの回は、Jevへ「とどめ」の回として渡す。
+    expect(new CastSession(()=>0,'test',ROUNDS.at(-1)!,0).freeze().phase).toBe('final');
   });
 });
 

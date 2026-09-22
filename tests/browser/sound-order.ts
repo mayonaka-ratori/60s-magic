@@ -2,11 +2,12 @@
  * 90秒の通しで鳴るはずの音の並び。実装から作らず、ここに直接書く。
  * 一回目、防御、とどめの順。とどめの並びは tests/finish-audio.test.ts と同じ。
  * 魔導書の音（book）は、魔導書の枠が浮かび始める89.4秒に戦いの中で鳴るので、とどめの最後に入る。
- * 二つの通し（knight-audio、sample-audio）が同じ並びを見るので、写しを作らずここから読む。
+ * 90秒を通す knight-audio は全部の並びを、一回目の後で中止する sample-audio は一回目の並びを見るので、写しを作らずここから読む。
  */
+/** 一回目（0〜30秒）。マウスで遊ぶので、騎士の足踏み（3.5秒）と盾打ち（9.5秒）も鳴る。 */
+export const 一回目に鳴る音=['step','trace','clang','chant','build','complete','release','impact','settle'];
 export const 鳴る音=[
-  // 一回目（0〜30秒）。マウスで遊ぶので、騎士の足踏み（3.5秒）と盾打ち（9.5秒）も鳴る。
-  'step','trace','clang','chant','build','complete','release','impact','settle',
+  ...一回目に鳴る音,
   // 防御（30〜56秒）。命中ではなく、盾で受ける音になる。48秒の完成と同時に剣の風切り、0.55秒後に床を打つ。
   'chant','build','complete','swing','slam','release','block','settle',
   // とどめ（56〜90秒）

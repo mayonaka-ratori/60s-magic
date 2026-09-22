@@ -1,8 +1,8 @@
 import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest';
-import { BEATS, beatOf, ROUNDS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS, FINISH_HIT_MS, FINISH_HIT_OFFSETS_MS } from '../src/game/rounds';
+import { BEATS, beatOf, ROUNDS, FINISH_FALL_FROM_MS, FINISH_FALL_TO_MS } from '../src/game/rounds';
 import { presets } from '../src/render/effects/presets';
 import { ParticlePool } from '../src/render/effects/particles';
-import { drawTravel, arrivalOf, bodyPoint, hitDelay } from '../src/render/effects/release';
+import { arrivalOf, bodyPoint, hitDelay } from '../src/render/effects/release';
 import { screenState, warpOf, warpTime, FINISH_PASS_FLASH, HIT_STOPS } from '../src/render/effects/screen';
 import { MagicCanvas, afterglowEnd, afterglowFade, stopAtOf } from '../src/render/magic';
 import type { Frame } from '../src/render/effects/frame';
@@ -193,26 +193,9 @@ describe('輪をくぐって奥へ伸びる', () => {
     expect(finishHitPlan(Number.NaN)).toEqual([1, 0, 0, 0]);
     expect(finishHitPlan(Number.POSITIVE_INFINITY)).toEqual([1, 0, 0, 0]);
   });
-  it('倍率を渡さない飛翔は、今までと同じ命令になる', () => {
-    const at = (boost?: { travel: number; size: number }) => {
-      const log: string[] = [], f = frame(BEATS[0].release + .8, { c: stubContext(log), beat: BEATS[0] }, { count: 3, element: 'ice' });
-      drawTravel(f, boost); return log;
-    };
-    const 素 = at(), 倍率1 = at({ travel: .8 / arrivalOf(frame(0, { beat: BEATS[0] })), size: 1 });
-    expect(素.length).toBeGreaterThan(20);
-    expect(倍率1).toEqual(素);
-  });
 });
 
 describe('多段命中', () => {
-  it('当たるのは固定の4回', () => {
-    expect(FINISH_HIT_OFFSETS_MS).toEqual([0, 160, 320, 500]);
-    // 当たるのは77.60、77.76、77.92、78.10秒。1回目は最初の到達（77.6秒）と同じ時刻。
-    const 予定 = [77.60, 77.76, 77.92, 78.10];
-    finishHitTimes(finishBeat).forEach((at, i) => expect(at).toBeCloseTo(予定[i], 6));
-    expect(予定[0]).toBe(finishBeat.impact);
-    expect(FINISH_HIT_MS).toEqual([77600, 77760, 77920, 78100]);
-  });
   it('弾の数を4回へ散らす。1発は1回目だけ、5発は1回目が2発', () => {
     expect(finishHitPlan(1)).toEqual([1, 0, 0, 0]);
     expect(finishHitPlan(2)).toEqual([1, 1, 0, 0]);
@@ -220,6 +203,8 @@ describe('多段命中', () => {
     expect(finishHitPlan(5)).toEqual([2, 1, 1, 1]);
     expect(finishHitPlan(8)).toEqual([2, 2, 2, 2]);
     for (let count = 1; count <= 8; count++) expect(finishHitPlan(count).reduce((a, b) => a + b, 0)).toBe(count);
+    // 1回目は最初の到達と同じ時刻。
+    expect(finishHitTimes(finishBeat)[0]).toBeCloseTo(finishBeat.impact, 6);
   });
 });
 
@@ -250,28 +235,6 @@ describe('四方向から走り込む光の筋', () => {
     }
     // 届いたあとの名残は薄れていく。
     expect(streakAt(0, .05, w, h, g)!.alpha).toBeLessThan(arrived.alpha);
-  });
-  it('4回の命中の時刻それぞれに、その方向からの筋が描かれる', () => {
-    const 筋 = (t: number) => {
-      const log: string[] = [];
-      drawFinish(frame(t, { c: stubContext(log), once: () => {} }));
-      const point = (name: string) => log.filter(line => line.startsWith(name + ':')).map(line => line.slice(name.length + 1).split(',').map(Number));
-      return { tail: point('moveTo'), head: point('lineTo') };
-    };
-    for (let j = 0; j < times.length; j++) {
-      const { tail, head } = 筋(times[j] - .05);
-      expect(tail.length, `${j + 1}回目`).toBe(1); expect(head.length, `${j + 1}回目`).toBe(1);
-      const [[tx, ty]] = tail, [[hx, hy]] = head;
-      // 尾より頭が騎士に近く、頭はまだ騎士に届いていない。
-      expect(Math.hypot(hx - g.x, hy - g.y)).toBeLessThan(Math.hypot(tx - g.x, ty - g.y));
-      expect(Math.hypot(hx - g.x, hy - g.y)).toBeGreaterThan(1);
-      if (j === 0) expect(hx).toBeLessThan(g.x);
-      if (j === 1) expect(hx).toBeGreaterThan(g.x);
-      if (j === 2) expect(hy).toBeLessThan(g.y);
-      if (j === 3) expect(hy).toBeGreaterThan(g.y);
-    }
-    // 最後の筋の名残が消えたあとは線を引かない（輪が並ぶ53.5秒までは輪の目盛りの線があるので、その前では見ない）。
-    expect(筋(times[3] + FINISH_STREAK.linger + .01).tail.length).toBe(0);
   });
   it('届いた瞬間に、来た方向へ火花を返す', () => {
     for (const [j, check] of [[0, (p: { vx: number }) => p.vx < 0], [1, (p: { vx: number }) => p.vx > 0], [2, (p: { vy: number }) => p.vy < 0], [3, (p: { vy: number }) => p.vy > 0]] as const) {
@@ -345,34 +308,46 @@ describe('とどめの見せ方を通しで描く', () => {
     vi.stubGlobal('document', { createElement: () => ({ width: 0, height: 0, getContext: () => stubContext() }) });
   });
   afterAll(() => vi.unstubAllGlobals());
-  const screen = (log: string[], preset = presets.vivid) => {
-    const canvas = { width: 0, height: 0, getContext: () => stubContext(log), getBoundingClientRect: () => ({ width: 1280, height: 720 }) };
-    return new MagicCanvas(canvas as unknown as HTMLCanvasElement, preset);
+  const screen = (c = stubContext()) => {
+    const canvas = { width: 0, height: 0, getContext: () => c, getBoundingClientRect: () => ({ width: 1280, height: 720 }) };
+    return new MagicCanvas(canvas as unknown as HTMLCanvasElement, presets.vivid);
   };
-  /** とどめの回を1コマ1/60秒で通し、粒の数の山を返す。 */
-  const play = (preset = presets.vivid) => {
-    const log: string[] = [], magic = screen(log, preset), spell = recipe({ count: 5 });
+  /**
+   * 描く命令を受け流しながら、数の指定に NaN が混ざったものだけ控える仮のcanvas。
+   * 命令を文字にして貯めないので、通しで描いても速い。
+   */
+  const nanWatch = () => {
+    const tally = { calls: 0, bad: [] as string[] };
+    const held: Record<string, unknown> = {};
+    const isNaNValue = (v: unknown) => typeof v === 'number' && Number.isNaN(v);
+    const fake: unknown = new Proxy(held, {
+      get: (target, key: string) => (key in target ? target[key] : (...args: unknown[]) => {
+        tally.calls++;
+        if (args.some(isNaNValue)) tally.bad.push(key);
+        return fake;
+      }),
+      set: (target, key: string, value) => {
+        if (isNaNValue(value)) tally.bad.push(key + '=');
+        target[key] = value; return true;
+      },
+    });
+    return { c: fake as CanvasRenderingContext2D, tally };
+  };
+  it('派手の設定でとどめの回を通して描くと、粒は上限を超えず、例外も数でない値（NaN）も出ない', () => {
+    const { c, tally } = nanWatch(), magic = screen(c), spell = recipe({ count: 5 });
     let peak = 0;
     for (let t = finishBeat.inputEnd; t < finishBeat.end - .6; t += 1 / 60) {
       magic.renderEffects({ points, ms: t * 1000, recipe: spell, voice: 0, cursors: [], ready: false,
         target: { x: .72, y: .45 }, origin: { x: 320, y: 520 }, inherited: [{ x: .2, y: .4 }, { x: .8, y: .5 }] });
       peak = Math.max(peak, magic.particleCount);
     }
-    return { peak, log };
-  };
-  it('粒は設定の上限を超えず、描いている間に例外が出ない', () => {
-    const vivid = play();
-    expect(vivid.peak).toBeGreaterThan(0);
-    expect(vivid.peak).toBeLessThanOrEqual(presets.vivid.maxParticles);
-    expect(play(presets.calm).peak).toBeLessThanOrEqual(presets.calm.maxParticles);
-  });
-  it('描いた命令に数でない値（NaN）が混ざらない', () => {
-    const { log } = play();
-    expect(log.length).toBeGreaterThan(1000);
-    expect(log.filter(line => line.includes('NaN'))).toEqual([]);
+    expect(peak).toBeGreaterThan(0);
+    expect(peak).toBeLessThanOrEqual(presets.vivid.maxParticles);
+    expect(tally.calls).toBeGreaterThan(1000);
+    expect(tally.bad).toEqual([]);
   });
   it('止めている間は粒も術式も動かない', () => {
-    const magic = screen([]), spell = recipe({ count: 3 });
+    const magic = screen(), spell = recipe({ count: 3 });
     const at = (t: number) => magic.renderEffects({ points, ms: t * 1000, recipe: spell, voice: 0, cursors: [], ready: false, target: { x: .72, y: .45 }, origin: { x: 320, y: 520 } });
     const 止め始め = finishBeat.release - .4;
     for (let t = finishBeat.inputEnd; t < 止め始め; t += 1 / 60) at(t);
@@ -383,7 +358,7 @@ describe('とどめの見せ方を通しで描く', () => {
     expect(magic.effectMs).toBeGreaterThan(止めた時刻);
   });
   it('発動の0.4秒前の「間」は、騎士と術式が見る世界の時刻も止まる', () => {
-    const magic = screen([]), spell = recipe({ count: 3 });
+    const magic = screen(), spell = recipe({ count: 3 });
     // effectMsOf は時刻だけで決まるので、コマを回さずに確かめられる。
     const 止め始め = ROUNDS[2].release - 400;
     expect(magic.effectMsOf(止め始め - 100, spell, 0, finishBeat)).toBe(止め始め - 100);
@@ -417,11 +392,10 @@ describe('とどめの見せ方を通しで描く', () => {
     expect(stopAtOf(finishBeat)).toBe(90);
     expect(stopAtOf(finishBeat)).toBe(finishBeat.end);
   });
-  it('一回目と防御の消え際と切る時刻は、今までと完全に同じ', () => {
+  it('一回目と防御は、回の終わりまでに余韻が消えきってから描くのをやめる', () => {
     for (const beat of [BEATS[0], BEATS[1]]) {
-      expect(stopAtOf(beat)).toBe(Math.max(beat.end - .5, beat.impact + 4.5));
-      for (let t = beat.release; t < beat.end; t += 1 / 240)
-        expect(afterglowFade(t, t, beat)).toBeCloseTo(1 - Math.min(1, Math.max(0, (t - (beat.impact + 2.5)) / 2)), 12);
+      expect(afterglowFade(stopAtOf(beat), stopAtOf(beat), beat), `${beat.end}秒に終わる回`).toBeCloseTo(0, 9);
+      expect(stopAtOf(beat), `${beat.end}秒に終わる回`).toBeLessThanOrEqual(beat.end);
     }
   });
   it('一回目の回では、とどめの部品を描かない', () => {

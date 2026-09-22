@@ -63,7 +63,7 @@ URLに付けられる切り替えです。
 | `npm run build` | 型の検査と配布用の生成 | 数秒 |
 | `npm run test:speech` | 合成音声でこのPCの音声認識を確認。4種類×3回。結果は `.local-speech/test-report.json` | 1分 |
 | `node scripts/prepare-browser-audio.mjs` | 上の音から、ブラウザー試験用の音を作る | 数秒 |
-| `npm run test:browser` | ブラウザーの試験。うち1件が実際の音声認識を使い、上の音がなければ飛ばす | 20分以上（90秒になってからは未計測） |
+| `npm run test:browser` | ブラウザーの試験。共通の通し確認をまとめ、両方の遊び方を確かめる。うち1件が実際の音声認識を使い、上の音がなければ飛ばす | 統合後は未計測 |
 | `npx tsx scripts/capture-90s.mjs --flow=sequential` | 仮の時計で90秒を進めながら画面写真を撮る確認。先に `npm run dev` を起動しておく。写真は `test-results/capture/sequential/` に出る。「同時に」は `--flow=together` | 数分 |
 | `npx tsx scripts/capture-guide.mjs --flow=sequential` | 解説ページに載せる15枚を撮り直す。先に `npm run dev` を起動しておく。写真は `test-results/guide/sequential/` に出る。「同時に」は `--flow=together`。「順番に」は見本を撮るため、音声認識の確認には使わない | 数分 |
 | `npm run test:chants` | 合成音声を認識させ、詠唱辞書の読み方と変換を確認（先に `setup:speech`） | 数分 |

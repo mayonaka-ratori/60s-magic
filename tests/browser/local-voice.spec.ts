@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { ROUNDS } from '../../src/game/rounds';
+import { 中止して記録を読む,防御の回まで待つ } from './cancel-record';
 
 test('PC内の実際の認識処理で最後の声を取り込み、描いた線と一緒に発動する',async()=>{
   test.skip(!existsSync('.local-speech/test-audio/browser-seven.wav'),'npm run test:speech と node scripts/prepare-browser-audio.mjs で確認用の音を用意');
@@ -30,15 +31,14 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     await page.mouse.move(540,480);await page.mouse.down();
     for(let i=0;Date.now()<描き終わり;i++){await page.mouse.move(540+Math.sin(i/7)*120,400+Math.cos(i/7)*110);await page.waitForTimeout(100);}
     await page.mouse.up();
-    // ここまでで本編は約18秒（締め切りまで描いたあと）。結果は本編90秒で出るので、残り72秒に余裕を足して待つ。
-    await expect(page.locator('#result')).toBeVisible({timeout:85000});
-    // 落ちたときに何を聞き取ったかが分かるよう、魔法を確かめる前に記録を開いて一回目の聞き取りを出す。
-    await page.locator('#record').click();
-    const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
+    // 見るのは一回目だけなので、90秒の終わりまでは待たない。防御の回に入ったところで中止して記録を読む。
+    await 防御の回まで待つ(page);await page.screenshot({path:'test-results/local-voice-first.png'});
+    const report=await 中止して記録を読む(page);
     const first=report.rounds[0];
+    // 落ちたときに何を聞き取ったかが分かるよう、魔法を確かめる前に一回目の聞き取りを出す。
     console.log('一回目の聞き取り:',JSON.stringify(first.speechEntries.map((e:{text:string;final:boolean;endMs:number})=>({text:e.text,final:e.final,endMs:e.endMs}))),'確定の文:',first.state?.speech?.rawTranscript,'魔法:',first.recipe?.name);
-    await expect(page.locator('#spell-list')).toContainText('7つの雷の連弾');
-    await expect(page.locator('#transcript')).not.toContainText('文字で入力');
+    // 声を文字にして使ったこと（文字で入れたのではないこと）は、聞き取りの状態 recognized で見る。
+    expect(first.recipe.name).toContain('7つの雷の連弾');
     expect(first.state.speech.status).toBe('recognized');expect(first.state.speech.provider).toBe('local');
     // 合成した声は受付の17.3秒（締め切りの0.7秒前）に終わる。scripts/prepare-browser-audio.mjs の END_MS と合わせてある。
     expect(first.speechEntries[0].final).toBe(true);expect(first.speechEntries[0].endMs).toBeGreaterThan(ROUNDS[0].inputEnd-2000);
@@ -50,6 +50,5 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     expect(first.events.find((e:{name:string})=>e.name==='release').observedMs).toBeLessThan(ROUNDS[0].release+250);
     expect(errors).toEqual([]);expect(outsideAudio).toEqual([]);
     await writeFile('.local-speech/browser-test-report.json',JSON.stringify(report,null,2));
-    await page.locator('#sheet-close').click();await page.screenshot({path:'test-results/local-voice-result.png'});
   }finally{await browser.close();}
 });

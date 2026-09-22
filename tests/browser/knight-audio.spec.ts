@@ -1,9 +1,10 @@
 import { test,expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
+import { BATTLE_END } from '../../src/game/rounds';
 import { 鳴る音 } from './sound-order';
 
-test('騎士が被弾して構えを戻し、効果音を鳴らして消音できる',async({page})=>{
+test('90秒の通しで効果音が決めた順に鳴り、消音と中止で止まる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(()=>{
     const probe={peak:0,rms:0,recorders:[] as MediaRecorder[],chunks:[] as Blob[]};
@@ -30,13 +31,9 @@ test('騎士が被弾して構えを戻し、効果音を鳴らして消音で�
   await expect(page.locator('#test-sound')).toBeDisabled();
   await page.locator('#use-sound').check();await page.locator('#start').click();await expect(page.locator('#countdown')).toBeHidden({timeout:15000});
   await page.locator('#chant').fill('雷よ、七つに分かれろ');
-  await expect(page.locator('#knight')).toHaveAttribute('data-state','idle');
-  await expect(page.locator('#knight')).toHaveAttribute('data-state','hit',{timeout:27000});
-  await page.screenshot({path:'test-results/knight-hit.png'});
-  await expect(page.locator('#knight')).toHaveAttribute('data-state','recover');
-  await page.screenshot({path:'test-results/knight-recover.png'});
-  // とどめの回まで進むので、結果画面は本編90秒で出る。ここは命中して構えを戻した約25秒から待つので、残り65秒に余裕を足す。
-  await expect(page.locator('#result')).toBeVisible({timeout:85000});
+  // 騎士の被弾と構え直しは look.spec.ts と単体の試験で見ているので、ここでは音だけを見る。
+  // 結果画面は本編90秒で出る。ここは合図が消えた本編の0秒ごろから待つので、90秒に余裕を足す。
+  await expect(page.locator('#result')).toBeVisible({timeout:BATTLE_END+10000});
   await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
   expect(report.audio.activeSources).toBe(0);
   expect(report.audio.events.map((e:{name:string})=>e.name)).toEqual(鳴る音);

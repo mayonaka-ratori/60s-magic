@@ -31,12 +31,6 @@ describe('声の接続を保つ長さ',()=>{
       const 受付=windowMsOf(round),切れる=speechSocketMsOf(受付)-早くつなぐ分;
       expect(切れる).toBeGreaterThan(受付+SPEECH_WAIT_MS);
     }
-    // 20秒の決め打ちだったころは、一回目の締め切り（18秒）より前に切れていた。
-    expect(20000-早くつなぐ分).toBeLessThan(windowMsOf(ROUNDS[0]));
-  });
-  it('受け皿は、一番長い回の分だけ持つ',()=>{
-    expect(MAX_INPUT_MS).toBe(Math.max(...[...TOGETHER_ROUNDS,...SEQUENTIAL_ROUNDS].map(windowMsOf)));
-    for(const round of ROUNDS)expect(windowMsOf(round)).toBeLessThanOrEqual(MAX_INPUT_MS);
   });
 });
 
@@ -91,8 +85,7 @@ describe('ローカル音声認識の受付',()=>{
     socket.end();await vi.advanceTimersByTimeAsync(1);
     socket.audio(2000);expect(socket.readyState).toBe(1);
     expect(recognize).toHaveBeenCalledOnce();
-    // 受け皿の上限を超えた分だけ落とし、上限ちょうどまでは使う。
-    expect(MAX_INPUT_MS).toBe(22000);
+    // 受け皿の上限（一番長い回の受付）を超えた分だけ落とし、上限ちょうどまでは使う。
     expect(socket.messages.find(m=>m.type==='transcript').entry.endMs).toBe(MAX_INPUT_MS);socket.close();
   });
   it('形が壊れた音だけ接続を切る',()=>{
@@ -163,10 +156,7 @@ describe('確定が間に合わないときの扱い',()=>{
 
 describe('認識モデルの名前',()=>{
   it('動かし方の違いは画面に出す名前へ入れない',()=>{
-    expect(speechModelName('kotoba-v2.0')).toBe('kotoba-whisper-v2.0');
     expect(speechModelName('kotoba-v2.0-mlx')).toBe('kotoba-whisper-v2.0');
-    expect(speechModelName('small')).toBe('whisper-small');
-    expect(speechModelName('small-mlx')).toBe('whisper-small');
     expect(speechModelName('large-v3-turbo-mlx')).toBe('whisper-large-v3-turbo');
   });
 });

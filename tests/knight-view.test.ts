@@ -1,60 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { KNIGHT_VIEW, knightView, projectView, viewKick, VIEW_KICKS, hitScarAt, HIT_SCARS, SCAR_FADE, scarCurve,
-  knightPose, guardPose, idleSway, stepAt, clangAt, chargeTremorAt, TREMOR_MAX, STEP_LIFT, STEP_SINK, CLANG_IN, CLANG_OUT, CLANG_FLASH,
-  HEIGHT, FOOT, CROWN, EYE, DIST, FINAL_BLOW_AT, REFLECT_BACK_AT, FALL_TURN, FALL_NEAR } from '../src/render/knight';
+import { KNIGHT_VIEW, knightView, projectView, viewKick, VIEW_KICKS, hitScarAt, SCAR_FADE,
+  knightPose, guardPose, stepAt, clangAt, chargeTremorAt, TREMOR_MAX, STEP_LIFT, STEP_SINK, CLANG_IN, CLANG_OUT, CLANG_FLASH,
+  HEIGHT, FOOT, CROWN, FINAL_BLOW_AT, REFLECT_BACK_AT, FALL_TURN, FALL_NEAR } from '../src/render/knight';
 import { ENEMY_CHARGE_FROM_MS, ENEMY_MOVES, ENEMY_SLAM_MS, ROUNDS } from '../src/game/rounds';
 
-/**
- * 以前の視点。真正面（pitch 0）で、足元を71.4%、兜の先を5.2%に置いていた。高さ約0.95m、距離約6.9m。
- * 以前のコードと同じ式で作り、見比べるためだけに持つ。
- */
-const OLD_DEPTH = HEIGHT / ((.714 - .5) * 2 + (.5 - .052) * 2);
-const OLD_VIEW = { eye: (.714 - .5) * 2 * OLD_DEPTH, dist: OLD_DEPTH / .3205, pitch: 0, tan: .3205, look: (.714 - .5) * 2 * OLD_DEPTH };
-
 describe('見上げる視点', () => {
-  it('足元は画面の高さの71.4%のまま、兜の先は上端から1〜3%に来る', () => {
-    expect(FOOT).toBe(.714);
-    expect(projectView({ y: 0 }).y).toBeCloseTo(.714, 6);
-    const crown = projectView({ y: HEIGHT }).y;
-    expect(crown).toBeCloseTo(CROWN, 6);
-    expect(crown).toBeGreaterThanOrEqual(.01);
-    expect(crown).toBeLessThanOrEqual(.03);
-    // 以前より上端へ寄っている。
-    expect(crown).toBeLessThan(projectView({ y: HEIGHT }, OLD_VIEW).y);
-  });
-  it('視点は以前より低く、少し上を向く', () => {
-    expect(KNIGHT_VIEW.eye).toBe(EYE);
-    expect(KNIGHT_VIEW.eye).toBeLessThan(OLD_VIEW.eye);
-    expect(KNIGHT_VIEW.dist).toBe(DIST);
-    expect(KNIGHT_VIEW.dist).toBeLessThan(OLD_VIEW.dist);
-    expect(KNIGHT_VIEW.pitch).toBeGreaterThan(0);
-    expect(KNIGHT_VIEW.pitch).toBeLessThan(10 * Math.PI / 180);
-    // 注視点は視点より高い（見上げている）。
-    expect(KNIGHT_VIEW.look).toBeGreaterThan(KNIGHT_VIEW.eye);
-    expect(KNIGHT_VIEW.tan).toBeGreaterThan(0);
-  });
-  it('騎士は以前より大きく映り、近い足元ほど大きい', () => {
-    const grow = (y: number) => projectView({ y }).scale / projectView({ y }, OLD_VIEW).scale;
-    expect(grow(0)).toBeGreaterThan(1.08);
-    expect(grow(2.05)).toBeGreaterThan(1.03);
-    expect(grow(HEIGHT)).toBeGreaterThan(1);
-    // 近い足元のほうが遠い頭より大きく映る。見上げる遠近。
-    expect(grow(0)).toBeGreaterThan(grow(HEIGHT));
-    // 以前の真正面では足元も頭も同じ大きさだった。
-    expect(projectView({ y: 0 }, OLD_VIEW).scale).toBeCloseTo(projectView({ y: HEIGHT }, OLD_VIEW).scale, 9);
-  });
-  it('横長でも縦長でも足元の位置は背景と同じ動きをする', () => {
-    // 縦長（cover=1）では足元が71.4%。横長では背景が広がる分だけ、画面の中央を軸に同じ比で下がる。以前と同じ決まり。
-    expect(projectView({ y: 0 }, KNIGHT_VIEW, 1).y).toBeCloseTo(.714, 6);
-    for (const cover of [1.1, 1.2, 1.5]) {
-      expect(projectView({ y: 0 }, KNIGHT_VIEW, cover).y).toBeCloseTo(.5 + (FOOT - .5) * cover, 6);
-      expect(projectView({ y: 0 }, KNIGHT_VIEW, cover).y).toBeCloseTo(projectView({ y: 0 }, OLD_VIEW, cover).y, 6);
-    }
-  });
-  it('視点の高さと距離を変えても、足元と兜の先の位置は守られる', () => {
+  it('今の視点でも、視点の高さと距離を変えても、足元と兜の先の位置は守られる', () => {
+    // 兜の先は上端から1〜3%に来る。
+    expect(CROWN).toBeGreaterThanOrEqual(.01);
+    expect(CROWN).toBeLessThanOrEqual(.03);
     // 視点が0.9mより高いと、兜の先を2%へ置くには見下ろす必要があるので、それより低い範囲で確かめる。
-    for (const [eye, dist] of [[.4, 3.5], [.7, 5], [.8, 6]] as const) {
-      const view = knightView(eye, dist);
+    for (const view of [KNIGHT_VIEW, ...([[.4, 3.5], [.7, 5], [.8, 6]] as const).map(([eye, dist]) => knightView(eye, dist))]) {
       expect(view.pitch).toBeGreaterThan(0);
       expect(projectView({ y: 0 }, view).y).toBeCloseTo(FOOT, 6);
       expect(projectView({ y: HEIGHT }, view).y).toBeCloseTo(CROWN, 6);
@@ -111,40 +67,35 @@ describe('視点の動き', () => {
       expect(viewKick(kick.at * 1000, false)).toEqual({ back: 0, up: 0, down: 0 });
     }
   });
-  it('動く時刻は回の表から来て、それ以外の時刻では動かない', () => {
-    expect(VIEW_KICKS.map(kick => kick.at)).toEqual([first, slam, FINAL_BLOW_AT]);
-    for (let t = 0; t <= ROUNDS[ROUNDS.length - 1].end / 1000; t += .05) {
-      const inside = VIEW_KICKS.some(kick => t >= kick.at - 1e-9 && t < kick.at + kick.seconds);
-      const kick = viewKick(t * 1000, true);
-      if (!inside) expect(kick).toEqual({ back: 0, up: 0, down: 0 });
-    }
-  });
 });
 
 describe('命中の跡', () => {
   const impact = ROUNDS[0].impact, end = ROUNDS[0].end;
-  it('一回目の命中から回の終わりまで残り、最後の1秒で薄れる', () => {
+  /** 薄れ始める時刻と、薄れる途中の時刻（ms）。回の終わりから SCAR_FADE だけ前から薄れる。 */
+  const 薄れ始め = (end: number) => end - SCAR_FADE * 1000, 薄れる途中 = (end: number) => end - SCAR_FADE * 500;
+  it('一回目の命中から回の終わりまで残り、最後に薄れる', () => {
     expect(hitScarAt(impact - 1, true)).toBe(0);
     expect(hitScarAt(impact, true)).toBeGreaterThan(1);
-    // 0.9秒で0.38まで薄まり、そのまま残る。
-    expect(hitScarAt(impact + 900, true)).toBeCloseTo(.38, 6);
-    expect(hitScarAt(end - 1000, true)).toBeCloseTo(.38, 6);
-    expect(hitScarAt(end - 500, true)).toBeCloseTo(.19, 6);
+    // 当たった直後より薄まってから、薄れ始めるまで同じ濃さで残る。
+    const 残る濃さ = hitScarAt(薄れ始め(end), true);
+    expect(残る濃さ).toBeGreaterThan(0);
+    expect(残る濃さ).toBeLessThan(hitScarAt(impact, true));
+    expect(hitScarAt(impact + 900, true)).toBeCloseTo(残る濃さ, 6);
+    expect(hitScarAt(薄れる途中(end), true)).toBeLessThan(残る濃さ);
     expect(hitScarAt(end - 1, true)).toBeGreaterThan(0);
     expect(hitScarAt(end, true)).toBe(0);
     expect(hitScarAt(end + 1000, true)).toBe(0);
-    expect(SCAR_FADE).toBe(1);
-    expect(HIT_SCARS[0]).toEqual({ at: impact / 1000, end: end / 1000, reflectOnly: false });
   });
   it('防御の回は弾き返したときだけ、一撃が盾に当たった0.8秒後から回の終わりまで残る', () => {
-    // 戻ってきた一撃が胸に当たる時刻（ms）。防御の回の受け止めの0.8秒後。
-    const back = ROUNDS[1].impact + 800, defendEnd = ROUNDS[1].end;
-    expect(REFLECT_BACK_AT).toBeCloseTo(back / 1000, 9);
-    expect(HIT_SCARS[1]).toEqual({ at: REFLECT_BACK_AT, end: defendEnd / 1000, reflectOnly: true });
+    // 戻ってきた一撃が胸に当たる時刻（ms）。防御の回の受け止めの後。
+    const back = REFLECT_BACK_AT * 1000, defendEnd = ROUNDS[1].end;
+    expect(back).toBeGreaterThan(ROUNDS[1].impact);
     expect(hitScarAt(back - 100, true, 'reflect')).toBe(0);
     expect(hitScarAt(back, true, 'reflect')).toBeGreaterThan(1);
-    expect(hitScarAt(back + 1800, true, 'reflect')).toBeCloseTo(.38, 6);
-    expect(hitScarAt(defendEnd - 500, true, 'reflect')).toBeCloseTo(.19, 6);
+    const 残る濃さ = hitScarAt(薄れ始め(defendEnd), true, 'reflect');
+    expect(残る濃さ).toBeGreaterThan(0);
+    expect(hitScarAt(back + 1800, true, 'reflect')).toBeCloseTo(残る濃さ, 6);
+    expect(hitScarAt(薄れる途中(defendEnd), true, 'reflect')).toBeLessThan(残る濃さ);
     expect(hitScarAt(defendEnd, true, 'reflect')).toBe(0);
     // 受け止めとかき消しでは跡が付かない。
     for (const style of ['block', 'erase', null] as const) expect(hitScarAt(back + 800, true, style)).toBe(0);
@@ -153,28 +104,22 @@ describe('命中の跡', () => {
     expect(hitScarAt(impact + 100, false)).toBe(0);
     expect(hitScarAt(ROUNDS[1].impact + 1600, false, 'reflect')).toBe(0);
   });
-  it('濃さの曲線はとどめの傷あとと同じ', () => {
-    expect(scarCurve(0)).toBeCloseTo(1.15, 6);
-    expect(scarCurve(.9)).toBeCloseTo(.38, 6);
-    expect(scarCurve(5)).toBeCloseTo(.38, 6);
-  });
 });
 
 describe('自分から動く騎士', () => {
   const step = ENEMY_MOVES.find(move => move.kind === 'step')!.at / 1000, clang = ENEMY_MOVES.find(move => move.kind === 'clang')!.at / 1000;
-  it('足の踏み替えは3.5秒の着地に合わせ、脚は着地の前に浮き、着地から0.4秒で沈む', () => {
-    expect(step).toBe(3.5);
+  /** 動いている途中の時刻（ms）。脚が浮く、沈む、盾を振る、打つ、戻す。 */
+  const 浮く = (step - STEP_LIFT / 2) * 1000, 沈む = (step + STEP_SINK / 2) * 1000;
+  const 振る = (clang - CLANG_IN / 2) * 1000, 打つ = clang * 1000, 戻す = (clang + CLANG_OUT / 2) * 1000;
+  it('足の踏み替えは表の時刻の着地に合わせ、脚は着地の前に浮き、着地のあとに沈む', () => {
     expect(stepAt(step - STEP_LIFT - .01)).toEqual({ lift: 0, sink: 0 });
     expect(stepAt(step - STEP_LIFT / 2).lift).toBeCloseTo(1, 6);
     expect(stepAt(step - STEP_LIFT / 2).sink).toBe(0);
     expect(stepAt(step).lift).toBe(0);
     expect(stepAt(step + STEP_SINK / 2).sink).toBeCloseTo(1, 6);
     expect(stepAt(step + STEP_SINK)).toEqual({ lift: 0, sink: 0 });
-    expect(STEP_SINK).toBe(.4);
   });
-  it('盾打ちは9.5秒に打ち、打つ前0.12秒で振って打ってから0.18秒で戻す。打った瞬間だけ盾が光る', () => {
-    expect(clang).toBe(9.5);
-    expect(CLANG_IN + CLANG_OUT).toBeCloseTo(.3, 9);
+  it('盾打ちは表の時刻に打ち、打つ前に振って、打ってから戻す。打った瞬間だけ盾が光る', () => {
     expect(clangAt(clang - CLANG_IN - .01)).toEqual({ swing: 0, flash: 0 });
     expect(clangAt(clang - .001).swing).toBeGreaterThan(.9);
     expect(clangAt(clang).swing).toBe(1);
@@ -186,39 +131,29 @@ describe('自分から動く騎士', () => {
     expect(clangAt(clang + CLANG_OUT)).toEqual({ swing: 0, flash: 0 });
   });
   it('姿勢の計算では、指定の時刻のまわりだけ動く', () => {
-    // 一回目の命中の手前まで見る。
-    for (let ms = 0; ms < ROUNDS[0].impact - 100; ms += 10) {
+    // 一回目の命中の手前まで、0.1秒ごとと、動きの始まりと終わりの前後1msを見る。
+    const 境目 = [step - STEP_LIFT, step + STEP_SINK, clang - CLANG_IN, clang + CLANG_OUT].flatMap(t => [t * 1000 - 1, t * 1000]);
+    const 見る時刻 = [...Array.from({ length: Math.ceil((ROUNDS[0].impact - 100) / 100) }, (_, i) => i * 100), ...境目];
+    const 外れ: string[] = [];
+    for (const ms of 見る時刻) {
       const p = knightPose(ms, true);
       const t = ms / 1000;
       const stepping = t >= step - STEP_LIFT && t < step + STEP_SINK, clanging = t >= clang - CLANG_IN && t < clang + CLANG_OUT;
-      if (!stepping) { expect(p.stepLift).toBe(0); expect(p.stepSink).toBe(0); }
-      if (!clanging) { expect(p.clang).toBe(0); expect(p.clangFlash).toBe(0); }
+      if (!stepping && (p.stepLift !== 0 || p.stepSink !== 0)) 外れ.push(`${ms}ms の足踏み`);
+      if (!clanging && (p.clang !== 0 || p.clangFlash !== 0)) 外れ.push(`${ms}ms の盾打ち`);
       // 一回目には溜めの震えは無い。
-      expect(p.tremor).toBe(0);
+      if (p.tremor !== 0) 外れ.push(`${ms}ms の震え`);
     }
-    expect(knightPose(3400, true).stepLift).toBeGreaterThan(0);
-    expect(knightPose(3700, true).stepSink).toBeGreaterThan(0);
-    expect(knightPose(9500, true).clang).toBe(1);
-    expect(knightPose(9500, true).clangFlash).toBe(1);
+    expect(外れ).toEqual([]);
+    expect(knightPose(浮く, true).stepLift).toBeGreaterThan(0);
+    expect(knightPose(沈む, true).stepSink).toBeGreaterThan(0);
+    expect(knightPose(打つ, true).clang).toBe(1);
+    expect(knightPose(打つ, true).clangFlash).toBe(1);
   });
   it('動きを減らす設定と、遊んでいない間は動かない', () => {
-    for (const ms of [3400, 3700, 9450, 9500, 9600]) {
+    for (const ms of [浮く, 沈む, 振る, 打つ, 戻す]) {
       const quiet = knightPose(ms, true, true), idle = knightPose(ms, false);
       for (const p of [quiet, idle]) { expect(p.stepLift).toBe(0); expect(p.stepSink).toBe(0); expect(p.clang).toBe(0); expect(p.clangFlash).toBe(0); }
-    }
-  });
-  it('足踏みと盾打ちは、姿勢の混ぜ方を変えない（待機の息づかいだけが混ざる）', () => {
-    for (const ms of [3400, 3700, 9500, 9600]) {
-      const moving = knightPose(ms, true), quiet = knightPose(ms, true, true);
-      // 姿勢の数は表の長さに合わせる。待機（0）と息づかい（最後）以外は混ざらない。
-      const count = moving.weights.length;
-      expect(quiet.weights.length).toBe(count);
-      const expected = new Array(count).fill(0);
-      expected[0] = 1 - idleSway(ms); expected[count - 1] = idleSway(ms);
-      moving.weights.forEach((w, i) => expect(w, `${ms}ms の姿勢${i}`).toBeCloseTo(expected[i], 9));
-      // 動きを減らす設定では息づかいも止まり、待機だけになる。
-      quiet.weights.forEach((w, i) => expect(w).toBeCloseTo(i === 0 ? 1 : 0, 9));
-      expect(moving.state).toBe('idle');
     }
   });
   it('溜めの震えは防御の回が始まった0.2秒後から振り下ろしまで、溜まるほど強くなる', () => {

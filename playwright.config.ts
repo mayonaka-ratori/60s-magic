@@ -3,8 +3,9 @@ import { defineConfig } from '@playwright/test';
 const gpuArgs=process.platform==='win32'?['--use-angle=d3d11']:[];
 export default defineConfig({
   // 通しの試験は90秒の本編に、読み込みと3秒の準備の合図が乗って93秒かかる。
-  // いちばん長いのは exhibition.spec.ts の「結果のまま誰も触らなければ」で、
-  // 結果を待つ100秒に、タイトルへ戻る16秒と見本が始まる16秒が続き、読み込みも足すと最悪137秒になる。
+  // いちばん長いのは finish-knight.spec.ts の見本の通しで、見本が自動で始まるまで待つ30秒（上限45秒）に、
+  // 体力が0になるまでの約80秒（上限93.5秒）と、枠が消えて騎士が倒れきるまで（上限18秒）が続き、最悪で約165秒になる。
+  // 次に長い screen-text.spec.ts の横長の通しは、結果までの上限100秒に、タイトルへ戻る16秒と見本が始まる16秒が続き、最悪で約150秒。
   // 150秒では足りなくなる余地があるので180秒にする。
   testDir:'tests/browser',timeout:180000,fullyParallel:false,workers:1,
   use:{baseURL:'http://127.0.0.1:5173',viewport:{width:1440,height:900},headless:true,channel:'chromium',

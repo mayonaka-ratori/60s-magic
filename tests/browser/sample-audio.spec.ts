@@ -1,8 +1,9 @@
 import { test,expect } from '@playwright/test';
-import { 鳴る音 } from './sound-order';
+import { 中止して記録を読む,防御の回まで待つ } from './cancel-record';
+import { 一回目に鳴る音 } from './sound-order';
 
-/** 素材を使うかどうかも合わせて見る。素材を置いた合図だけが true になる。 */
-const 鳴る音と素材=鳴る音.map(name=>[name,name==='complete'||name==='impact']);
+/** 素材を使うかどうかも合わせて見る。素材を置いた合図だけが true になる。どちらも一回目で鳴る。 */
+const 鳴る音と素材=一回目に鳴る音.map(name=>[name,name==='complete'||name==='impact']);
 
 /** 短い正弦波のWAVを作る。外部の素材の代わりに、読み込みと再生の経路だけを確かめる。 */
 function wav(seconds:number,frequency:number,level:number) {
@@ -19,7 +20,7 @@ const manifest={
 };
 const files:Record<string,Buffer>={'bgm/test.wav':wav(2,110,.5),'sfx/chime.wav':wav(.6,880,.4),'sfx/hit-1.wav':wav(.3,70,.8),'sfx/hit-2.wav':wav(.3,90,.8)};
 
-test('置いた素材で曲と効果音が鳴り、無い素材は飛ばす',async({page})=>{
+test('置いた素材で曲と効果音が鳴り、無い素材は飛ばし、中止すると曲が止まる',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/audio/manifest.json',route=>route.fulfill({json:manifest}));
   await page.route('**/audio/**/*.wav',route=>{
@@ -45,14 +46,15 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばす',asy
   // 最初の合図は7秒なので、それより前にここで音が出ていれば曲が鳴っている。
   await page.waitForTimeout(1500);
   expect(await page.evaluate(()=>(window as any).__soundProbe.rms)).toBeGreaterThan(.001);
-  await expect(page.locator('#result')).toBeVisible({timeout:100000});
-  await page.locator('#record').click();const report=JSON.parse(await page.locator('#sheet-body pre').innerText());
+  // 素材を使う合図（完成と命中）は一回目で鳴るので、90秒の終わりまでは待たない。防御の回に入ったところで中止して記録を読む。
+  await 防御の回まで待つ(page);
+  const report=await 中止して記録を読む(page);
   expect(report.audio.samples).toEqual({manifest:true,loaded:['bgm/test.wav','sfx/chime.wav','sfx/hit-1.wav','sfx/hit-2.wav'],missing:['sfx/missing.wav']});
   expect(report.audio.credits).toEqual(['テスト用の曲']);
-  expect(report.audio.bgmStartedAtMs).toBeLessThan(1000);expect(report.audio.bgm).toBe('none');expect(report.audio.activeSources).toBe(0);
+  // 記録は中止の直前に取るので、曲はまだ鳴っている。
+  expect(report.audio.bgmStartedAtMs).toBeLessThan(1000);expect(report.audio.bgm).toBe('playing');
   expect(report.audio.events.map((e:{name:string;sample:boolean})=>[e.name,e.sample])).toEqual(鳴る音と素材);
-  await page.locator('#sheet-close').click();
-  // 曲は終了後に止まる。
+  // 曲は中止したあとに止まる。終了のときも同じ止め方を通る。
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.rms),{timeout:2000,intervals:[50]}).toBeLessThan(.00001);
   expect(errors).toEqual([]);
 });

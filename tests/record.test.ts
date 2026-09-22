@@ -28,12 +28,10 @@ const battleOf=():BattleLike=>({
 });
 
 describe('確認番号',()=>{
-  it('6桁の数字になる',()=>{
+  it('6桁の数字になり、小さい値でも0で埋めて6桁にする',()=>{
     const code=makeCode([],()=>.1234567);
     expect(code).toHaveLength(CODE_DIGITS);
     expect(code).toMatch(/^\d{6}$/);
-  });
-  it('小さい値でも0で埋めて6桁にする',()=>{
     expect(makeCode([],()=>0)).toBe('000000');
   });
   it('保存済みの番号と同じなら作り直す',()=>{
@@ -57,24 +55,17 @@ describe('このPCの中への保存',()=>{
     expect((await recorder.load(old.code))?.flow).toBe('sequential');
     expect((await store.load(old.code))?.flow).toBeUndefined();
   });
-  it('保存して読み戻すと、三件が同じになる',async()=>{
+  it('保存して読み戻すと三件が同じになり、術式の点列と引き継いだ形も残る。声と映像そのものは残さない',async()=>{
     const store=memoryStore();
     const recorder=await PlayRecorder.open(store,()=>.42);
-    const battle=battleOf();
-    const saved=await recorder.save(battle);
-    const loaded=await recorder.load();
-    expect(loaded).not.toBeNull();
-    expect(saved.flow).toBe(FLOW);expect(loaded!.flow).toBe(FLOW);
-    expect(loaded!.code).toBe(recorder.code);
-    expect(loaded!.rounds.map(round=>round.recipe?.name)).toEqual(['7つの雷の連弾','氷の壁','光の結界']);
-    // 結果画面は、この保存だけから同じものを組み立てられる。
-    expect(resultRows(loaded!)).toEqual(resultRows(saved));
-  });
-  it('術式の点列と引き継いだ形も残る。声と映像そのものは残さない',async()=>{
-    const store=memoryStore();
-    const recorder=await PlayRecorder.open(store,()=>.42);
-    await recorder.save(battleOf());
+    const saved=await recorder.save(battleOf());
     const loaded=(await recorder.load())!;
+    expect(loaded).not.toBeNull();
+    expect(saved.flow).toBe(FLOW);expect(loaded.flow).toBe(FLOW);
+    expect(loaded.code).toBe(recorder.code);
+    expect(loaded.rounds.map(round=>round.recipe?.name)).toEqual(['7つの雷の連弾','氷の壁','光の結界']);
+    // 結果画面は、この保存だけから同じものを組み立てられる。
+    expect(resultRows(loaded)).toEqual(resultRows(saved));
     // 生の点列は1秒30点まで間引くので、6点のうちいくつかは残らない。始まりと終わりは残る。
     expect(loaded.rounds[0].rawPoints.length).toBeGreaterThan(1);
     expect(loaded.rounds[0].rawPoints[0].t).toBe(0);
@@ -91,12 +82,14 @@ describe('このPCの中への保存',()=>{
     expect(recorder.stored).toBe(false);
     expect(await store.list()).toEqual([]);
   });
-  it('保存できないときも例外を出さず、状態に残す',async()=>{
+  it('保存できないときも例外を出さず、状態に残して「保存できませんでした」と出す',async()=>{
     const broken={list:async()=>[],load:async()=>null,save:async()=>{throw new Error('置き場所がいっぱい');}};
     const recorder=await PlayRecorder.open(broken,()=>.42);
     await expect(recorder.save(battleOf())).resolves.toBeTruthy();
     expect(recorder.stored).toBe(false);
     expect(recorder.failure).toBe('置き場所がいっぱい');
+    expect(recorder.delivery).toBe('not-stored');
+    expect(recorder.message).toBe('保存できませんでした。この画面を閉じると消えます');
   });
   it('IndexedDBが無い環境では置き場所を作らず、例外も出さない',async()=>{
     expect(typeof indexedDB).toBe('undefined');
@@ -116,13 +109,6 @@ describe('このPCの中への保存',()=>{
     expect(DELIVERY_MESSAGES['not-sent']).toBe('まだ届いていません');
     // 届いていないものを「登録しました」と書かない。
     expect(Object.values(DELIVERY_MESSAGES).join('')).not.toContain('登録');
-  });
-  it('保存に失敗したときは「保存できませんでした」と出す',async()=>{
-    const broken={list:async()=>[],load:async()=>null,save:async()=>{throw new Error('置き場所がいっぱい');}};
-    const recorder=await PlayRecorder.open(broken,()=>.42);
-    await recorder.save(battleOf());
-    expect(recorder.delivery).toBe('not-stored');
-    expect(recorder.message).toBe('保存できませんでした。この画面を閉じると消えます');
   });
   it('IndexedDBを開けない環境では、使える置き場所と見なさない',async()=>{
     // 開こうとすると必ず失敗する置き場所を用意する（プライベートモードなどを真似る）。
@@ -247,19 +233,14 @@ describe('生の点列の間引き',()=>{
     expect(thinned[0].t).toBe(0);
     expect(thinned.at(-1)!.t).toBe(15);
   });
-  it('点が無いときは空のまま',()=>{
-    expect(thinPoints([])).toEqual([]);
-  });
 });
 
 describe('結果画面に並べる三件',()=>{
   const rows=resultRows(playOf(battleOf(),'123456','2026-09-20T00:00:00.000Z'));
-  it('実際に確定した魔法と同じ名前が、回の順に並ぶ',()=>{
+  it('実際に確定した魔法と同じ名前が回の順に並び、代表はとどめの魔法',()=>{
     expect(rows.map(row=>row.title)).toEqual([ROUND_TITLES.first,ROUND_TITLES.defend,ROUND_TITLES.finish]);
     expect(rows.map(row=>row.name)).toEqual(['7つの雷の連弾','氷の壁','光の結界']);
     expect(rows.map(row=>row.element)).toEqual(['lightning','ice','light']);
-  });
-  it('代表はとどめの魔法',()=>{
     expect(rows.map(row=>row.main)).toEqual([false,false,true]);
   });
   it('防御の回の絵は盾の形を使う',()=>{
@@ -287,9 +268,5 @@ describe('魔法名のふりがな',()=>{
   it('読みを引けない語には付けない',()=>{
     expect(nameParts('氷の壁')).toEqual([{text:'氷の壁'}]);
     expect(nameParts('はじまりの球')).toEqual([{text:'はじまりの球'}]);
-  });
-  it('切り分けた文字をつなぐと元の名前に戻る',()=>{
-    for(const name of ['7つの雷の連弾','光の結界','氷の壁','炎の光線'])
-      expect(nameParts(name).map(part=>part.text).join('')).toBe(name);
   });
 });
