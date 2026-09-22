@@ -185,7 +185,10 @@ function playContext():PlayContext {
 const COUNTDOWN_SECONDS=COUNTDOWN_MS/1000;let countingDown=false;
 
 // 一度つながらなかっただけではマイクの選択を変えない。前に確かめた状態のまま、次の確認を待つ。
-async function readStatus(){let reached=true;try{status=await fetch('/api/status').then(r=>r.json());}catch{serviceNotice='接続を確認できません。このPCの中だけで魔法を決めます。';reached=false;}
+// ただし一度も確かめられていないときは、声が使えないものとして外す。付けたままだと、押せない印のせいで始められなくなる。
+let statusReached=false;
+async function readStatus(){let reached=true;try{status=await fetch('/api/status').then(r=>r.json());statusReached=true;}catch{serviceNotice='接続を確認できません。このPCの中だけで魔法を決めます。';reached=false;}
+  if(!statusReached&&voiceChoice.checked){voiceChoice.checked=false;voiceAutoOff=true;}
   el('voice-availability').textContent=status.speech?(status.speechProvider==='local'?'（このPCで聞き取ります）':'（Googleで聞き取ります）'):status.localSpeech?.state==='loading'?'（準備中です）':'（いまは使えません）';
   el<HTMLInputElement>('use-voice').disabled=!status.speech;
   if(reached&&!status.speech&&status.localSpeech?.state!=='loading'){if(voiceChoice.checked){voiceChoice.checked=false;voiceAutoOff=true;}}
