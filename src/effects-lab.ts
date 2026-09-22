@@ -14,11 +14,11 @@ import { ELEMENTS, FORMS, PURPOSES, TRAJECTORIES, ELEMENT_LABELS, FORM_LABELS, P
 const params = new URLSearchParams(location.search);
 /** 見比べるのは一回目の回。時刻はすべてこの行から作り、この画面に秒数を書かない。 */
 const FIRST = ROUNDS[0];
-/** 見せ始める時刻（ms）。締め切りの0.5秒前から、粒が中心へ吸い込まれるところを見せる。17.5秒。 */
+/** 見せ始める時刻（ms）。締め切りの0.5秒前から、粒が中心へ吸い込まれるところを見せる。 */
 const LAB_FROM = FIRST.inputEnd - 500;
-/** 見せ終わる時刻（ms）。本編で余韻を描くのをやめる時刻と同じ。29.5秒。ここまで来たら先頭へ戻す。 */
+/** 見せ終わる時刻（ms）。本編で余韻を描くのをやめる時刻と同じ。ここまで来たら先頭へ戻す。 */
 const LAB_TO = Math.round(stopAtOf(BEATS[0]) * 1000);
-/** 「放出だけ繰り返す」ときの先頭（ms）。発動の0.2秒前。21.8秒。 */
+/** 「放出だけ繰り返す」ときの先頭（ms）。発動の0.2秒前。 */
 const LAB_RELEASE_FROM = FIRST.release - 200;
 /** つまみに出す秒の書き方。17500なら「17.5」。 */
 const labSeconds = (ms: number) => (ms / 1000).toFixed(1);

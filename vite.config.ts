@@ -5,10 +5,10 @@ export default defineConfig({
   worker: { format: 'es' },
   test: { projects: [
     { test: { name: '同時に', include: ['tests/**/*.test.ts'], setupFiles: ['tests/together.setup.ts'] } },
-    { test: { name: '順番に', include: [
-      'tests/voice-growth.test.ts', 'tests/record.test.ts', 'tests/flow-audio.test.ts', 'tests/flow.test.ts', 'tests/spell-layout.test.ts', 'tests/guard-effects.test.ts',
-      'tests/charge.test.ts', 'tests/release.test.ts', 'tests/impact.test.ts',
-      'tests/finish-effects.test.ts', 'tests/live-words.test.ts',
+    // 新しい試験は両方の表で走らせる。外すのは「同時に」の秒数や、一回目で描く・防御で唱えることを前提に確かめている試験だけ。
+    { test: { name: '順番に', include: ['tests/**/*.test.ts'], exclude: [
+      'tests/composite.test.ts', 'tests/defend.test.ts', 'tests/enemy-audio.test.ts', 'tests/finish-audio.test.ts', 'tests/finish.test.ts',
+      'tests/game.test.ts', 'tests/knight.test.ts', 'tests/local-speech.test.ts', 'tests/reaction-audio.test.ts',
     ], setupFiles: ['tests/sequential.setup.ts'] } },
   ] },
 });

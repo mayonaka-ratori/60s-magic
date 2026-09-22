@@ -57,7 +57,7 @@ export const ROUNDS = FLOW === 'together' ? TOGETHER_ROUNDS : SEQUENTIAL_ROUNDS;
 
 /**
  * 一回目の受付中に、騎士が自分から動く時刻（ms）。足を踏み替える（step）、盾を打ち鳴らす（clang）。
- * 画面の揺れ、騎士の動き、効果音がこの一つの表を見る。案内の音（7秒、14秒）と重ねない。
+ * 画面の揺れ、騎士の動き、効果音がこの一つの表を見る。案内の音（build、chant の時刻）と重ねない。
  */
 export const ENEMY_MOVES: ReadonlyArray<{ at: number; kind: 'step' | 'clang' }> = [{ at: 3500, kind: 'step' }, { at: 9500, kind: 'clang' }];
 /** 防御の回で、騎士が溜めの姿勢に入る時刻（ms）。ここから振り下ろしまで、画面が低く震え続ける。 */
@@ -99,7 +99,7 @@ export const FINISH_FALL_FROM_MS = FINISH_COLLAPSE_MS + FINISH_KNEEL_MS;
 export const FINISH_FALL_TO_MS = FINISH_FALL_FROM_MS + 1100;
 /**
  * 締め切りのあと、声の最後の文字を待てる時間。
- * 一回16秒から18秒の声を「先頭から今まで」聞き直すので、14秒だったころの1.4秒では足りない。
+ * 一回分の声を「先頭から今まで」聞き直すので、以前の1.4秒では足りない。
  * MacのGPUでの認識一回分（13秒の声で約1.25秒）に余裕を足した長さ。実機で測って決め直す。
  */
 export const SPEECH_WAIT_MS = 2000;

@@ -64,17 +64,21 @@ function reloadFlow(flow:string,notice='') {
   if(flow==='together')url.searchParams.set('flow','together');else url.searchParams.delete('flow');
   location.assign(url.href);
 }
+const noMicNotice='マイクを使わない場合は「同時に」で遊びます。';
+// 声が使えないため自動でマイクを外したか。使えるようになったら戻す。人が自分で外したときは戻さない。
+let voiceAutoOff=false;
 function updateFlowChoice() {
   const sequential=document.querySelector<HTMLInputElement>('input[name="flow"][value="sequential"]')!;
   sequential.disabled=!voiceChoice.checked;
-  if(FLOW==='sequential'&&!voiceChoice.checked)el('notice').textContent='マイクを使わない場合は「同時に」で遊びます。';
+  if(FLOW==='sequential'&&!voiceChoice.checked)el('notice').textContent=noMicNotice;
+  else if(el('notice').textContent===noMicNotice)el('notice').textContent='';
 }
 for(const option of document.querySelectorAll<HTMLInputElement>('input[name="flow"]')) {
   option.checked=option.value===FLOW;
   option.addEventListener('change',()=>reloadFlow(option.value));
 }
 voiceChoice.addEventListener('change',()=>{
-  updateFlowChoice();
+  voiceAutoOff=false;updateFlowChoice();
   if(FLOW==='sequential'&&!voiceChoice.checked)reloadFlow('together','マイクを使わないので「同時に」に切り替えました。');
 });
 updateFlowChoice();
@@ -182,10 +186,15 @@ function playContext():PlayContext {
 /** 本編の前に置く準備の秒数。手や声の位置を決める時間で、90秒には含めない。 */
 const COUNTDOWN_SECONDS=COUNTDOWN_MS/1000;let countingDown=false;
 
-async function readStatus(){try{status=await fetch('/api/status').then(r=>r.json());}catch{serviceNotice='接続を確認できません。このPCの中だけで魔法を決めます。';status.speech=false;}
+// 一度つながらなかっただけではマイクの選択を変えない。前に確かめた状態のまま、次の確認を待つ。
+// ただし一度も確かめられていないときは、声が使えないものとして外す。付けたままだと、押せない印のせいで始められなくなる。
+let statusReached=false;
+async function readStatus(){let reached=true;try{status=await fetch('/api/status').then(r=>r.json());statusReached=true;}catch{serviceNotice='接続を確認できません。このPCの中だけで魔法を決めます。';reached=false;}
+  if(!statusReached&&voiceChoice.checked){voiceChoice.checked=false;voiceAutoOff=true;}
   el('voice-availability').textContent=status.speech?(status.speechProvider==='local'?'（このPCで聞き取ります）':'（Googleで聞き取ります）'):status.localSpeech?.state==='loading'?'（準備中です）':'（いまは使えません）';
   el<HTMLInputElement>('use-voice').disabled=!status.speech;
-  if(!status.speech&&status.localSpeech?.state!=='loading')el<HTMLInputElement>('use-voice').checked=false;
+  if(reached&&!status.speech&&status.localSpeech?.state!=='loading'){if(voiceChoice.checked){voiceChoice.checked=false;voiceAutoOff=true;}}
+  else if(reached&&status.speech&&voiceAutoOff){voiceChoice.checked=true;voiceAutoOff=false;}
   updateFlowChoice();
   el('privacy').textContent=`${status.speechProvider==='google'?'カメラの映像はこのPCの中だけで扱います。声はGoogleへ送って文字に変えます。':'カメラの映像も声も、このPCの中だけで扱い、外へ送りません。'}${status.jev?'文字にした言葉と動きの形だけ、魔法を決める処理へ送ります。':''}描いた線と唱えた言葉は、このPCの中にだけ残します。カメラの映像と声そのものは残しません。`;}
 void readStatus();
@@ -253,7 +262,10 @@ async function begin(isDemo=false) {
     countingDown=true;el('app').dataset.screen='countdown';
     show('welcome',false);show('result',false);show('hud',true);show('timer',false);show('bottom-hud',false);show('input-panel',false);show('recognized',false);show('demo-tag',false);
     show('meter',!!voice);show('voice-label',false);show('countdown',true);
-    el('countdown-hint').textContent=mode==='camera'?'手を画面の前に出して、描き始める位置を決めよう':'マウスを、描き始めたい位置へ動かそう';
+    // 一回目が声だけの回なら、描く位置ではなく、先に唱えることを伝える。
+    el('countdown-hint').textContent=ROUNDS[0].drawEnd===null
+      ?mode==='camera'?'手を画面の前に出そう。光の点が手を追います':'はじめは、声で唱えて魔法をつくります'
+      :mode==='camera'?'手を画面の前に出して、描き始める位置を決めよう':'マウスを、描き始めたい位置へ動かそう';
     diag?.log('準備の合図を開始',{seconds:COUNTDOWN_SECONDS});
     for(let remaining=COUNTDOWN_SECONDS;remaining>0;remaining--) {
       el('countdown-number').textContent=String(remaining);
