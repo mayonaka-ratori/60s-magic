@@ -15,8 +15,12 @@ export type Round = {
   /** 線が残り始める合図。一回目だけ持ち、防御は最初から残る。 */
   build: number | null;
   /** 詠唱の案内を出す時刻。 */
-  chant: number;
-  /** 描画と声の締め切り。 */
+  chant: number | null;
+  /** 手の締め切り。無い回は手を受け付けない。 */
+  drawEnd: number | null;
+  /** 声の受付開始。無い回は声を受け付けない。 */
+  voiceStart: number | null;
+  /** 入力全体の締め切り。 */
   inputEnd: number;
   /** 魔法の内容を固定する時刻。 */
   lock: number;
@@ -38,16 +42,16 @@ export const flowOf = (search: string): Flow => new URLSearchParams(search).get(
 export const FLOW = flowOf(typeof location === 'undefined' ? '' : location.search);
 
 export const TOGETHER_ROUNDS: Round[] = [
-  { id: 'first', index: 1, castId: 'cast-01', start: 0, build: 7000, chant: 14000, inputEnd: 18000, lock: 21000, release: 22000, impact: 23500, finalBlow: null, handoff: 29000, end: 30000 },
-  { id: 'defend', index: 2, castId: 'cast-02', start: 30000, build: null, chant: 40000, inputEnd: 45000, lock: 48000, release: 49000, impact: 50400, finalBlow: null, handoff: 55000, end: 56000 },
-  { id: 'finish', index: 3, castId: 'cast-03', start: 56000, build: null, chant: 64000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
+  { id: 'first', index: 1, castId: 'cast-01', start: 0, drawEnd: 18000, voiceStart: 0, build: 7000, chant: 14000, inputEnd: 18000, lock: 21000, release: 22000, impact: 23500, finalBlow: null, handoff: 29000, end: 30000 },
+  { id: 'defend', index: 2, castId: 'cast-02', start: 30000, drawEnd: 45000, voiceStart: 30000, build: null, chant: 40000, inputEnd: 45000, lock: 48000, release: 49000, impact: 50400, finalBlow: null, handoff: 55000, end: 56000 },
+  { id: 'finish', index: 3, castId: 'cast-03', start: 56000, drawEnd: 72000, voiceStart: 56000, build: null, chant: 64000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
 ];
 
 /** 順番に遊ぶ時刻。手と声を分ける前も、この表で三回を進める。 */
 export const SEQUENTIAL_ROUNDS: Round[] = [
-  { id: 'first', index: 1, castId: 'cast-01', start: 0, build: 0, chant: 0, inputEnd: 14000, lock: 17000, release: 18000, impact: 19500, finalBlow: null, handoff: 24000, end: 26000 },
-  { id: 'defend', index: 2, castId: 'cast-02', start: 26000, build: 26000, chant: 26000, inputEnd: 38000, lock: 40000, release: 41000, impact: 42400, finalBlow: null, handoff: 46000, end: 50000 },
-  { id: 'finish', index: 3, castId: 'cast-03', start: 50000, build: 50000, chant: 62000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
+  { id: 'first', index: 1, castId: 'cast-01', start: 0, drawEnd: 14000, voiceStart: 0, build: 0, chant: 0, inputEnd: 14000, lock: 17000, release: 18000, impact: 19500, finalBlow: null, handoff: 24000, end: 26000 },
+  { id: 'defend', index: 2, castId: 'cast-02', start: 26000, drawEnd: 38000, voiceStart: 26000, build: 26000, chant: 26000, inputEnd: 38000, lock: 40000, release: 41000, impact: 42400, finalBlow: null, handoff: 46000, end: 50000 },
+  { id: 'finish', index: 3, castId: 'cast-03', start: 50000, drawEnd: 72000, voiceStart: 50000, build: 50000, chant: 62000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
 ];
 export const ROUNDS = FLOW === 'together' ? TOGETHER_ROUNDS : SEQUENTIAL_ROUNDS;
 
@@ -135,11 +139,17 @@ export const GUARD_STAGGER_MS = ROUNDS[1].impact + 2100;
 /** その時刻に進んでいる回。終わった後は最後の回を返す。 */
 export const roundAt = (ms: number) => ROUNDS.find(round => ms < round.end) ?? ROUNDS[ROUNDS.length - 1];
 
+export const acceptsDrawing = (round: Round, ms: number) => round.drawEnd !== null && ms >= round.start && ms < round.drawEnd;
+export const acceptsVoice = (round: Round, ms: number) => round.voiceStart !== null && ms >= round.voiceStart && ms < round.inputEnd;
+export const voiceConnectAt = (round: Round) => round.voiceStart === null ? null : round.voiceStart - VOICE_RECONNECT_MS;
+
 export function phaseAt(ms: number, round: Round = ROUNDS[0]): Phase {
   if (ms < round.start) return 'ready';
-  if (round.build !== null && ms < round.build) return 'draw';
-  if (ms < round.chant) return round.build === null ? 'draw' : 'build';
-  if (ms < round.inputEnd) return 'chant';
+  if (ms < round.inputEnd) {
+    if (round.build !== null && ms < round.build) return 'draw';
+    if (round.chant === null || ms < round.chant) return round.build === null || round.build === round.start ? 'draw' : 'build';
+    return 'chant';
+  }
   if (ms < round.release) return 'complete';
   if (ms < round.handoff) return 'release';
   if (ms < round.end) return 'handoff';
@@ -151,7 +161,7 @@ export function phaseAt(ms: number, round: Round = ROUNDS[0]): Phase {
  * 演出の部品はここからの相対で描き、「17秒」のような数字を埋め込まない。
  */
 export type Beat = {
-  start: number; build: number; chant: number; inputEnd: number; lock: number;
+  start: number; build: number; chant: number; drawEnd: number | null; voiceStart: number | null; inputEnd: number; lock: number;
   release: number; impact: number; handoff: number; end: number;
   /** とどめの一撃の時刻（秒）。持たない回は null。 */
   finalBlow: number | null;
@@ -161,7 +171,8 @@ export type Beat = {
   finish: boolean;
 };
 export const beatOf = (round: Round): Beat => ({
-  start: round.start / 1000, build: (round.build ?? round.start) / 1000, chant: round.chant / 1000,
+  start: round.start / 1000, build: (round.build ?? round.start) / 1000, chant: (round.chant ?? round.inputEnd) / 1000,
+  drawEnd: round.drawEnd === null ? null : round.drawEnd / 1000, voiceStart: round.voiceStart === null ? null : round.voiceStart / 1000,
   inputEnd: round.inputEnd / 1000, lock: round.lock / 1000, release: round.release / 1000,
   impact: round.impact / 1000, handoff: round.handoff / 1000, end: round.end / 1000,
   finalBlow: round.finalBlow === null ? null : round.finalBlow / 1000,

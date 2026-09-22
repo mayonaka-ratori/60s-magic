@@ -4,7 +4,7 @@ import { affirmativeText, explicitCount, makeRecipe } from './recipe';
 import { AIM, DEFAULT_ASPECT, guardStyleOf, shieldOf, type GuardPlan } from './guard';
 import type { JevReply, Phase, Recipe, SpellState } from './types';
 import { readChant, type ChantCorrection } from './chant-dictionary';
-import { ROUNDS, SPEECH_WAIT_MS, phaseAt, replyLimitOf, speechLimitOf, type Round } from './rounds';
+import { FLOW, ROUNDS, SPEECH_WAIT_MS, acceptsDrawing, acceptsVoice, phaseAt, replyLimitOf, speechLimitOf, type Round } from './rounds';
 
 export { phaseAt, SPEECH_WAIT_MS };
 // 確定の時刻は仕様の決まりなので動かさない。その手前をどう割るかだけを決める。
@@ -48,8 +48,8 @@ export class CastSession {
   corrections:ChantCorrection[]=[];
   constructor(private clock:()=>number=()=>performance.now(), id:string=crypto.randomUUID(), round:Round=ROUNDS[0], startMs?:number) {
     this.round=round;this.id=id;this.startMs=startMs??clock();
-    this.motion=new MotionRecorder(round.start,round.inputEnd);
-    this.speech=new SpeechBook(round.inputEnd-round.start);
+    this.motion=new MotionRecorder(round.start,round.drawEnd??round.start);
+    this.speech=new SpeechBook(round.inputEnd-round.start,round.voiceStart===null?null:round.voiceStart-round.start);
     this.phase=phaseAt(0,round);
   }
   /** 声の時刻は回ごとに0から数え直す。戦いの時刻へ直すときはこれを足す。 */
@@ -67,6 +67,8 @@ export class CastSession {
       this.guard={shield:shieldOf(this.motion.raw,null,AIM,this.aspect),style:'block'};
     if(this.elapsed>=this.round.lock&&!this.locked)this.lock();
   }
+  get acceptingDrawing() {return !this.cancelled&&acceptsDrawing(this.round,this.clock()-this.startMs);}
+  get acceptingVoice() {return !this.cancelled&&acceptsVoice(this.round,this.clock()-this.startMs);}
   get accepting() {
     const elapsed=this.clock()-this.startMs;
     return !this.cancelled&&elapsed>=this.round.start&&elapsed<this.round.inputEnd;
@@ -86,7 +88,7 @@ export class CastSession {
         :round.id==='finish'
         ?'自分の線と言葉からとどめの魔法を作り、崩れかけた騎士の胸の核へ届かせる'
         :'自分の線と言葉から最初の魔法を作り、目の前の騎士へ作用させる',
-      inputWindow:{startSessionMs:round.start,endSessionMs:round.inputEnd,chantPromptSessionMs:round.chant,motionAndSpeechConcurrent:true},motion,
+      inputWindow:{startSessionMs:round.start,endSessionMs:round.inputEnd,chantPromptSessionMs:round.chant,motionAndSpeechConcurrent:FLOW==='together',drawEndSessionMs:round.drawEnd,voiceStartSessionMs:round.voiceStart},motion,
       timedEvents:[...this.motionEvents(),...entries.map(e=>({startMs:e.startMs+round.start,endMs:e.endMs+round.start,speech:e.text,speechTiming:e.source==='typed'?'typed' as const:'utterance' as const}))].sort((a,b)=>a.startMs-b.startMs),
       speech:{status:entries.length?(entries.some(e=>e.source!=='typed')?'recognized':'typed'):'unavailable',provider:entries[0]?.source??null,locale:'ja-JP',rawTranscript:text,normalizedTranscript:chant.normalized,explicitCount:explicitCount(affirmativeText(chant.meaning)),explicitNegation:/ない|なく|するな/.test(text)},previous:this.previous,
       enemy:{attackKind:defend?'slash':'none',encounterMode:'exhibition_success'}};
@@ -98,9 +100,9 @@ export class CastSession {
   }
   private motionEvents() {
     const result:Array<{startMs:number;endMs:number;motion:string}>=[];
-    for(let start=this.round.start;start<this.round.inputEnd;start+=1000) {
+    for(let start=this.round.start;start<(this.round.drawEnd??this.round.start);start+=1000) {
       const p=this.motion.raw.filter(p=>p.t>=start&&p.t<start+1000);
-      if(p.length)result.push({startMs:start,endMs:Math.min(this.round.inputEnd,start+1000),motion:summarizeMotion(p).descriptions.outline});
+      if(p.length)result.push({startMs:start,endMs:Math.min(this.round.drawEnd!,start+1000),motion:summarizeMotion(p).descriptions.outline});
     }
     return result;
   }

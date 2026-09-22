@@ -27,13 +27,13 @@ const bar=(y:number,stroke=1):Point[]=>Array.from({length:12},(_,i)=>({x:.2+i*.0
 
 describe('回の時刻表',()=>{
   it('防御の回の境目を固定する',()=>{
-    const 境目:Array<[number,string]>=[[defend.start-1,'ready'],[defend.start,'draw'],[defend.chant-1,'draw'],
-      [defend.chant,'chant'],[defend.inputEnd-1,'chant'],[defend.inputEnd,'complete'],[defend.release-1,'complete'],
+    const 境目:Array<[number,string]>=[[defend.start-1,'ready'],[defend.start,'draw'],[defend.chant!-1,'draw'],
+      [defend.chant!,'chant'],[defend.inputEnd-1,'chant'],[defend.inputEnd,'complete'],[defend.release-1,'complete'],
       [defend.release,'release'],[defend.handoff-1,'release'],[defend.handoff,'handoff'],[defend.end,'finished']];
     for(const [time,phase] of 境目)expect(phaseAt(time,defend)).toBe(phase);
   });
   it('一回目の境目は表のとおり',()=>{
-    const 境目:Array<[number,string]>=[[0,'draw'],[first.build!,'build'],[first.chant,'chant'],[first.inputEnd,'complete'],
+    const 境目:Array<[number,string]>=[[0,'draw'],[first.build!,'build'],[first.chant!,'chant'],[first.inputEnd,'complete'],
       [first.release,'release'],[first.handoff,'handoff'],[first.end,'finished']];
     for(const [time,phase] of 境目)expect(phaseAt(time)).toBe(phase);
   });
@@ -394,7 +394,7 @@ describe('防御の回の音',()=>{
   it('回ごとに、録音の間は鳴らさない',()=>{
     // 録音を止めてから0.75秒は鳴らさない。その手前と直後を見る。
     const quiet=defend.inputEnd+750;
-    expect(dueSounds(defend.chant,defend.chant+100,true)).toEqual([]);
+    expect(dueSounds(defend.chant!,defend.chant!+100,true)).toEqual([]);
     expect(dueSounds(quiet-50,quiet-10,true)).toEqual([]);
     expect(dueSounds(quiet-10,quiet+10,true).map(c=>c.name)).toEqual(['build']);
     expect(dueSounds(defend.release-10,defend.release+10,false).map(c=>c.name)).toEqual(['release']);
@@ -402,9 +402,9 @@ describe('防御の回の音',()=>{
     expect(dueSounds(first.impact-10,first.impact+10,false).map(c=>c.name)).toEqual(['impact']);
   });
   it('受付の間だけ曲を下げる',()=>{
-    expect(shouldDuck(first.chant)).toBe(true);
+    expect(shouldDuck(first.chant!)).toBe(true);
     expect(shouldDuck(first.lock)).toBe(false);
-    expect(shouldDuck(defend.chant)).toBe(true);
+    expect(shouldDuck(defend.chant!)).toBe(true);
     expect(shouldDuck(defend.lock)).toBe(false);
   });
 });

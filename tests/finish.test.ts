@@ -15,8 +15,8 @@ const 遅れ=FINISH_STOPS.impact+FINISH_STOPS.finalBlow+FINISH_SLOW.seconds*(1-F
 
 describe('とどめの回の時刻表',()=>{
   it('三回目の場面の境目を固定する',()=>{
-    const 境目:Array<[number,string]>=[[finish.start-1,'ready'],[finish.start,'draw'],[finish.chant-1,'draw'],
-      [finish.chant,'chant'],[finish.inputEnd-1,'chant'],[finish.inputEnd,'complete'],[finish.release-1,'complete'],
+    const 境目:Array<[number,string]>=[[finish.start-1,'ready'],[finish.start,'draw'],[finish.chant!-1,'draw'],
+      [finish.chant!,'chant'],[finish.inputEnd-1,'chant'],[finish.inputEnd,'complete'],[finish.release-1,'complete'],
       [finish.release,'release'],[finish.handoff-1,'release'],[finish.handoff,'handoff'],[finish.end,'finished']];
     for(const [time,phase] of 境目)expect(phaseAt(time,finish)).toBe(phase);
   });
@@ -209,7 +209,7 @@ describe('とどめの回の部品',()=>{
     expect(battle.inherited.length).toBeGreaterThan(3);
     expect(battle.inherited.length).toBeLessThanOrEqual(6);
     expect(battle.finish.previous?.name).toBe(battle.defend.recipe?.name);
-    now=finish.chant;battle.tick();
+    now=finish.chant!;battle.tick();
     expect(battle.inherited.length).toBeLessThanOrEqual(6);
     expect(battle.report().scope).toBe('full-90-seconds');
     expect(battle.report().rounds.length).toBe(3);

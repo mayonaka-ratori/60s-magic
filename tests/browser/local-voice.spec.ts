@@ -26,7 +26,7 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     await page.mouse.up();await expect(page.locator('#instruction')).toHaveText('描きながら、詠唱せよ',{timeout:17000});
     // 声は受付の17.3秒まで続く。線も同じところまで描き、締め切りの手前まで両方を受け付けているか見る。
     // コマ数ではなく時計で測る。遅いPCでコマ送りが重くなっても、締め切りを大きく過ぎない。
-    const 描き終わり=Date.now()+(ROUNDS[0].inputEnd-ROUNDS[0].chant);
+    const 描き終わり=Date.now()+(ROUNDS[0].inputEnd-ROUNDS[0].chant!);
     await page.mouse.move(540,480);await page.mouse.down();
     for(let i=0;Date.now()<描き終わり;i++){await page.mouse.move(540+Math.sin(i/7)*120,400+Math.cos(i/7)*110);await page.waitForTimeout(100);}
     await page.mouse.up();

@@ -37,7 +37,8 @@ function cuesOf(round:Round,calm:boolean):Cue[] {
   const quietUntil=round.inputEnd+QUIET_TAIL;
   const list:Array<[SoundCue,number]>=[];
   if(round.build!==null)list.push(['trace',round.build]);
-  list.push(['chant',round.chant],['build',quietUntil],['complete',round.lock],['release',round.release],
+  if(round.chant!==null)list.push(['chant',round.chant]);
+  list.push(['build',quietUntil],['complete',round.lock],['release',round.release],
     [round.id==='defend'?'block':'impact',round.impact]);
   // とどめの一撃と、そのあとの崩れ落ちる音。持たない回は飛ばす。
   if(round.finalBlow!==null) {

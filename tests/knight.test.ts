@@ -228,7 +228,7 @@ describe('胸の核の光', () => {
 describe('とどめの崩れ落ち', () => {
   const at = (t: number) => guardPose(t * 1000, false, 'block');
   it('とどめの回は、膝をつき始めるまで前屈のまま', () => {
-    for (const t of [finish.start, finish.chant, finish.inputEnd, finish.release, finish.impact, finish.finalBlow!].map(ms => ms / 1000).concat(膝 - .01)) {
+    for (const t of [finish.start, finish.chant!, finish.inputEnd, finish.release, finish.impact, finish.finalBlow!].map(ms => ms / 1000).concat(膝 - .01)) {
       const pose = at(t);
       expect(pose.weights[7]).toBeCloseTo(1, 6);
       expect(pose.weights[8]).toBe(0);
@@ -314,7 +314,7 @@ describe('とどめの部品の脱落', () => {
 });
 
 describe('とどめの核の明滅', () => {
-  const 始まり = finish.start / 1000, 案内 = finish.chant / 1000, 確定 = finish.lock / 1000;
+  const 始まり = finish.start / 1000, 案内 = finish.chant! / 1000, 確定 = finish.lock / 1000;
   it('回の始まりからは2秒に1回、詠唱の案内からは1秒に1回', () => {
     expect(coreBlink(始まり - .1)).toBe(0);
     // 2秒に1回。回の始まりで中ほど、0.5秒後に最大、1.5秒後に最小。

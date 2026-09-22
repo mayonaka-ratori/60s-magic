@@ -130,11 +130,11 @@ describe('とどめの回の音の合図', () => {
   });
   it('マイクを使う回は、録音の終わりを待つまで鳴らさない', () => {
     const quiet = finish.inputEnd + 750;
-    expect(dueSounds(finish.chant, finish.chant + 100, true)).toEqual([]);
+    expect(dueSounds(finish.chant!, finish.chant! + 100, true)).toEqual([]);
     expect(dueSounds(quiet - 50, quiet - 10, true)).toEqual([]);
     expect(dueSounds(quiet - 10, quiet + 10, true).map(cue => cue.name)).toEqual(['build']);
     // 録音していなければ詠唱の案内も鳴る。
-    expect(names(finish.chant - 10, finish.chant + 10)).toEqual(['chant']);
+    expect(names(finish.chant! - 10, finish.chant! + 10)).toEqual(['chant']);
   });
 });
 

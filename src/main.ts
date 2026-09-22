@@ -1,7 +1,7 @@
 import './style.css';
 import { Battle } from './game/battle';
 import type { CastSession } from './game/session';
-import { BATTLE_END, FLOW, COUNTDOWN_MS, GUARD_STAGGER_MS, ROUNDS, SPEECH_WAIT_MS, VOICE_RECONNECT_MS, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
+import { BATTLE_END, FLOW, COUNTDOWN_MS, GUARD_STAGGER_MS, ROUNDS, SPEECH_WAIT_MS, voiceConnectAt, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
 import { GUARD_LABELS } from './game/guard';
 import { ELEMENT_LABELS, PURPOSE_LABELS, FORM_LABELS, type Phase } from './game/types';
 import { HandCamera } from './input/camera';
@@ -204,7 +204,7 @@ async function begin(isDemo=false) {
       const input=new HandCamera((hands,timestamp)=>{
         if(version!==prepareVersion)return;
         cursors=hands;if(hands.length){lastHandAt=timestamp;if(!pendingInputAt)pendingInputAt=performance.now();}
-        if(session?.accepting)for(const hand of hands)session.active.motion.add(hand.x,hand.y,timestamp-session.startMs,hand.id);
+        if(session?.acceptingDrawing)for(const hand of hands)session.active.motion.add(hand.x,hand.y,timestamp-session.startMs,hand.id);
       },message=>{serviceNotice=message;},{
         frame:(detectMs,latencyMs)=>{lastCameraLatency=latencyMs;record?.camera(detectMs,latencyMs);},
         event:(kind,detail)=>{record?.log(kind,detail);if(record&&typeof detail?.delegate==='string')record.cameraDelegate=detail.delegate;},
@@ -272,7 +272,7 @@ const pointer=(event:PointerEvent)=>{
   if(mode!=='pointer'||demo||!pointerDown)return;
   const rect=magic.canvas.getBoundingClientRect(),x=(event.clientX-rect.left)/rect.width,y=(event.clientY-rect.top)/rect.height;
   if(countingDown){cursors=[{x,y}];return;}
-  if(!session?.accepting)return;
+  if(!session?.acceptingDrawing)return;
   session.active.motion.add(x,y,performance.now()-session.startMs);cursors=[{x,y}];diag?.pointer();
   if(!pendingInputAt)pendingInputAt=event.timeStamp||performance.now();
 };
@@ -280,10 +280,10 @@ magic.canvas.addEventListener('pointerdown',event=>{pointerDown=true;magic.canva
 magic.canvas.addEventListener('pointermove',pointer);
 for(const name of ['pointerup','pointercancel','lostpointercapture'])magic.canvas.addEventListener(name,()=>{pointerDown=false;session?.active.motion.break(0);cursors=[];});
 function addTypedChant() {
-  const cast=session?.active;if(!cast?.accepting)return;
+  const cast=session?.active;if(!cast?.acceptingVoice)return;
   // 声の時刻は回ごとに0から数える。回の長さを超えない位置に置く。
   const local=Math.min(cast.round.inputEnd-cast.round.start-1,Math.max(0,session!.elapsed-cast.round.start));
-  cast.speech.add({id:10000,revision:Math.ceil(performance.now()*1000),startMs:0,endMs:local,text:el<HTMLInputElement>('chant').value,final:true,stability:1,source:'typed'});
+  cast.speech.add({id:10000,revision:Math.ceil(performance.now()*1000),startMs:(cast.round.voiceStart??cast.round.start)-cast.round.start,endMs:local,text:el<HTMLInputElement>('chant').value,final:true,stability:1,source:'typed'});
 }
 el('chant').addEventListener('input',()=>{diag?.log('文字を入力',{length:el<HTMLInputElement>('chant').value.length});addTypedChant();});
 
@@ -448,6 +448,7 @@ function driveRound(battle:Battle,cast:CastSession) {
  * 声の時刻は回ごとに0から数えるので、早く始めるとその分だけ時刻がずれ、受付の長さをはみ出して捨てられる。
  */
 function prepareRoundVoice(battle:Battle,round:Round) {
+  if(round.voiceStart===null)return;
   if(voice&&!demo&&!voicePrepared.has(round.id)&&voiceRound===null) {
     voicePrepared.add(round.id);
     const input=voice;
@@ -456,7 +457,7 @@ function prepareRoundVoice(battle:Battle,round:Round) {
       .catch(()=>{if(session===battle){voiceLost=true;serviceNotice='声の受付を再開できませんでした。文字で入れるか、描いた線で続けられます。';diag?.log('声を受付できず',{round:round.id});}});
   }
   // つながっていて回が始まっていれば、そこから録音する。遅れてつながったときは、その遅れを offset で渡す。
-  if(voice&&voiceReadyFor===round.id&&voiceRound===null&&battle.elapsed>=round.start&&battle.elapsed<round.inputEnd) {
+  if(voice&&voiceReadyFor===round.id&&voiceRound===null&&battle.elapsed>=round.voiceStart&&battle.elapsed<round.inputEnd) {
     voice.start(battle.elapsed-round.start);voiceRound=round.id;voiceReadyFor=null;
     diag?.log('声を受付',{round:round.id,atMs:Math.round(battle.elapsed)});
   }
@@ -464,7 +465,7 @@ function prepareRoundVoice(battle:Battle,round:Round) {
 
 /** 見本の動き。一回目は自由な線、防御ととどめは印を囲む輪。本人の記録には数えない。 */
 function demoInput(battle:Battle) {
-  if(!battle.accepting)return;
+  if(!battle.acceptingDrawing)return;
   const t=battle.elapsed/1000;
   if(battle.round.id==='first') {
     if(t>4.2&&t<5.1)return;
@@ -625,7 +626,7 @@ function animate(now:number) {
     if(recorder&&locked>savedRounds){savedRounds=locked;void recorder.save(battle);}
     // 二回目からの回は、その少し前に声の受付を作り直す。
     for(const round of LATER_ROUNDS)
-      if(battle.elapsed>=round.start-VOICE_RECONNECT_MS&&battle.elapsed<round.inputEnd)prepareRoundVoice(battle,round);
+      if(voiceConnectAt(round)!==null&&battle.elapsed>=voiceConnectAt(round)!&&battle.elapsed<round.inputEnd)prepareRoundVoice(battle,round);
     if(battle.elapsed>=BATTLE_END&&!resultShown)finish();
     if(now-lastUi>80){updateUi();lastUi=now;}
   }

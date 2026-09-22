@@ -14,5 +14,5 @@ export const questions={
   enclosure:noul('対象や自分を囲う意味があるか。'),
   split:noul('複数へ分かれる意味があるか。'),
   developsPrevious:noul('前の魔法を発展させる意味があるか。previousがnullならいいえ。'),
-  motionSpeechAligned:noul('同じ時刻の動きと言葉が同じ働きを指すか。言葉がない場合はいいえ。'),
+  motionSpeechAligned:noul('同じ時刻の動きと言葉が同じ働きを指すか。手か声の受付が無い回は評価しない。言葉がない場合はいいえ。'),
 };

@@ -25,7 +25,7 @@ describe('音の時刻',()=>{
   it('録音中と認識結果を待つ間は鳴らさない',()=>{
     const quiet=first.inputEnd+750;
     expect(dueSounds(first.build!-100,first.build!+10,true)).toEqual([]);
-    expect(dueSounds(first.chant-100,first.chant+10,true)).toEqual([]);
+    expect(dueSounds(first.chant!-100,first.chant!+10,true)).toEqual([]);
     expect(dueSounds(quiet-50,quiet-10,true)).toEqual([]);
     expect(dueSounds(quiet-10,quiet+10,true).map(c=>c.name)).toEqual(['build']);
   });

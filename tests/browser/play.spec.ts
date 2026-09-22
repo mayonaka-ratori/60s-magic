@@ -26,7 +26,7 @@ test('90秒を最後まで遊び、七つの雷と、印を囲んだ盾と、と
   // 詠唱の案内から締め切りまで、手を止めずに描く。これで下の rawPoints が
   // 「締め切り近くまで受け付けていた」ことを見られる。締め切りを過ぎた点は記録側が落とす。
   // コマ数ではなく時計で測る。遅いPCでコマ送りが重くなっても、締め切りを大きく過ぎない。
-  const 描き終わり=Date.now()+(ROUNDS[0].inputEnd-ROUNDS[0].chant);
+  const 描き終わり=Date.now()+(ROUNDS[0].inputEnd-ROUNDS[0].chant!);
   await page.mouse.move(550,480);await page.mouse.down();
   for(let i=0;Date.now()<描き終わり;i++){await page.mouse.move(550+Math.sin(i/7)*130,400+Math.cos(i/7)*110);await page.waitForTimeout(100);}
   await page.mouse.up();

@@ -30,6 +30,8 @@ export class Battle {
   get defend() {return this.casts[1];}
   get finish() {return this.casts[2];}
   get phase():Phase {return this.cancelled?'cancelled':phaseAt(this.elapsed,this.round);}
+  get acceptingDrawing() {return !this.cancelled&&this.active.acceptingDrawing;}
+  get acceptingVoice() {return !this.cancelled&&this.active.acceptingVoice;}
   get accepting() {return !this.cancelled&&this.active.accepting;}
   get finished() {return this.elapsed>=BATTLE_END;}
   /** 狙いの印。防御の回の間だけ出す。 */
