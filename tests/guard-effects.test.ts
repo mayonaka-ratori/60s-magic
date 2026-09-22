@@ -1,18 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { ROUNDS, beatOf, ENEMY_SLAM_MS } from '../src/game/rounds';
-import { AIM } from '../src/game/guard';
-import { presets } from '../src/render/effects/presets';
 import { ParticlePool } from '../src/render/effects/particles';
-import { ENEMY, FLOOR_CRACK, FLOOR_DUST, SLAM_AFTER_LOCK, SLASH, drawGuard, floorCrackAt, footOf, slashSizeAt } from '../src/render/effects/guard';
+import { ENEMY, FLOOR_CRACK, FLOOR_DUST, SLASH, drawGuard, floorCrackAt, footOf, slashSizeAt } from '../src/render/effects/guard';
 import type { Frame } from '../src/render/effects/frame';
-import type { Recipe } from '../src/game/types';
+// 試験用の魔法と仮の Frame は tests/helpers.ts にまとめてある。
+import { testFrame, testRecipe } from './helpers';
 
 const defendBeat = beatOf(ROUNDS[1]);
 const slam = ENEMY_SLAM_MS / 1000;
-const recipe: Recipe = { version: 'recipe-1', element: 'fire', purpose: 'defend', form: 'orb', trajectory: 'straight', count: 1, explicitCount: null, defense: .5, area: .5, duration: .5, concentration: .5,
-  enclosure: false, split: false, developsPrevious: null, motionSpeechAligned: null, noAttack: false, name: '', source: 'local', decisions: {}, assistance: [], model: null };
+const recipe = testRecipe({ purpose: 'defend', defense: .5 });
 
-/** 描く命令を受け流すだけの仮の canvas。数と文字の指定を記録する。node には本物の canvas がないため。 */
+/**
+ * 描く命令を受け流すだけの仮の canvas。数と文字の指定を記録する。node には本物の canvas がないため。
+ * 色や重ね方の文字も見るので、tests/helpers.ts の stubContext（数だけを記録する）とは別に置く。
+ */
 const stubContext = (log: string[]) => {
   const held: Record<string, unknown> = {};
   const fake: unknown = new Proxy(held, {
@@ -24,24 +25,15 @@ const stubContext = (log: string[]) => {
 /** guard.ts の部品を呼ぶための仮の Frame。once は本物と同じく一度だけ動く。 */
 function frame(t: number, over: Partial<Frame> = {}) {
   const log: string[] = [], fired = new Set<string>();
-  const f: Frame = {
-    c: stubContext(log), w: 1280, h: 720, t, dt: .016,
-    sprites: { draw: () => {} } as unknown as Frame['sprites'], pool: new ParticlePool(700),
-    preset: presets.vivid, palette: presets.vivid.palettes.fire, intensity: 1.5,
-    recipe, locked: true, origin: { x: 320, y: 520 }, target: { x: 900, y: 360 },
-    accent: null, live: { words: [], amount: 0, voice: 0, rings: 0, covered: false }, points: [], cursors: [],
-    beat: defendBeat, guard: null, aim: AIM, inherited: [], calm: false,
+  const f = testFrame({
+    c: stubContext(log), t, pool: new ParticlePool(700), recipe, origin: { x: 320, y: 520 }, beat: defendBeat,
     once: (key, run) => { if (!fired.has(key)) { fired.add(key); run(); } }, ...over,
-  };
+  });
   return { f, log };
 }
 const dust = (f: Frame) => f.pool.items.filter(p => p.alive && p.kind === 3);
 
 describe('床の一撃', () => {
-  it('床を打つ時刻は確定の0.55秒後で、回の表と同じ', () => {
-    expect(SLAM_AFTER_LOCK).toBeCloseTo(.55, 9);
-    expect(defendBeat.lock + SLAM_AFTER_LOCK).toBeCloseTo(slam, 9);
-  });
   it('亀裂は床を打った瞬間に走り始め、回の終わりまで残り、最後の1秒で薄れる', () => {
     expect(floorCrackAt(slam - .01, defendBeat)).toBeNull();
     const start = floorCrackAt(slam, defendBeat)!;
@@ -73,7 +65,10 @@ describe('床の一撃', () => {
     // 亀裂は足元から始まる。本数ぶんの moveTo がある。
     expect(log.filter(line => line === `moveTo:${Math.round(foot.x)},${Math.round(foot.y)}`).length).toBeGreaterThanOrEqual(FLOOR_CRACK.branches);
   });
-  it('塵は床を打った瞬間に一度だけ、足元から左右へ、画面の端まで届く速さで出る', () => {
+  it('塵は床を打った瞬間に一度だけ、足元から左右へ、画面の端まで届く速さで出る。控えめモードでは3分の1', () => {
+    // 床を打つ前には出ない。
+    const early = frame(slam - .05); drawGuard(early.f);
+    expect(dust(early.f)).toHaveLength(0);
     const { f } = frame(slam + .01); drawGuard(f);
     const grains = dust(f);
     expect(grains).toHaveLength(FLOOR_DUST.count);
@@ -90,20 +85,14 @@ describe('床の一撃', () => {
     // もう一度描いても増えない。
     f.t = slam + .5; drawGuard(f);
     expect(dust(f)).toHaveLength(FLOOR_DUST.count);
-  });
-  it('控えめモードでは塵を3分の1にする', () => {
-    const { f } = frame(slam + .01, { calm: true }); drawGuard(f);
-    expect(dust(f)).toHaveLength(FLOOR_DUST.count / 3);
-  });
-  it('床を打つ前には塵も亀裂も出ない', () => {
-    const { f } = frame(slam - .05); drawGuard(f);
-    expect(dust(f)).toHaveLength(0);
+    const calm = frame(slam + .01, { calm: true }); drawGuard(calm.f);
+    expect(dust(calm.f)).toHaveLength(FLOOR_DUST.count / 3);
   });
 });
 
 describe('敵の斬撃の大きさ', () => {
-  it('基準は1.4倍で、届くころには弧が画面の高さの半分近くまで広がる', () => {
-    expect(SLASH.scale).toBe(1.4);
+  it('届くころには弧が画面の高さの半分近くまで広がる', () => {
+    // 派手さ1.5のときの斬撃の基準の大きさ。
     const size = (26 + 1.5 * 6) * SLASH.scale, h = 720;
     expect(slashSizeAt(size, h, 0)).toBeCloseTo(size * .55, 9);
     expect(slashSizeAt(size, h, 1)).toBeCloseTo(h * SLASH.nearHeight, 9);

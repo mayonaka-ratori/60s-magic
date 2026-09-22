@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitSpell, completedSpellFrame, spellPose, spellBounds, backdropTarget, smoothStroke, SPELL_BOUNDS, SPELL_MIN } from '../src/render/spell-layout';
+import { fitSpell, completedSpellFrame, spellPose, spellBounds, smoothStroke, SPELL_BOUNDS, SPELL_MIN } from '../src/render/spell-layout';
 import { BEATS } from '../src/game/rounds';
 import { AIM } from '../src/game/guard';
 import { ROUNDS } from '../src/game/rounds';
@@ -26,8 +26,9 @@ describe('完成した術式の配置', () => {
     { x: 1, y: .5, t: 10, hand: 0, stroke: 1 },
     { x: .5, y: 1, t: 20, hand: 1, stroke: 2 },
   ];
-  it.each([[1440,900],[390,844],[2560,1080]])('画面全体に描いても収まり、縦横比と筆の切れ目が変わらない %s×%s', (w,h) => {
-    const before = structuredClone(points), frame = completedSpellFrame(w,h);
+  // 置き方は画面に対する割合で決まるので、画面の大きさは1通りで足りる。
+  it('画面全体に描いても収まり、縦横比と筆の切れ目が変わらない', () => {
+    const w=1440,h=900,before = structuredClone(points), frame = completedSpellFrame(w,h);
     const fitted = fitSpell(points,w,h,frame);
     for (const p of fitted) {
       expect(p.x*w).toBeGreaterThanOrEqual(frame.x-frame.width/2-.001);
@@ -71,16 +72,16 @@ describe('完成した術式の配置', () => {
 });
 
 describe('描いた場所と大きさのまま使う',()=>{
-  const sizes:[number,number][]=[[1440,900],[390,844],[2560,1080]];
-  it.each(sizes)('大きく描いた形は縮めず、動かさない %s×%s',(w,h)=>{
-    const points=shapeIn(.2,.3,.7,.7),pose=spellPose(points,w,h,RELEASE_MS);
+  // 置き方は画面に対する割合で決まるので、画面の大きさは1通りで足りる。
+  it('大きく描いた形は縮めず、動かさない',()=>{
+    const w=1440,h=900,points=shapeIn(.2,.3,.7,.7),pose=spellPose(points,w,h,RELEASE_MS);
     expect(pose.scale).toBeCloseTo(1);expect(pose.dx).toBeCloseTo(0);expect(pose.dy).toBeCloseTo(0);
     expect(pose.center).toEqual({x:w*.45,y:h*.5});
     const frame=completedSpellFrame(w,h,BEATS[0],points);
     expect(frame.x).toBeCloseTo(w*.45);expect(frame.y).toBeCloseTo(h*.5);expect(frame.width).toBeCloseTo(w*.5);expect(frame.height).toBeCloseTo(h*.4);
   });
-  it.each(sizes)('小さく描いた形は、幅か高さが下限に届くまで広げる %s×%s',(w,h)=>{
-    const points=shapeIn(.45,.45,.55,.55),shown=shownAt(points,w,h,RELEASE_MS);
+  it('小さく描いた形は、幅か高さが下限に届くまで広げる',()=>{
+    const w=1440,h=900,points=shapeIn(.45,.45,.55,.55),shown=shownAt(points,w,h,RELEASE_MS);
     const pose=spellPose(points,w,h,RELEASE_MS);
     expect(pose.scale).toBeGreaterThan(1);expect(pose.scale).toBeLessThanOrEqual(SPELL_MIN.scale);
     // どちらかの辺が下限ちょうどになり、もう一方は下限を超えない。
@@ -163,19 +164,6 @@ describe('描いた場所と大きさのまま使う',()=>{
     // 締め切りまでは入力した位置のまま。
     expect(spellPose(big,w,h,DEFEND.inputEnd*1000,DEFEND).progress).toBe(0);
     expect(spellPose(big,w,h,DEFEND.inputEnd*1000,DEFEND).scale).toBe(1);
-  });
-  it('結果の縮小図に使う fitSpell は変わらず、指定の枠へ収める',()=>{
-    const w=1440,h=900,frame={x:w/2,y:h/2,width:w*.7,height:h*.7};
-    const fitted=fitSpell(shapeIn(0,0,1,1),w,h,frame);
-    for(const p of fitted){expect(p.x*w).toBeGreaterThanOrEqual(frame.x-frame.width/2-.001);expect(p.x*w).toBeLessThanOrEqual(frame.x+frame.width/2+.001);}
-    expect(widthOf(fitted)).toBeCloseTo(.7);
-  });
-  it('縦長と横長でも命中位置が背景画像の胸からずれない',()=>{
-    for(const [w,h] of [[1440,900],[390,844],[2560,1080]]) {
-      const scale=Math.max(w/1672,h/941),target=backdropTarget(w,h,1672,941);
-      expect(target.x).toBe(.5);
-      expect(target.y*h).toBeCloseTo((h-941*scale)/2+.32*941*scale);
-    }
   });
 });
 

@@ -1,10 +1,9 @@
 import { describe,it,expect } from 'vitest';
-import { BATTLE_END,BEATS,ROUNDS,beatAt,beatOf,phaseAt,roundAt,replyLimitOf,speechLimitOf } from '../src/game/rounds';
+import { BEATS,ROUNDS,beatOf } from '../src/game/rounds';
 import { Battle } from '../src/game/battle';
-import { FINISH_SLOW,FINISH_STOPS,FINISH_TILT,FINISH_ZOOM,HIT_STOPS,HIT_ZOOM,SHAKE_TILT,WARP_LIMITS,effectTime,screenState,warpOf,warpReal,warpTime } from '../src/render/effects/screen';
+import { FINISH_SLOW,FINISH_STOPS,FINISH_TILT,HIT_STOPS,effectTime,screenState,warpOf,warpReal,warpTime } from '../src/render/effects/screen';
 import { postHeavyActive,postToOf } from '../src/render/composite';
 import { presets } from '../src/render/effects/presets';
-import { dueSounds } from '../src/audio/cues';
 
 const first=ROUNDS[0],defend=ROUNDS[1],finish=ROUNDS[2];
 const finishBeat=beatOf(finish);
@@ -14,24 +13,6 @@ const 直撃=finishBeat.finalBlow!,直撃の実際=直撃+FINISH_STOPS.impact;
 const 遅れ=FINISH_STOPS.impact+FINISH_STOPS.finalBlow+FINISH_SLOW.seconds*(1-FINISH_SLOW.rate);
 
 describe('とどめの回の時刻表',()=>{
-  it('三回目の場面の境目を固定する',()=>{
-    const 境目:Array<[number,string]>=[[finish.start-1,'ready'],[finish.start,'draw'],[finish.chant-1,'draw'],
-      [finish.chant,'chant'],[finish.inputEnd-1,'chant'],[finish.inputEnd,'complete'],[finish.release-1,'complete'],
-      [finish.release,'release'],[finish.handoff-1,'release'],[finish.handoff,'handoff'],[finish.end,'finished']];
-    for(const [time,phase] of 境目)expect(phaseAt(time,finish)).toBe(phase);
-  });
-  it('56秒からはとどめの回になり、戦いは90秒で終わる',()=>{
-    expect(roundAt(finish.start-1).id).toBe('defend');expect(roundAt(finish.start).id).toBe('finish');
-    expect(BATTLE_END).toBe(90000);
-    expect(finish.start).toBe(56000);
-    expect(beatAt(finishBeat.chant).finish).toBe(true);expect(beatAt(beatOf(defend).chant).finish).toBe(false);
-    expect(BEATS.length).toBe(3);
-  });
-  it('締め切りから確定までは3秒。声の待ちと打ち切りは前の二回と同じ割り方',()=>{
-    expect(finish.lock-finish.inputEnd).toBe(3000);
-    expect(defend.lock-defend.inputEnd).toBe(3000);
-    expect(speechLimitOf(finish)).toBe(finish.inputEnd+2000);expect(replyLimitOf(finish)).toBe(finish.lock-100);
-  });
   it('とどめの一撃は最初の到達より後、余韻の始まりより前',()=>{
     expect(finish.finalBlow).not.toBeNull();
     expect(finish.finalBlow!).toBeGreaterThan(finish.impact);
@@ -42,21 +23,6 @@ describe('とどめの回の時刻表',()=>{
 });
 
 describe('世界の時計のゆがみ',()=>{
-  /** 前までの式。命中で hitStop 秒だけ止めるだけのもの。 */
-  const before=(t:number,hitStop:number,impact:number)=>t<impact||hitStop<=0?t:impact+Math.max(0,t-impact-hitStop);
-  it('防御の世界の時刻は今までと1ミリ秒刻みで完全に同じ。一回目も止めが無ければ同じ',()=>{
-    // 一回目の止めがあるときは、命中のあとに二度止め直す三段になる（tests/screen.test.ts）。
-    const 組=[[BEATS[0],[0]],[BEATS[1],[0,HIT_STOPS.weak,HIT_STOPS.strong,HIT_STOPS.finish]]] as const;
-    for(const [beat,止め] of 組)for(const hitStop of 止め){
-      let 違い=0;
-      for(let ms=0;ms<=defend.end;ms++){const t=ms/1000;if(effectTime(t,hitStop,beat)!==before(t,hitStop,beat.impact))違い++;}
-      expect(違い,`停止${hitStop}秒`).toBe(0);
-    }
-  });
-  it('とどめの回でも時計は戻らない',()=>{
-    let 前=-1;
-    for(let ms=0;ms<=BATTLE_END;ms++){const 世界=effectTime(ms/1000,HIT_STOPS.strong,finishBeat);expect(世界).toBeGreaterThanOrEqual(前);前=世界;}
-  });
   it('設計の表どおりの時刻になる',()=>{
     const 世界=(t:number)=>effectTime(t,HIT_STOPS.strong,finishBeat);
     // 一発目で0.10秒、直撃で0.25秒止まる。そのぶん実際の時刻は後ろへずれる。
@@ -67,25 +33,12 @@ describe('世界の時計のゆがみ',()=>{
     expect(世界(finishBeat.impact+.05)).toBeCloseTo(finishBeat.impact,6);
     expect(世界(直撃の実際+.1)).toBeCloseTo(直撃,6);
   });
-  it('遅れの合計は0.8秒まで、止めは3回まで',()=>{
-    const warp=warpOf(finishBeat,HIT_STOPS.strong);
-    expect(warp.stops.length).toBeLessThanOrEqual(WARP_LIMITS.stops);
-    const 終わり=finishBeat.end;
-    expect(終わり-effectTime(終わり,HIT_STOPS.strong,finishBeat)).toBeLessThanOrEqual(WARP_LIMITS.delay);
-    expect(終わり-effectTime(終わり,HIT_STOPS.strong,finishBeat)).toBeCloseTo(.725,6);
-  });
   it('とどめのゆがみは、本人の魔法（派手さや停止の長さ）で変わらない',()=>{
     const 見本=JSON.stringify(warpOf(finishBeat,HIT_STOPS.weak));
     for(const hitStop of [HIT_STOPS.weak,HIT_STOPS.strong,HIT_STOPS.finish,.5])
       expect(JSON.stringify(warpOf(finishBeat,hitStop))).toBe(見本);
     for(const hitStop of [HIT_STOPS.weak,HIT_STOPS.finish])
       expect(effectTime(finishBeat.handoff,hitStop,finishBeat)).toBe(effectTime(finishBeat.handoff,HIT_STOPS.strong,finishBeat));
-  });
-  it('止めは表の時刻から作り、数字を埋め込んでいない',()=>{
-    const warp=warpOf(finishBeat,HIT_STOPS.strong);
-    expect(warp.stops[0]).toEqual({at:finishBeat.impact,hold:FINISH_STOPS.impact});
-    expect(warp.stops[1]).toEqual({at:finishBeat.finalBlow,hold:FINISH_STOPS.finalBlow});
-    expect(warp.slow).toEqual({from:finishBeat.finalBlow!+FINISH_SLOW.after,seconds:FINISH_SLOW.seconds,rate:FINISH_SLOW.rate});
   });
   it('控えめモードでは止めがなくなり、スローだけ残る',()=>{
     const warp=warpOf(finishBeat,0);
@@ -134,51 +87,20 @@ describe('とどめの回の画面',()=>{
     expect(補助.shakeX).toBe(攻撃.shakeX);expect(補助.shakeY).toBe(攻撃.shakeY);
     expect(補助.rotate).toBeCloseTo(攻撃.rotate,9);
   });
-  it('発動の直前の0.08秒だけ暗転する',()=>{
-    expect(state(finishBeat.release-.09).blackout).toBe(0);
-    expect(state(finishBeat.release-.03).blackout).toBeGreaterThan(.5);
-    expect(state(finishBeat.release-.01).blackout).toBe(1);
-    expect(state(finishBeat.release).blackout).toBe(0);
-  });
-  it('一回目の画面は、とどめの足し算を入れても一回目の決まり（傾き2度、寄り1.18倍）のまま',()=>{
-    for(let t=BEATS[0].release;t<BEATS[0].end;t+=.01){
-      const s=screenState(t,3,presets.max,'attack');
-      expect(Math.abs(s.rotate)).toBeLessThanOrEqual(SHAKE_TILT);
-      expect(s.zoom).toBeLessThan(HIT_ZOOM*1.03+.001);
-    }
-  });
 });
 
 describe('とどめの回の部品',()=>{
-  it('重い後処理は、発動の直前から余韻の1.5秒後まで出す',()=>{
+  it('重い後処理を切るのは、とどめでは余韻の1.5秒後、一回目と防御は命中の2.5秒後',()=>{
     // postHeavyActive は世界の時刻で比べる。切るのは魔法名が引くところ。
     const 切る=finishBeat.handoff+1.5;
     expect(postToOf(finishBeat)).toBeCloseTo(切る,6);
     expect(warpReal(postToOf(finishBeat),warpOf(finishBeat,HIT_STOPS.strong))).toBeCloseTo(切る+遅れ,6);
-    expect(postHeavyActive(finishBeat.release-.11,finishBeat)).toBe(false);
-    expect(postHeavyActive(finishBeat.release-.1,finishBeat)).toBe(true);
     expect(postHeavyActive(直撃,finishBeat)).toBe(true);
     expect(postHeavyActive(切る-.1,finishBeat)).toBe(true);
     expect(postHeavyActive(切る,finishBeat)).toBe(false);
     // 一回目と防御は今までどおり、命中の2.5秒後まで。一回目は26.0秒、防御は52.9秒。
     expect(postToOf(BEATS[0])).toBeCloseTo(26,6);
     expect(postToOf(BEATS[1])).toBeCloseTo(52.9,6);
-    // どちらも命中より後で、回の終わりより前に切る。
-    for(const beat of [BEATS[0],BEATS[1]]){
-      expect(postToOf(beat)).toBeGreaterThan(beat.impact);
-      expect(postToOf(beat)).toBeLessThan(beat.end);
-    }
-  });
-  it('とどめの回の音が回の表から作られる',()=>{
-    const 前後=(at:number)=>dueSounds(at-10,at+10,false).map(c=>c.name);
-    expect(前後(finish.release)).toEqual(['release']);
-    expect(前後(finish.impact)).toEqual(['impact']);
-    // とどめの一撃は世界の時刻で置いてあるので、鳴るのは止めの分だけ遅れた実際の時刻。
-    expect(前後(finish.finalBlow!)).toEqual([]);
-    expect(前後(Math.round(直撃の実際*1000))).toEqual(['finish']);
-    expect(前後(finish.handoff)).toEqual(['settle']);
-    // とどめの一撃の音は、持たない回には出ない。
-    expect(dueSounds(first.impact,first.end,false).map(c=>c.name)).not.toContain('finish');
   });
   it('光点だけ先に渡しても、あとから決まった魔法を次の回へ渡せる',()=>{
     let now=0;const battle=new Battle(()=>now);

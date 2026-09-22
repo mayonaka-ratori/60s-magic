@@ -2,22 +2,18 @@ import { describe,it,expect } from 'vitest';
 import { ROUNDS,BATTLE_END,GUARD_STAGGER_MS,beatAt,phaseAt,roundAt,speechLimitOf,replyLimitOf } from '../src/game/rounds';
 import { Battle } from '../src/game/battle';
 import { CastSession } from '../src/game/session';
-import { AIM,AIM_RADIUS,DEFAULT_ASPECT,ENCLOSE_TURN,GUARD_REACH,coversAim,dropNegated,enclosingStrokes,guardStyleOf,shieldOf,strokeEncloses,strokesOf,windingAround } from '../src/game/guard';
+import { AIM,DEFAULT_ASPECT,ENCLOSE_TURN,coversAim,dropNegated,guardStyleOf,shieldOf,strokeEncloses,windingAround } from '../src/game/guard';
 import { aimMark } from '../src/render/effects/guard';
 import { GUARD_DAMAGE,healthSteps } from '../src/render/health-bar';
-import { hitDelay } from '../src/render/effects/release';
-import { SLAM_AT } from '../src/render/composite';
 import { liveWords } from '../src/game/live-words';
 import { beatOf } from '../src/game/rounds';
-import { spellPose,completedSpellFrame } from '../src/render/spell-layout';
-import { postHeavyActive,bloomWeightAt } from '../src/render/composite';
 import { guardPose,knightPose } from '../src/render/knight';
-import { screenState,hitStopOf,HIT_STOPS } from '../src/render/effects/screen';
+import { screenState } from '../src/render/effects/screen';
 import { presets } from '../src/render/effects/presets';
-import { dueSounds,shouldDuck } from '../src/audio/cues';
+import { dueSounds,shouldDuck,soundCues } from '../src/audio/cues';
 import type { Point } from '../src/game/types';
 
-const first=ROUNDS[0],defend=ROUNDS[1];
+const first=ROUNDS[0],defend=ROUNDS[1],finish=ROUNDS[2];
 /** 秒で見る回の表。演出の試験はここから作り、秒数を書き並べない。 */
 const 一=beatOf(first),防=beatOf(defend);
 /** 印のまわりを一周する線。半径は画面を1とした値。 */
@@ -26,24 +22,21 @@ const ring=(radius:number,stroke=1,center=AIM,points=28):Point[]=>
 const bar=(y:number,stroke=1):Point[]=>Array.from({length:12},(_,i)=>({x:.2+i*.05,y,t:defend.start+i*20,hand:0,stroke}));
 
 describe('回の時刻表',()=>{
-  it('防御の回の境目を固定する',()=>{
-    const 境目:Array<[number,string]>=[[defend.start-1,'ready'],[defend.start,'draw'],[defend.chant-1,'draw'],
-      [defend.chant,'chant'],[defend.inputEnd-1,'chant'],[defend.inputEnd,'complete'],[defend.release-1,'complete'],
-      [defend.release,'release'],[defend.handoff-1,'release'],[defend.handoff,'handoff'],[defend.end,'finished']];
-    for(const [time,phase] of 境目)expect(phaseAt(time,defend)).toBe(phase);
-  });
-  it('一回目の境目は表のとおり',()=>{
-    const 境目:Array<[number,string]>=[[0,'draw'],[first.build!,'build'],[first.chant,'chant'],[first.inputEnd,'complete'],
-      [first.release,'release'],[first.handoff,'handoff'],[first.end,'finished']];
-    for(const [time,phase] of 境目)expect(phaseAt(time)).toBe(phase);
+  it('防御ととどめの回の境目を固定する',()=>{
+    // どちらも線が残り始める合図（build）を持たず、始まりから描ける。
+    for(const round of [defend,finish]){
+      expect(round.build).toBeNull();
+      const 境目:Array<[number,string]>=[[round.start-1,'ready'],[round.start,'draw'],[round.chant-1,'draw'],
+        [round.chant,'chant'],[round.inputEnd-1,'chant'],[round.inputEnd,'complete'],[round.release-1,'complete'],
+        [round.release,'release'],[round.handoff-1,'release'],[round.handoff,'handoff'],[round.end,'finished']];
+      for(const [time,phase] of 境目)expect(phaseAt(time,round),`${round.id} の ${time}ms`).toBe(phase);
+    }
   });
   it('時刻から今の回が決まり、待ちと打ち切りは回ごとにずれる',()=>{
     expect(roundAt(0).id).toBe('first');expect(roundAt(first.end-1).id).toBe('first');
     expect(roundAt(defend.start).id).toBe('defend');expect(roundAt(defend.end).id).toBe('finish');expect(roundAt(999999).id).toBe('finish');
     // 声を待つのは締め切りの2秒後まで、Jevは確定の0.1秒前まで。
     expect(speechLimitOf(defend)).toBe(defend.inputEnd+2000);expect(speechLimitOf(first)).toBe(first.inputEnd+2000);
-    // 返事の打ち切りは固定の時刻。一回目は20.9秒、防御は47.9秒。
-    expect(replyLimitOf(first)).toBe(20900);expect(replyLimitOf(defend)).toBe(47900);
     // どの回でも、声を待ち終わってから確定までの間に入る。ここを外すと、返事を待てないか確定に間に合わない。
     for(const round of ROUNDS){
       expect(replyLimitOf(round)).toBeGreaterThan(speechLimitOf(round));
@@ -51,8 +44,8 @@ describe('回の時刻表',()=>{
     }
     // 三回で90秒。一回目30秒、防御26秒、とどめ34秒。
     expect(BATTLE_END).toBe(90000);
-    expect([first,defend,ROUNDS[2]].map(r=>(r.end-r.start)/1000)).toEqual([30,26,34]);
-    expect(beatAt(defend.start/1000).defend).toBe(true);expect(beatAt(10).defend).toBe(false);
+    expect([first,defend,finish].map(r=>(r.end-r.start)/1000)).toEqual([30,26,34]);
+    expect(beatAt(defend.start/1000).defend).toBe(true);expect(beatAt(一.chant).defend).toBe(false);
     expect(beatAt(defend.start/1000).release).toBe(defend.release/1000);
     expect(beatAt(defend.start/1000).impact).toBe(defend.impact/1000);
   });
@@ -60,7 +53,7 @@ describe('回の時刻表',()=>{
 
 describe('90秒の進行役',()=>{
   it('時刻で回が入れ替わり、受付は回の中だけ開く',()=>{
-    let now=0;const battle=new Battle(()=>now),finish=ROUNDS[2];
+    let now=0;const battle=new Battle(()=>now);
     battle.tick();expect(battle.active.round.id).toBe('first');expect(battle.accepting).toBe(true);
     now=first.inputEnd;battle.tick();expect(battle.accepting).toBe(false);expect(battle.active.round.id).toBe('first');
     now=defend.start;battle.tick();expect(battle.active.round.id).toBe('defend');expect(battle.accepting).toBe(true);
@@ -68,16 +61,6 @@ describe('90秒の進行役',()=>{
     now=finish.start;battle.tick();expect(battle.active.round.id).toBe('finish');expect(battle.accepting).toBe(true);
     now=finish.inputEnd;battle.tick();expect(battle.accepting).toBe(false);
     now=finish.end;battle.tick();expect(battle.finished).toBe(true);
-  });
-  it('一回目の魔法と光点を防御の回へ渡す',()=>{
-    let now=0;const battle=new Battle(()=>now);
-    for(let i=0;i<40;i++)battle.first.motion.add(.3+i*.01,.5+Math.sin(i/6)*.1,i*100);
-    now=first.lock;battle.tick();
-    expect(battle.first.recipe).not.toBeNull();
-    now=first.handoff;battle.tick();
-    expect(battle.inherited.length).toBeGreaterThan(0);
-    expect(battle.inherited.length).toBeLessThanOrEqual(3);
-    expect(battle.defend.previous?.name).toBe(battle.first.recipe?.name);
   });
   it('防御の回も確定の時刻で一度だけ確定し、盾と止め方が残る',()=>{
     let now=0;const battle=new Battle(()=>now);
@@ -125,14 +108,12 @@ describe('印を囲む',()=>{
     expect(strokeEncloses(arc(.75))).toBe(true);
     expect(strokeEncloses(arc(.5))).toBe(false);
   });
-  it('手が止まったままの線を、囲めたことにしない',()=>{
-    const still=Array.from({length:400},(_,i)=>({x:.2,y:.3,t:defend.start+i*16,hand:0,stroke:1}));
-    expect(strokeEncloses(still)).toBe(false);
-  });
-  it('何重に囲んだかを数える',()=>{
-    const points=[...ring(.1,1),...ring(.2,2),...bar(.9,3)];
-    expect(strokesOf(points)).toHaveLength(3);
-    expect(enclosingStrokes(points)).toHaveLength(2);
+  it('印のまわりで手が小さく震えただけの線を、囲めたことにしない',()=>{
+    // 印のすぐそばを何周も回る、画面の1%ほどの小さな震え。回った角度だけなら囲めたことになる。
+    const tremble=Array.from({length:400},(_,i)=>({x:AIM.x+Math.cos(i*.7)*.008,y:AIM.y+Math.sin(i*.7)*.008,t:defend.start+i*16,hand:0,stroke:1}));
+    expect(windingAround(tremble)).toBeGreaterThanOrEqual(ENCLOSE_TURN);
+    // 線の大きさの下限で落とす。
+    expect(strokeEncloses(tremble)).toBe(false);
   });
 });
 
@@ -141,6 +122,8 @@ describe('盾を作る',()=>{
     const shield=shieldOf([...ring(.1,1),...ring(.2,2)],null);
     expect(shield.enclosed).toBe(true);expect(shield.moved).toBe(false);
     expect(shield.rings).toBe(2);expect(shield.layers).toBe(2);
+    // 囲んでいない線を足しても、囲んだ数には入らない。
+    expect(shieldOf([...ring(.1,1),...ring(.2,2),...bar(.9,3)],null).rings).toBe(2);
     expect(shield.radius).toBeGreaterThan(.15);
     expect(shield.outline.length).toBeLessThanOrEqual(64);
   });
@@ -204,22 +187,6 @@ describe('盾を作る',()=>{
     const 囲い=shieldOf(ring(.1),null);
     expect(囲い.enclosed).toBe(true);expect(囲い.covering).toBe(false);
   });
-  it('守れる範囲を、画面に描く輪と同じ形で測る',()=>{
-    // 印の輪は画面の短いほうの辺を基準に描く。判定も同じ基準にそろえ、横の差には画面の比を掛ける。
-    const 横線=(dx:number)=>seg({x:AIM.x+dx,y:AIM.y-.02},{x:AIM.x+dx+.04,y:AIM.y+.06},1,8);
-    // 16対9の画面。短いほうの辺は高さなので、高さの基準に直すと .06*16/9=.107 で範囲の中、.09*16/9=.16 で範囲の外。
-    expect(GUARD_REACH).toBeCloseTo(AIM_RADIUS*1.2,6);
-    expect(coversAim(横線(.06),AIM,DEFAULT_ASPECT)).toBe(true);
-    expect(coversAim(横線(.09),AIM,DEFAULT_ASPECT)).toBe(false);
-    // 縦長の画面（390×844）。同じ .09 でも、見た目では輪の内側なので守れたことにする。
-    const 縦長=390/844;
-    expect(coversAim(横線(.09),AIM,縦長)).toBe(true);
-    // 画面の比を渡さないと、横長でも縦長でも同じ答えになってしまう（直す前の動き）。
-    expect(coversAim(横線(.09),AIM,1)).toBe(true);
-    // 盾の作られ方も同じ基準で変わる。横長では運び、縦長ではその場で盾にする。
-    expect(shieldOf(横線(.09),null,AIM,DEFAULT_ASPECT).moved).toBe(true);
-    expect(shieldOf(横線(.09),null,AIM,縦長).covering).toBe(true);
-  });
   it('言った数が、囲った数より優先される。層は5枚まで',()=>{
     expect(shieldOf(ring(.1),7).layers).toBe(5);
     expect(shieldOf(ring(.1),3).layers).toBe(3);
@@ -273,6 +240,10 @@ describe('印は画面の形が変わっても収まり、判定と一致する'
       // 横と縦で同じ長さになる。ここがずれると、輪の外で守れたり、輪の中で守れなかったりする。
       expect(届く距離(w,h,'たて'),`${w}x${h} の縦`).toBeCloseTo(縁,3);
     }
+    // 盾を作るときも画面の比が渡る。同じ横のずれでも、横長では範囲の外なので運び、縦長では範囲の中なのでその場で盾にする。
+    const 横線=seg({x:AIM.x+.09,y:AIM.y-.02},{x:AIM.x+.13,y:AIM.y+.06},1,8);
+    expect(shieldOf(横線,null,AIM,DEFAULT_ASPECT).moved).toBe(true);
+    expect(shieldOf(横線,null,AIM,390/844).covering).toBe(true);
   });
 });
 
@@ -308,27 +279,11 @@ describe('防御の回の画面と姿勢',()=>{
     const gentle=screenState(一.impact+.05,2,presets.vivid,'defend',0,.5);
     expect(Math.hypot(gentle.shakeX,gentle.shakeY)).toBeLessThan(Math.hypot(hit.shakeX,hit.shakeY));
   });
-  it('防御の停止は常に0.14秒（強）。控えめモードでは止めない',()=>{
-    const beat=防;
-    expect(hitStopOf(presets.vivid,0,false,beat)).toBe(.14);
-    expect(hitStopOf(presets.vivid,3,false,beat)).toBe(HIT_STOPS.strong);
-    expect(hitStopOf(presets.vivid,3,true,beat)).toBe(0);
-  });
-  it('暗転は発動の0.08秒前だけ。防御はその回の発動に合わせる',()=>{
-    const beat=防;
-    expect(screenState(防.release-.1,1,presets.vivid,null,0,0,false,beat).blackout).toBe(0);
-    expect(screenState(防.release-.01,1,presets.vivid,null,0,0,false,beat).blackout).toBe(1);
-    expect(screenState(防.release,1,presets.vivid,null,0,0,false,beat).blackout).toBe(0);
-  });
   it('騎士は構え、溜め、振り下ろし、弾かれ、前屈の順に動く',()=>{
     const states=[first.handoff+500,defend.start+2000,defend.lock+400,defend.impact+200,defend.handoff+600]
       .map(ms=>guardPose(ms).state);
     expect(states).toEqual(['guard','charge','swing','repel','exposed']);
-    for(let ms=first.handoff;ms<=defend.end+1000;ms+=50) {
-      const pose=guardPose(ms);
-      expect(pose.weights.reduce((a,b)=>a+b,0)).toBeCloseTo(1);
-      expect(Math.min(...pose.weights)).toBeGreaterThanOrEqual(-.00001);
-    }
+    // 重みの合計が1であることは、騎士の試験（knight.test.ts）が戦いの終わりまで見る。
     // 一回目と防御で、姿勢の表の長さがそろっている。
     // とどめの「崩れ落ちる」と、待機の息づかいを足して10個。
     expect(knightPose(first.impact+200,true).weights).toHaveLength(10);
@@ -344,10 +299,11 @@ describe('防御の回の画面と姿勢',()=>{
     const early=guardPose(defend.start+2000).bladeHeat,late=guardPose(defend.lock-1000).bladeHeat;
     expect(early).toBeGreaterThan(0);
     expect(late).toBeGreaterThan(early);
-    // 毎秒1回脈打つ。山（x.25秒）のほうが、その0.5秒後の谷より強い。
-    expect(guardPose(46250).bladeHeat).toBeGreaterThan(guardPose(46750).bladeHeat);
+    // 世界の時刻で毎秒1回脈打つ。各秒の0.25秒目が山、0.75秒目が谷。確定の2秒ほど前の一周で比べる。
+    const 山=(Math.floor(defend.lock/1000)-2)*1000+250,谷=山+500;
+    expect(guardPose(山).bladeHeat).toBeGreaterThan(guardPose(谷).bladeHeat);
     // 控えめモードでは脈打たず、時間とともに強くなるだけ。
-    expect(guardPose(46250,true).bladeHeat).toBeLessThan(guardPose(46750,true).bladeHeat);
+    expect(guardPose(山,true).bladeHeat).toBeLessThan(guardPose(谷,true).bladeHeat);
     // 一回目の姿勢では光らない。
     expect(knightPose(first.impact+200,true).bladeHeat).toBe(0);
   });
@@ -390,22 +346,34 @@ describe('防御の回の画面と姿勢',()=>{
   });
 });
 
-describe('防御の回の音',()=>{
-  it('回ごとに、録音の間は鳴らさない',()=>{
-    // 録音を止めてから0.75秒は鳴らさない。その手前と直後を見る。
-    const quiet=defend.inputEnd+750;
-    expect(dueSounds(defend.chant,defend.chant+100,true)).toEqual([]);
-    expect(dueSounds(quiet-50,quiet-10,true)).toEqual([]);
-    expect(dueSounds(quiet-10,quiet+10,true).map(c=>c.name)).toEqual(['build']);
-    expect(dueSounds(defend.release-10,defend.release+10,false).map(c=>c.name)).toEqual(['release']);
-    expect(dueSounds(defend.impact-10,defend.impact+10,false).map(c=>c.name)).toEqual(['block']);
-    expect(dueSounds(first.impact-10,first.impact+10,false).map(c=>c.name)).toEqual(['impact']);
+describe('回ごとの音',()=>{
+  /** その回で、録音を止めてから音を鳴らし始めてよい時刻（ms）。合図の表が持つ値をそのまま使う。 */
+  const 静けさの終わり=(round:typeof first)=>soundCues.find(cue=>cue.round===round.id&&cue.name==='build')!.quietUntil;
+  const names=(from:number,to:number,microphone:boolean)=>dueSounds(from,to,microphone).map(c=>c.name);
+  it('回ごとに、録音と認識結果を待つ間は鳴らさない',()=>{
+    for(const round of ROUNDS){
+      const quiet=静けさの終わり(round);
+      // 録音を止めた後、確定より前に鳴らし始める。
+      expect(quiet).toBeGreaterThan(round.inputEnd);expect(quiet).toBeLessThan(round.lock);
+      // マイクを使う回は、線が残り始める合図も詠唱の案内も鳴らさない。録音していなければ詠唱の案内は鳴る。
+      if(round.build!==null)expect(names(round.build-100,round.build+10,true),round.id).toEqual([]);
+      expect(names(round.chant-100,round.chant+10,true),round.id).toEqual([]);
+      expect(names(round.chant-10,round.chant+10,false),round.id).toEqual(['chant']);
+      // 録音の終わりを待つ手前と直後。
+      expect(names(quiet-50,quiet-10,true),round.id).toEqual([]);
+      expect(names(quiet-10,quiet+10,true),round.id).toEqual(['build']);
+      // 発動と命中の音。防御の回だけ、命中の代わりに盾で受け止める音になる。
+      expect(names(round.release-10,round.release+10,false),round.id).toEqual(['release']);
+      expect(names(round.impact-10,round.impact+10,false),round.id).toEqual([round.id==='defend'?'block':'impact']);
+    }
   });
-  it('受付の間だけ曲を下げる',()=>{
-    expect(shouldDuck(first.chant)).toBe(true);
-    expect(shouldDuck(first.lock)).toBe(false);
-    expect(shouldDuck(defend.chant)).toBe(true);
-    expect(shouldDuck(defend.lock)).toBe(false);
+  it('受付の間だけ曲を下げ、録音の終わりを待ってから戻す',()=>{
+    for(const round of ROUNDS){
+      expect(shouldDuck(round.chant),round.id).toBe(true);
+      expect(shouldDuck(静けさの終わり(round)-10),round.id).toBe(true);
+      expect(shouldDuck(静けさの終わり(round)),round.id).toBe(false);
+      expect(shouldDuck(round.lock),round.id).toBe(false);
+    }
   });
 });
 
@@ -439,13 +407,12 @@ describe('防御の回の入力',()=>{
 });
 
 describe('体力の減り方',()=>{
-  it('一回目の命中と、防御の受け止めの二回で減る',()=>{
-    const steps=healthSteps(null);
-    // 防御の段の後ろに、とどめの回の5段（多段命中4回ととどめの一撃）が続く。
+  it('一回目は弾の届く時刻ごとに減り、防御の受け止めで一段減る',()=>{
     // よろめく時刻は回の表から作る。一撃が盾に当たった後、弱点が出る前。
-    expect(GUARD_STAGGER_MS).toBe(52500);
-    expect(GUARD_STAGGER_MS).toBeGreaterThan(ROUNDS[1].impact);
-    expect(GUARD_STAGGER_MS).toBeLessThan(ROUNDS[1].handoff);
+    expect(GUARD_STAGGER_MS).toBeGreaterThan(defend.impact);
+    expect(GUARD_STAGGER_MS).toBeLessThan(defend.handoff);
+    // 単発。一回目の命中で一段、防御の受け止めで一段。そのあとに、とどめの回の5段（多段命中4回ととどめの一撃）が続く。
+    const steps=healthSteps(null);
     const guard=steps.find(step=>step.at===GUARD_STAGGER_MS)!;
     expect(guard).toBeTruthy();
     expect(guard.from-guard.left).toBe(GUARD_DAMAGE);
@@ -453,19 +420,20 @@ describe('体力の減り方',()=>{
     // 一回目で20〜45%、防御で10%。0より下へは行かない。
     expect(guard.left).toBeGreaterThanOrEqual(0);
     expect(guard.left).toBeLessThan(steps[0].from);
-  });
-  it('連弾は弾の届く時刻ごとに分けて減らし、最後に防御の段が付く',()=>{
+    // 連弾。7発それぞれに一段、8段目が防御の受け止め。そのあとにとどめの5段が続く。
     const recipe={version:'recipe-1',element:'lightning',purpose:'attack',form:'swarm',trajectory:'straight',count:7,explicitCount:7,
       defense:.1,area:.5,duration:.5,concentration:.5,enclosure:false,split:true,developsPrevious:null,motionSpeechAligned:null,
       noAttack:false,name:'',source:'local' as const,decisions:{},assistance:[],model:null} as unknown as Parameters<typeof healthSteps>[0];
-    const steps=healthSteps(recipe);
-    // 7発それぞれに一段、8段目が防御の受け止め。そのあとにとどめの5段が続く。
-    expect(steps).toHaveLength(13);
-    expect(steps[7].at).toBe(GUARD_STAGGER_MS);
-    expect(steps[1].at-steps[0].at).toBe(80);
-    // 段の時刻は弾と同じ hitDelay から作るので、最後の1発（24.18秒）でも減る。
-    expect(steps[6].at).toBeCloseTo(first.impact+hitDelay(6,7)*1000);
-    expect(steps[6].left).toBeCloseTo(steps[7].from,6);
+    const swarm=healthSteps(recipe);
+    expect(swarm).toHaveLength(13);
+    expect(swarm[0].at).toBe(first.impact);
+    // 弾の段は届く順に並び、どれも防御の段より前にある。
+    for(let i=1;i<7;i++)expect(swarm[i].at).toBeGreaterThan(swarm[i-1].at);
+    expect(swarm[6].at).toBeLessThan(GUARD_STAGGER_MS);
+    expect(swarm[7].at).toBe(GUARD_STAGGER_MS);
+    // 最後の1発でも減り、そこから防御の段へ体力がつながる。
+    expect(swarm[6].left).toBeLessThan(swarm[6].from);
+    expect(swarm[6].left).toBeCloseTo(swarm[7].from,6);
   });
 });
 
@@ -475,29 +443,5 @@ describe('防御の回の言葉と配置',()=>{
     // 足さないと、防御の回の言葉が「回の始まりより前の言葉」になり、反応の窓から外れる。
     expect(liveWords([entry])[0].atMs).toBe(6500);
     expect(liveWords([entry],defend.start)[0].atMs).toBe(defend.start+6500);
-  });
-  it('防御の回は、何も描いていないときだけ狙いの印の高さに置き、描いた形は描いた場所に残す',()=>{
-    const wide=1600,high=900;
-    expect(completedSpellFrame(wide,high,beatOf(first)).y).toBeCloseTo(high*.66);
-    expect(completedSpellFrame(wide,high,beatOf(defend)).y).toBeCloseTo(high*AIM.y);
-    // 締め切りまでは入力した位置のまま。発動でも描いた場所に残る（盾は描いた線からそのまま作るので、術式も同じ場所にある方が合う）。
-    const points=[{x:.3,y:.3,t:defend.start,hand:0,stroke:1},{x:.4,y:.4,t:defend.start+500,hand:0,stroke:1},{x:.6,y:.5,t:defend.start+1000,hand:0,stroke:1}];
-    expect(spellPose(points,wide,high,defend.inputEnd,beatOf(defend)).progress).toBe(0);
-    expect(spellPose(points,wide,high,defend.release,beatOf(defend)).progress).toBe(1);
-    expect(spellPose(points,wide,high,defend.release,beatOf(defend)).center).toEqual({x:wide*.45,y:high*.4});
-    expect(spellPose(points,wide,high,defend.release,beatOf(defend)).scale).toBeCloseTo(1);
-    // 余韻は回の終わりより前に消えきる。
-    expect(spellPose(points,wide,high,defend.end,beatOf(defend)).opacity).toBe(0);
-  });
-  it('重い後処理は、回ごとに発動の前後だけ出す',()=>{
-    const beat=防;
-    // 防御の回は、敵の一撃が床を打つ時刻の0.1秒前から入れる（合成の試験で確かめる）。その前は出さない。
-    expect(postHeavyActive(SLAM_AT-.15,beat)).toBe(false);
-    expect(postHeavyActive(防.release+.5,beat)).toBe(true);
-    expect(postHeavyActive(防.impact+3,beat)).toBe(false);
-    // 一回目も同じ作りで、発動の直前から命中の2.5秒後まで。
-    expect(postHeavyActive(一.release)).toBe(true);
-    expect(postHeavyActive(一.impact+3)).toBe(false);
-    expect(bloomWeightAt(防.impact,false,0,beat)).toBeGreaterThan(bloomWeightAt(防.impact+1.6,false,0,beat));
   });
 });

@@ -14,12 +14,6 @@ describe('難しい詠唱の言葉',()=>{
     ['業火ではなく氷晶よ、壁となれ','ice','wall','defend'],
     ['紅蓮は使わない、氷獄よ、壁となれ','ice','wall','defend'],
   ])('%s',(text,element,form,purpose)=>{const r=makeRecipe(cast(text));expect(r.element).toBe(element);expect(r.form).toBe(form);expect(r.purpose).toBe(purpose);});
-  it('普通の言葉や似た音を難しい漢字へ決めつけない',()=>{
-    for(const text of ['無料の動画を見る','今日はせいこうした','かごを持ってきた','有名な人','ならくじを引こう','無料空所'])expect(readChant(text).normalized).toBe(text);
-  });
-  it('元の文字を保存し、読みの変換後と分ける',()=>{
-    const s=cast('らいていよ、うがて');expect(s.speech.rawTranscript).toBe('らいていよ、うがて');expect(s.speech.normalizedTranscript).toBe('雷霆よ、穿て');
-  });
   it('作品名や飾りの言葉だけで属性や個数を決めない',()=>{
     for(const text of ['破道の九十、黒棺','領域展開、誅伏賜死','森羅万象、久遠、黄昏']){const r=makeRecipe(cast(text));expect(r.element).toBe('neutral');expect(r.explicitCount).toBeNull();}
   });
@@ -49,16 +43,24 @@ describe('聞き取りの揺れを辞書へ寄せる',()=>{
     expect(s.speech.rawTranscript).toBe('くれんよ、燃やせ');
     expect(s.speech.normalizedTranscript).toBe('紅蓮よ、燃やせ');
   });
-  it('文字数が変わる聞き違いや、音そのものが違うものには寄せない',()=>{
-    for(const text of ['ふんかれろ','らいてよ','ごくへんよ','されんよ','ならくじを引こう'])
-      expect(readChant(text).normalized).toBe(text);
+  it('普通の言葉、似た音、文字数や音そのものが違う聞き違いは、難しい漢字へ寄せない',()=>{
+    const 変えない:Array<[string,string]>=[
+      ['無料の動画を見る','普通の言葉'],['今日はせいこうした','普通の言葉'],['かごを持ってきた','普通の言葉'],['有名な人','普通の言葉'],['無料空所','普通の言葉'],
+      ['ならくじを引こう','似た音'],
+      ['ふんかれろ','文字数が変わる聞き違い'],['らいてよ','文字数が変わる聞き違い'],['ごくへんよ','音そのものが違う'],['されんよ','音そのものが違う'],
+      ['効果がある','漢字で書かれた普通の言葉'],['評価する','漢字で書かれた普通の言葉'],['高価な品','漢字で書かれた普通の言葉'],['公開した','漢字で書かれた普通の言葉'],
+    ];
+    for(const [text,理由] of 変えない)expect(readChant(text).normalized,`${text}（${理由}）`).toBe(text);
   });
-  it('漢字で書かれた普通の言葉は動かさない',()=>{
-    for(const text of ['効果がある','評価する','高価な品','公開した'])expect(readChant(text).normalized).toBe(text);
+});
+
+/** 子どもや文字入力の人は、かなやカタカナで唱える。漢字と同じ魔法にする。 */
+describe('かなの詠唱',()=>{
+  it('ひらがなの「こおりよ、かべになれ」は氷の壁で守る魔法になる',()=>{
+    const r=makeRecipe(cast('こおりよ、かべになれ'));expect(r.element).toBe('ice');expect(r.form).toBe('wall');expect(r.purpose).toBe('defend');
   });
-  it('四文字までは書き方の揺れだけを直す',()=>{
-    // 「ぐれん」と「くれん」は濁点だけの違い。「されん」は音そのものが違う。
-    expect(readChant('くれんよ').normalized).toBe('紅蓮よ');
-    expect(readChant('されんよ').normalized).toBe('されんよ');
+  it('カタカナやかなで唱えても、漢字と同じ属性になる',()=>{
+    for(const [kana,kanji] of [['ホノオ','炎'],['カゼ','風'],['ヤミ','闇'],['いなずま','稲妻']] as const)
+      expect(makeRecipe(cast(`${kana}よ`)).element,kana).toBe(makeRecipe(cast(`${kanji}よ`)).element);
   });
 });

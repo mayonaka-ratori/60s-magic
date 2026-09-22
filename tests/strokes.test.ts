@@ -77,12 +77,20 @@ describe('速さの度合い', () => {
 });
 
 describe('輪が閉じた判定', () => {
-  it('始点へ戻った十分な長さの輪だけを認める', () => {
+  it('始点へ戻った十分な長さの輪や、三角のように面を囲む線を輪と認める', () => {
     const closed = ringClosure(circle(40), 1000, 1000);
     expect(closed).not.toBeNull();
     expect(closed!.center.x).toBeCloseTo(.5, 1);
     expect(closed!.center.y).toBeCloseTo(.5, 1);
     expect(closed!.size).toBeGreaterThan(.3);
+    const corners: [number, number][] = [[.5, .3], [.7, .65], [.3, .65], [.5, .3]];
+    const triangle: [number, number][] = [];
+    for (let i = 0; i < corners.length - 1; i++)
+      for (let k = 0; k < 10; k++)
+        triangle.push([corners[i][0] + (corners[i + 1][0] - corners[i][0]) * k / 10,
+          corners[i][1] + (corners[i + 1][1] - corners[i][1]) * k / 10] as [number, number]);
+    triangle.push(corners[0]);
+    expect(ringClosure(path(triangle), 1000, 1000)).not.toBeNull();
   });
   it('点が20個に満たない輪は認めない', () => {
     expect(ringClosure(circle(12), 1000, 1000)).toBeNull();
@@ -101,17 +109,6 @@ describe('輪が閉じた判定', () => {
     // わずかに膨らんだだけの往復も輪にしない。
     const thin: [number, number][] = back.map(([x, y]) => [x, y + .004] as [number, number]);
     expect(ringClosure(path([...out, ...thin]), 1000, 1000)).toBeNull();
-  });
-  it('円や三角のように面を囲む線は輪と認める', () => {
-    expect(ringClosure(circle(40), 1000, 1000)).not.toBeNull();
-    const corners: [number, number][] = [[.5, .3], [.7, .65], [.3, .65], [.5, .3]];
-    const triangle: [number, number][] = [];
-    for (let i = 0; i < corners.length - 1; i++)
-      for (let k = 0; k < 10; k++)
-        triangle.push([corners[i][0] + (corners[i + 1][0] - corners[i][0]) * k / 10,
-          corners[i][1] + (corners[i + 1][1] - corners[i][1]) * k / 10] as [number, number]);
-    triangle.push(corners[0]);
-    expect(ringClosure(path(triangle), 1000, 1000)).not.toBeNull();
   });
   it('短辺の4%より広い隙間があれば閉じていない', () => {
     const open = circle(40, .2, .5, .5, .9);

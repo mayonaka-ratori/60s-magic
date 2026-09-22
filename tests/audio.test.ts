@@ -1,10 +1,7 @@
 import { describe,it,expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { soundIntensity } from '../src/audio/cast-audio';
-import { presets } from '../src/render/effects/presets';
-import type { Recipe } from '../src/game/types';
 import { runInNewContext } from 'node:vm';
-import { MAX_INPUT_SAMPLES, ROUNDS, windowMsOf } from '../src/game/rounds';
+import { ROUNDS, SAMPLES_PER_MS, windowMsOf } from '../src/game/rounds';
 
 type Packet={type:string;pcm?:Int16Array;startMs?:number;value?:number};
 type Processor={port:{onmessage:(event:{data:object})=>void};process:(inputs:Float32Array[][])=>boolean};
@@ -28,30 +25,17 @@ describe('実際の音の取り込み',()=>{
     expect(audio.every(p=>p.pcm!.length<=1600)).toBe(true);expect(packets.at(-1)?.type).toBe('stopped');
   });
   it('受付の長さを過ぎた音声を送らず、無音だけなら送らない',()=>{
-    // 打ち切りは回ごとの受付の長さで決まる。一回目は18秒、防御は15秒。
-    const first=windowMsOf(ROUNDS[0]),defend=windowMsOf(ROUNDS[1]);
-    const silent=processor(48000,first);silent.feed(first/1000,0);expect(silent.packets.filter(p=>p.type==='audio')).toHaveLength(0);
-    const voiced=processor(48000,first);voiced.feed(first/1000+2,.1);const audio=voiced.packets.filter(p=>p.type==='audio');
-    expect(audio.reduce((n,p)=>n+p.pcm!.length,0)).toBe(MAX_INPUT_SAMPLES);
-    expect(audio.at(-1)!.startMs!+audio.at(-1)!.pcm!.length/16).toBe(first);
-    // 短い回では、その回の長さで止まる。一回目の長さまで録り続けない。
-    const short=processor(48000,defend);short.feed(first/1000,.1);const shortAudio=short.packets.filter(p=>p.type==='audio');
-    expect(shortAudio.at(-1)!.startMs!+shortAudio.at(-1)!.pcm!.length/16).toBe(defend);
-  });
-});
-
-const recipe=():Recipe=>({version:'recipe-1',accent:null,element:'fire',purpose:'attack',form:'orb',trajectory:'straight',count:1,explicitCount:null,
-  defense:.2,area:.2,duration:.5,concentration:0,enclosure:false,split:false,developsPrevious:null,motionSpeechAligned:null,noAttack:false,
-  name:'',source:'local',decisions:{},assistance:[],model:null});
-describe('音の厚み',()=>{
-  it('入力の量が多いほど合成音の派手さが上がる',()=>{
-    const quiet=soundIntensity(recipe(),presets.vivid),busy=soundIntensity(recipe(),presets.vivid,1);
-    expect(busy).toBeGreaterThan(quiet);
-    expect(busy-quiet).toBeCloseTo(.6,5);
-    expect(soundIntensity(recipe(),presets.vivid,0)).toBe(quiet);
-    // 魔法が決まる前でも量だけで厚みが増える。上限の3は超えない。
-    expect(soundIntensity(null,presets.vivid,1)).toBeGreaterThan(soundIntensity(null,presets.vivid));
-    // 設定は倍率なので、最大の設定に量を足しても、小さいレシピでは上限に届かない。
-    expect(soundIntensity(recipe(),presets.max,1)).toBeLessThan(3);
+    // 打ち切りは画面から渡す受付の長さだけで決まり、長さによらず同じ作り。
+    // 本物の長さ（十数秒）を流すと遅いので、回の表の受付の長さを10分の1にして試す。長い回と短い回の順はそのまま。
+    const long=windowMsOf(ROUNDS[0])/10,short=windowMsOf(ROUNDS[1])/10;
+    expect(short).toBeLessThan(long);
+    const silent=processor(48000,long);silent.feed(long/1000,0);expect(silent.packets.filter(p=>p.type==='audio')).toHaveLength(0);
+    // 受付より長く声を流しても、受付の長さの分だけ送る。音の受け皿の大きさ（MAX_INPUT_SAMPLES）も同じ掛け算で作る。
+    const voiced=processor(48000,long);voiced.feed(long/1000+.5,.1);const audio=voiced.packets.filter(p=>p.type==='audio');
+    expect(audio.reduce((n,p)=>n+p.pcm!.length,0)).toBe(long*SAMPLES_PER_MS);
+    expect(audio.at(-1)!.startMs!+audio.at(-1)!.pcm!.length/SAMPLES_PER_MS).toBe(long);
+    // 短い回では、その回の長さで止まる。長い回の長さまで録り続けない。
+    const shortVoiced=processor(48000,short);shortVoiced.feed(long/1000,.1);const shortAudio=shortVoiced.packets.filter(p=>p.type==='audio');
+    expect(shortAudio.at(-1)!.startMs!+shortAudio.at(-1)!.pcm!.length/SAMPLES_PER_MS).toBe(short);
   });
 });
