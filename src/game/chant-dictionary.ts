@@ -1,4 +1,5 @@
-import data from './chant-dictionary.json';
+// JSONの読み込みには型の印を付ける。ブラウザー試験の道具（Playwright）はNodeでそのまま読むので、印が無いと落ちる。
+import data from './chant-dictionary.json' with { type: 'json' };
 
 export type ChantWord={term:string;reading:string;spellings?:string[];group:string;meaning?:string;hint?:boolean;readingMatch?:boolean;source?:string};
 export type ChantCorrection={from:string;to:string;reading:string};
