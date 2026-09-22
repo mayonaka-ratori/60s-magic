@@ -171,7 +171,7 @@ function drawEnclosure(f: Frame, radius: number, fade: number, impact: number, c
   c.globalAlpha = fade * .45; c.lineWidth = 1; c.strokeStyle = color; c.beginPath(); c.ellipse(g.x, g.y, radius * .7, radius, 0, 0, Math.PI * 2); c.stroke(); c.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI + impact * .5; c.moveTo(g.x + Math.cos(a) * radius * .7, g.y + Math.sin(a) * radius); c.lineTo(g.x - Math.cos(a) * radius * .7, g.y - Math.sin(a) * radius); } c.globalAlpha = fade * .2; c.stroke();
 }
 
-/** 命中（23.5秒）。破裂、火花、輪、亀裂、属性ごとの作用。防御と強化は波紋と包む光にする。 */
+/** 命中（impact）。破裂、火花、輪、亀裂、属性ごとの作用。防御と強化は波紋と包む光にする。 */
 export function drawImpact(f: Frame) {
   const { c, t, target: g, preset, intensity, recipe: r } = f;
   const impact = t - f.beat.impact;
