@@ -1,7 +1,7 @@
 import './style.css';
 import { Battle } from './game/battle';
 import type { CastSession } from './game/session';
-import { BATTLE_END, COUNTDOWN_MS, GUARD_STAGGER_MS, ROUNDS, SPEECH_WAIT_MS, VOICE_RECONNECT_MS, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
+import { BATTLE_END, FLOW, COUNTDOWN_MS, GUARD_STAGGER_MS, ROUNDS, SPEECH_WAIT_MS, VOICE_RECONNECT_MS, replyLimitOf, speechLimitOf, windowMsOf, type Round } from './game/rounds';
 import { GUARD_LABELS } from './game/guard';
 import { ELEMENT_LABELS, PURPOSE_LABELS, FORM_LABELS, type Phase } from './game/types';
 import { HandCamera } from './input/camera';
@@ -24,6 +24,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
   <header><div class="brand"><span class="sigil" aria-hidden="true"></span><div><div class="brand-name">はじまりの魔法</div><p class="eyebrow">描いて、唱えて、解き放つ</p></div></div><div class="top-right"><span class="trial dev-only">90秒・試作</span><div class="timer" id="timer" hidden><small>のこり</small><b>18</b><small>秒</small></div></div></header>
   <section class="welcome" id="welcome"><div class="chapter">第一幕 / 最初の魔法</div><h1><span>その手で描く</span><span>その言葉で放つ</span></h1><p class="intro">自由に描いた線が、ひとつの魔法になる。<br>手を動かしながら、好きな言葉を唱えよう。<br>二回目は、左に浮かぶ輪の中に描けば盾になります</p>
     <fieldset class="mode-options"><legend>描き方を選ぶ</legend><label class="mode-option"><input type="radio" name="mode" value="camera"><strong>手で描く</strong><small>カメラに手を映す（片手でも大丈夫）</small></label><label class="mode-option"><input type="radio" name="mode" value="pointer" checked><strong>マウスで試す</strong><small>画面を押したまま動かす</small></label></fieldset>
+    <fieldset class="mode-options"><legend>遊び方を選ぶ</legend><label class="mode-option"><input type="radio" name="flow" value="sequential"><strong>順番に</strong><small>初めての人はこちら</small></label><label class="mode-option"><input type="radio" name="flow" value="together"><strong>同時に</strong><small>慣れた人向け</small></label></fieldset>
     <label class="voice-option"><input type="checkbox" id="use-voice">マイクで唱える <span id="voice-availability"></span></label>
     <details class="sound-settings"><summary>音と演出の設定</summary><div class="sound-options"><label><input id="use-sound" type="checkbox" checked>効果音</label><label for="sound-volume">音量</label><input id="sound-volume" type="range" min="0" max="100" value="25" aria-label="効果音の音量"><output id="sound-volume-value">25%</output><button id="test-sound" type="button">音を試す</button></div></details>
     <button class="primary" id="start">魔法をつくる <span class="arrow" aria-hidden="true">↗</span></button><div class="welcome-actions"><button class="text-button" id="demo">見本の動きを見る</button><button class="text-button" id="chant-words">詠唱の言葉を見る</button><button class="text-button dev-only" id="settings">接続の確認</button><button class="text-button dev-only" id="last-record" hidden>前回の記録を保存する</button></div>
@@ -51,6 +52,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
 
 const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
 const params=new URLSearchParams(location.search);
+for(const option of document.querySelectorAll<HTMLInputElement>('input[name="flow"]')) {
+  option.checked=option.value===FLOW;
+  option.addEventListener('change',()=>{
+    const url=new URL(location.href);
+    if(option.value==='together')url.searchParams.set('flow','together');else url.searchParams.delete('flow');
+    location.assign(url.href);
+  });
+}
 // 会場で待ち時間を変えられるよう、秒数をURLでも指定できる。5秒から10分の間に収める。
 const seconds=(name:string,fallback:number)=>{
   const value=Number(params.get(name));

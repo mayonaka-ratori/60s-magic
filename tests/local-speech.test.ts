@@ -5,7 +5,7 @@ import { connectLocalSpeech, speechSessionDiagnostics, type LocalRecognizer } fr
 import { speechModelName } from '../server/local-speech';
 import { SpeechBook } from '../src/game/speech-book';
 import { CastSession } from '../src/game/session';
-import { COUNTDOWN_MS,MAX_INPUT_MS,ROUNDS,SPEECH_WAIT_MS,VOICE_RECONNECT_MS,speechSocketMsOf,windowMsOf } from '../src/game/rounds';
+import { COUNTDOWN_MS,TOGETHER_ROUNDS,SEQUENTIAL_ROUNDS,MAX_INPUT_MS,ROUNDS,SPEECH_WAIT_MS,VOICE_RECONNECT_MS,speechSocketMsOf,windowMsOf } from '../src/game/rounds';
 
 class Socket extends EventEmitter {
   OPEN=1;readyState=1;messages:any[]=[];
@@ -35,7 +35,7 @@ describe('声の接続を保つ長さ',()=>{
     expect(20000-早くつなぐ分).toBeLessThan(windowMsOf(ROUNDS[0]));
   });
   it('受け皿は、一番長い回の分だけ持つ',()=>{
-    expect(MAX_INPUT_MS).toBe(Math.max(...ROUNDS.map(windowMsOf)));
+    expect(MAX_INPUT_MS).toBe(Math.max(...[...TOGETHER_ROUNDS,...SEQUENTIAL_ROUNDS].map(windowMsOf)));
     for(const round of ROUNDS)expect(windowMsOf(round)).toBeLessThanOrEqual(MAX_INPUT_MS);
   });
 });
@@ -79,8 +79,8 @@ describe('ローカル音声認識の受付',()=>{
     socket.end();await vi.advanceTimersByTimeAsync(1);
     socket.audio(2000);expect(socket.readyState).toBe(1);
     expect(recognize).toHaveBeenCalledOnce();
-    // 受け皿の上限（一番長い回の18秒）を超えた分だけ落とし、18秒ちょうどまでは使う。
-    expect(MAX_INPUT_MS).toBe(18000);
+    // 受け皿の上限を超えた分だけ落とし、上限ちょうどまでは使う。
+    expect(MAX_INPUT_MS).toBe(22000);
     expect(socket.messages.find(m=>m.type==='transcript').entry.endMs).toBe(MAX_INPUT_MS);socket.close();
   });
   it('形が壊れた音だけ接続を切る',()=>{

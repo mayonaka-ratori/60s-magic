@@ -32,11 +32,24 @@ export type Round = {
   end: number;
 };
 
-export const ROUNDS: Round[] = [
+export type Flow = 'sequential' | 'together';
+/** ページを開いたときだけ選ぶ。サーバーも同じ表を読めるよう、URLが無い場合を扱う。 */
+export const flowOf = (search: string): Flow => new URLSearchParams(search).get('flow') === 'together' ? 'together' : 'sequential';
+export const FLOW = flowOf(typeof location === 'undefined' ? '' : location.search);
+
+export const TOGETHER_ROUNDS: Round[] = [
   { id: 'first', index: 1, castId: 'cast-01', start: 0, build: 7000, chant: 14000, inputEnd: 18000, lock: 21000, release: 22000, impact: 23500, finalBlow: null, handoff: 29000, end: 30000 },
   { id: 'defend', index: 2, castId: 'cast-02', start: 30000, build: null, chant: 40000, inputEnd: 45000, lock: 48000, release: 49000, impact: 50400, finalBlow: null, handoff: 55000, end: 56000 },
   { id: 'finish', index: 3, castId: 'cast-03', start: 56000, build: null, chant: 64000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
 ];
+
+/** 順番に遊ぶ時刻。手と声を分ける前も、この表で三回を進める。 */
+export const SEQUENTIAL_ROUNDS: Round[] = [
+  { id: 'first', index: 1, castId: 'cast-01', start: 0, build: 0, chant: 0, inputEnd: 14000, lock: 17000, release: 18000, impact: 19500, finalBlow: null, handoff: 24000, end: 26000 },
+  { id: 'defend', index: 2, castId: 'cast-02', start: 26000, build: 26000, chant: 26000, inputEnd: 38000, lock: 40000, release: 41000, impact: 42400, finalBlow: null, handoff: 46000, end: 50000 },
+  { id: 'finish', index: 3, castId: 'cast-03', start: 50000, build: 50000, chant: 62000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
+];
+export const ROUNDS = FLOW === 'together' ? TOGETHER_ROUNDS : SEQUENTIAL_ROUNDS;
 
 /**
  * 一回目の受付中に、騎士が自分から動く時刻（ms）。足を踏み替える（step）、盾を打ち鳴らす（clang）。
@@ -94,7 +107,7 @@ export const SPEECH_WAIT_MAX_MS = SPEECH_WAIT_MS + 1000;
 /** その回の受付の長さ（ms）。マイクの打ち切りも音の受け皿の大きさも、この値から作る。 */
 export const windowMsOf = (round: Round) => round.inputEnd - round.start;
 /** いちばん長い受付（ms）。一回目の18秒。受け皿の大きさと接続の上限はここから作る。 */
-export const MAX_INPUT_MS = Math.max(...ROUNDS.map(windowMsOf));
+export const MAX_INPUT_MS = Math.max(...[...TOGETHER_ROUNDS, ...SEQUENTIAL_ROUNDS].map(windowMsOf));
 /** 16kHzで受け取るので、1msあたり16点。受け皿の大きさを点の数で書くときに使う。 */
 export const SAMPLES_PER_MS = 16;
 /** 音の受け皿に入る点の数の上限。いちばん長い受付の分だけ持つ。 */

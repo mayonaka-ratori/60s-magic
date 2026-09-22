@@ -4,7 +4,7 @@ import { soundIntensity } from '../src/audio/cast-audio';
 import { presets } from '../src/render/effects/presets';
 import type { Recipe } from '../src/game/types';
 import { runInNewContext } from 'node:vm';
-import { MAX_INPUT_SAMPLES, ROUNDS, windowMsOf } from '../src/game/rounds';
+import { SAMPLES_PER_MS, ROUNDS, windowMsOf } from '../src/game/rounds';
 
 type Packet={type:string;pcm?:Int16Array;startMs?:number;value?:number};
 type Processor={port:{onmessage:(event:{data:object})=>void};process:(inputs:Float32Array[][])=>boolean};
@@ -32,7 +32,7 @@ describe('実際の音の取り込み',()=>{
     const first=windowMsOf(ROUNDS[0]),defend=windowMsOf(ROUNDS[1]);
     const silent=processor(48000,first);silent.feed(first/1000,0);expect(silent.packets.filter(p=>p.type==='audio')).toHaveLength(0);
     const voiced=processor(48000,first);voiced.feed(first/1000+2,.1);const audio=voiced.packets.filter(p=>p.type==='audio');
-    expect(audio.reduce((n,p)=>n+p.pcm!.length,0)).toBe(MAX_INPUT_SAMPLES);
+    expect(audio.reduce((n,p)=>n+p.pcm!.length,0)).toBe(first*SAMPLES_PER_MS);
     expect(audio.at(-1)!.startMs!+audio.at(-1)!.pcm!.length/16).toBe(first);
     // 短い回では、その回の長さで止まる。一回目の長さまで録り続けない。
     const short=processor(48000,defend);short.feed(first/1000,.1);const shortAudio=short.packets.filter(p=>p.type==='audio');
