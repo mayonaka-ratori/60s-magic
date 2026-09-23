@@ -392,8 +392,9 @@ describe('防御の回の入力',()=>{
     expect(state.speech.rawTranscript).toBe('氷よ');
     expect(state.inputWindow.startSessionMs).toBe(defend.start);expect(state.inputWindow.endSessionMs).toBe(defend.inputEnd);
     expect(state.enemy.attackKind).toBe('slash');
-    // 声の時刻は、記録では戦いの時刻へ直して残す。
-    expect(state.timedEvents.find(e=>e.speech)?.startMs).toBe(defend.start+500);
+    // Jevへ送る時刻は、仕様どおりこの回の入力開始を0として数える。
+    expect(state.timedEvents.find(e=>e.speech)?.startMs).toBe(500);
+    expect(state.timedEvents.every(e=>e.startMs>=0&&e.endMs<=受付)).toBe(true);
   });
   it('遅い返事と、別の回あての返事を使わない',()=>{
     let now=defend.start;const cast=new CastSession(()=>now,'test',defend,0);const state=cast.freeze();

@@ -25,7 +25,7 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     await page.mouse.move(500,420);await page.mouse.down();
     for(let i=0;i<18;i++){await page.mouse.move(620+Math.sin(i/4)*140,420+Math.cos(i/4)*120);await page.waitForTimeout(30);}
     await page.mouse.up();await expect(page.locator('#instruction')).toHaveText('描きながら、詠唱せよ',{timeout:17000});
-    // 声は受付の17.3秒まで続く。線も同じところまで描き、締め切りの手前まで両方を受け付けているか見る。
+    // 声は一回目の受付の締め切り（ROUNDS[0].inputEnd）の少し手前まで続く。線も同じところまで描き、締め切りの手前まで両方を受け付けているか見る。
     // コマ数ではなく時計で測る。遅いPCでコマ送りが重くなっても、締め切りを大きく過ぎない。
     const 描き終わり=Date.now()+(ROUNDS[0].inputEnd-ROUNDS[0].chant!);
     await page.mouse.move(540,480);await page.mouse.down();
@@ -40,7 +40,7 @@ test('PC内の実際の認識処理で最後の声を取り込み、描いた線
     // 声を文字にして使ったこと（文字で入れたのではないこと）は、聞き取りの状態 recognized で見る。
     expect(first.recipe.name).toContain('7つの雷の連弾');
     expect(first.state.speech.status).toBe('recognized');expect(first.state.speech.provider).toBe('local');
-    // 合成した声は受付の17.3秒（締め切りの0.7秒前）に終わる。scripts/prepare-browser-audio.mjs の END_MS と合わせてある。
+    // 合成した声は一回目の受付の締め切り（ROUNDS[0].inputEnd）の少し手前に終わる。scripts/prepare-browser-audio.mjs の END_MS と合わせてある。
     expect(first.speechEntries[0].final).toBe(true);expect(first.speechEntries[0].endMs).toBeGreaterThan(ROUNDS[0].inputEnd-2000);
     expect(first.rawPoints.at(-1).t).toBeGreaterThan(ROUNDS[0].inputEnd-1000);expect(first.recipe.count).toBe(7);
     expect(report.audio.recordingQuiet).toBe(false);

@@ -280,7 +280,7 @@ async function begin(isDemo=false) {
   // 確認番号を先に決める。保存済みの番号を読むので少し待つが、使うのは90秒後なので間に合う。
   recorder=null;savedRounds=0;
   {const battle=session;void PlayRecorder.open(null,Math.random,()=>new Date(),playContext()).then(made=>{if(session===battle){recorder=made;diag?.log('確認番号を用意',{code:made.code,storage:made.available?'このPCの中に保存する':'保存先を使えない'});}});}
-  voice?.start(Math.max(0,performance.now()-session.startMs));if(voice)voiceRound='first';
+  diag?.voiceRound(ROUNDS[0].start);voice?.start(Math.max(0,performance.now()-session.startMs));if(voice)voiceRound='first';
   sound.start(!!voice);
   el('app').dataset.screen='playing';
   begun.clear();ended.clear();requested.clear();lockLog.clear();revealed.clear();damaged.clear();lastRings=0;lastCovered=false;actShown='';resultShown=false;preparing=false;feedback=null;serviceNotice='';lastHandAt=performance.now();lastCameraLatency=0;frameIntervals.length=0;
@@ -330,7 +330,7 @@ el('chant').addEventListener('input',()=>{diag?.log('文字を入力',{length:el
 /**
  * 体力の枠をゆらす世界の時刻（ms）。一回目の命中、防御の反撃、とどめの一発目、とどめの直撃。
  * 体力と同じ世界の時計で見るので、命中で止めている間は先へ進まない。
- * とどめの間の3回（77.76、77.92、78.10秒）ではゆらさない。
+ * とどめの多段命中の2回目から4回目（FINISH_HIT_MS の残り）ではゆらさない。
  */
 /** 二回目からの回。声の受付を作り直す相手なので、毎コマ切り出さずに一度だけ作る。 */
 const LATER_ROUNDS=ROUNDS.slice(1);
@@ -439,13 +439,13 @@ function updateUi() {
  */
 function showReveal(t:number,round:Round,recipe:{name:string}|null) {
   const name=recipe?.name,release=round.release/1000;
-  // とどめの回だけ、魔法名を余韻の始まり（84秒）に出して85.5秒で引く。
+  // とどめの回だけ、魔法名を余韻の始まり（handoff）に出して、その1.5秒後に引く。
   // 発動の直後に出すと、視界を通り抜ける術式や輪をくぐる魔法に文字が重なるため。
   const lastRound=round.id==='finish';
   const from=lastRound?round.handoff/1000:release+.6;
   const out=lastRound?round.handoff/1000+1.5:round.end/1000-1.5;
   const gone=lastRound?out+.3:round.end/1000-.8;
-  // 発動から余韻の間は下の案内を閉じる。次の回へ渡す間（29秒から）はまた出して、騎士の構えを知らせる。
+  // 発動から余韻の間は下の案内を閉じる。次の回へ渡す間（handoff から）はまた出して、騎士の構えを知らせる。
   // とどめの回は次へ渡すものがないので、閉じたまま戻さない。
   show('bottom-hud',t<release||(!lastRound&&t>=round.handoff/1000));
   if(t>=from&&t<gone&&name) {
@@ -508,7 +508,7 @@ function prepareRoundVoice(battle:Battle,round:Round) {
   }
   // つながっていて回が始まっていれば、そこから録音する。遅れてつながったときは、その遅れを offset で渡す。
   if(voice&&voiceReadyFor===round.id&&voiceRound===null&&battle.elapsed>=round.voiceStart&&battle.elapsed<round.inputEnd) {
-    voice.start(battle.elapsed-round.start);voiceRound=round.id;voiceReadyFor=null;
+    diag?.voiceRound(round.start);voice.start(battle.elapsed-round.start);voiceRound=round.id;voiceReadyFor=null;
     diag?.log('声を受付',{round:round.id,atMs:Math.round(battle.elapsed)});
   }
 }
@@ -674,7 +674,7 @@ function animate(now:number) {
     battle.tick();
     if(demo)demoInput(battle);
     for(const cast of battle.casts)driveRound(battle,cast);
-    // 魔法が確定するたび（21、48、75秒）に、このPCの中へ保存し直す。増えたときだけ書く。
+    // 魔法が確定するたび（各回の lock）に、このPCの中へ保存し直す。増えたときだけ書く。
     let locked=0;for(const cast of battle.casts)if(cast.locked&&cast.recipe)locked++;
     if(recorder&&locked>savedRounds){savedRounds=locked;void recorder.save(battle);}
     // 二回目からの回は、その少し前に声の受付を作り直す。

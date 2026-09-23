@@ -26,7 +26,7 @@ function realMsOf(worldMs:number,round:Round,calm:boolean) {
   return Math.round(warpReal(worldMs/1000,warpOf(beatOf(round),calm?0:HIT_STOPS.strong))*1000);
 }
 
-/** 魔導書の枠が浮かび始める時刻を、回の終わりの何ミリ秒前にするか。設計3章の89.4秒。 */
+/** 魔導書の枠が浮かび始める時刻を、回の終わりの何ミリ秒前にするか。設計3章の「90秒の0.6秒前」。 */
 const BOOK_BEFORE=600;
 
 /** 一回分の音の時刻。回の表から作るので、回を足しても書き足さなくてよい。 */
@@ -38,19 +38,19 @@ function cuesOf(round:Round,calm:boolean):Cue[] {
     [round.id==='defend'?'block':'impact',round.impact]);
   // とどめの一撃と、そのあとの崩れ落ちる音。持たない回は飛ばす。
   if(round.finalBlow!==null) {
-    // とどめの一撃も世界の時刻（78.5秒）で置いてあるので、実際の時刻へ直してから鳴らす。
+    // とどめの一撃（finalBlow）も世界の時刻で置いてあるので、実際の時刻へ直してから鳴らす。
     list.push(['finish',realMsOf(round.finalBlow,round,calm)]);
     for(const [name,world] of COLLAPSE_WORLD)list.push([name,realMsOf(world,round,calm)]);
   }
-  // 静かな音への切り替え。一回目と防御は今までどおり命中の3.5秒後、とどめは余韻の始まり（84秒）。
+  // 静かな音への切り替え。一回目と防御は今までどおり命中の3.5秒後、とどめは余韻の始まり（handoff）。
   list.push(['settle',round.finalBlow!==null?round.handoff:round.impact+3500]);
   // 敵の側の音。時刻は回の表（rounds.ts）が持ち、画面の揺れと騎士の動きも同じ表を見る。
   // 口元のマイクを使うため、受付中の足音と盾の音も鳴らす。
   if(round.id==='first')for(const move of ENEMY_MOVES)list.push([move.kind,move.at]);
   // 防御の回は、確定の時刻に剣を振り下ろし（swing）、その0.55秒後に床を打つ（slam）。どちらも録音の後なので必ず鳴る。
   if(round.id==='defend')list.push(['swing',round.lock],['slam',ENEMY_SLAM_MS]);
-  // 魔導書の静かな一音。魔導書の枠が浮かび始める89.4秒に鳴らす。
-  // 90秒ちょうどに置くと、そのコマでは結果画面へ移っていて永遠に鳴らない。
+  // 魔導書の静かな一音。魔導書の枠が浮かび始める、回の終わりの BOOK_BEFORE 前に鳴らす。
+  // 回の終わりちょうどに置くと、そのコマでは結果画面へ移っていて永遠に鳴らない。
   if(round.finalBlow!==null)list.push(['book',round.end-BOOK_BEFORE]);
   return list.map(([name,at])=>({name,at,round:round.id})).sort((a,b)=>a.at-b.at);
 }
@@ -84,8 +84,8 @@ const FINISH_HUSH={
 
 /**
  * その時刻の音量の倍率（0〜1）。とどめの回だけ1より小さくなる。
- * 75.6秒から抜き始め、75.92〜75.95秒は無音、そこから発動の76.0秒までに1へ戻す。
- * 直撃の直前も同じように、実際の78.4〜78.55秒で弱め、直撃の78.6秒までに1へ戻す。
+ * 発動の0.4秒前から抜き始め、発動の0.08〜0.05秒前は無音、そこから発動までに1へ戻す。
+ * 直撃の直前も同じように、実際の時刻で直撃の0.2〜0.05秒前に弱め、直撃までに1へ戻す。
  * 戻しを0.05秒前から始めるのは、発動音と一撃音の出だしが潰れないようにするため。
  */
 export function hushAt(ms:number,calm=false) {

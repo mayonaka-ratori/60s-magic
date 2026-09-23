@@ -99,7 +99,8 @@ export class CastSession {
         ?'自分の線と言葉からとどめの魔法を作り、崩れかけた騎士の胸の核へ届かせる'
         :round.drawEnd===null?'自分の言葉から最初の魔法を作り、目の前の騎士へ作用させる':'自分の線と言葉から最初の魔法を作り、目の前の騎士へ作用させる',
       inputWindow:{startSessionMs:round.start,endSessionMs:round.inputEnd,chantPromptSessionMs:round.chant,motionAndSpeechConcurrent:FLOW==='together',drawEndSessionMs:round.drawEnd,voiceStartSessionMs:round.voiceStart},motion,
-      timedEvents:[...this.motionEvents(),...entries.map(e=>({startMs:e.startMs+round.start,endMs:e.endMs+round.start,speech:e.text,speechTiming:e.source==='typed'?'typed' as const:'utterance' as const}))].sort((a,b)=>a.startMs-b.startMs),
+      // 動きと声の時刻は、仕様どおりこの回の入力開始（round.start）を0として送る。声の時刻はもともと回の開始から数えている。
+      timedEvents:[...this.motionEvents(),...entries.map(e=>({startMs:e.startMs,endMs:e.endMs,speech:e.text,speechTiming:e.source==='typed'?'typed' as const:'utterance' as const}))].sort((a,b)=>a.startMs-b.startMs),
       speech:{status:entries.length?(entries.some(e=>e.source!=='typed')?'recognized':'typed'):'unavailable',provider:entries[0]?.source??null,locale:'ja-JP',rawTranscript:text,normalizedTranscript:chant.normalized,explicitCount:explicitCount(affirmativeText(chant.meaning)),explicitNegation:/ない|なく|するな/.test(text)},previous:this.previous,
       enemy:{attackKind:defend?'slash':'none',encounterMode:'exhibition_success'}};
     // 盾の形は締め切りの時点で決めてある（tick）。ここでは、言葉が要る層の数と止め方だけを入れ直す。
@@ -112,7 +113,7 @@ export class CastSession {
     const result:Array<{startMs:number;endMs:number;motion:string}>=[];
     for(let start=this.round.start;start<(this.round.drawEnd??this.round.start);start+=1000) {
       const p=this.motion.raw.filter(p=>p.t>=start&&p.t<start+1000);
-      if(p.length)result.push({startMs:start,endMs:Math.min(this.round.drawEnd!,start+1000),motion:summarizeMotion(p).descriptions.outline});
+      if(p.length)result.push({startMs:start-this.round.start,endMs:Math.min(this.round.drawEnd!,start+1000)-this.round.start,motion:summarizeMotion(p).descriptions.outline});
     }
     return result;
   }

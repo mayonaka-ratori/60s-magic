@@ -49,8 +49,8 @@ export const TOGETHER_ROUNDS: Round[] = [
 
 /** 順番に遊ぶ時刻。手と声の受付も、この表から作る。 */
 export const SEQUENTIAL_ROUNDS: Round[] = [
-  { id: 'first', index: 1, castId: 'cast-01', start: 0, drawEnd: null, voiceStart: 0, build: null, chant: null, inputEnd: 14000, lock: 17000, release: 18000, impact: 19500, finalBlow: null, handoff: 24000, end: 26000 },
-  { id: 'defend', index: 2, castId: 'cast-02', start: 26000, drawEnd: 38000, voiceStart: null, build: 26000, chant: null, inputEnd: 38000, lock: 40000, release: 41000, impact: 42400, finalBlow: null, handoff: 46000, end: 50000 },
+  { id: 'first', index: 1, castId: 'cast-01', start: 0, drawEnd: null, voiceStart: 0, build: null, chant: null, inputEnd: 14000, lock: 17000, release: 18000, impact: 19500, finalBlow: null, handoff: 25000, end: 26000 },
+  { id: 'defend', index: 2, castId: 'cast-02', start: 26000, drawEnd: 38000, voiceStart: null, build: 26000, chant: null, inputEnd: 38000, lock: 40000, release: 41000, impact: 42400, finalBlow: null, handoff: 47000, end: 50000 },
   { id: 'finish', index: 3, castId: 'cast-03', start: 50000, drawEnd: 62000, voiceStart: 62000, build: 50000, chant: 62000, inputEnd: 72000, lock: 75000, release: 76000, impact: 77600, finalBlow: 78500, handoff: 84000, end: 90000 },
 ];
 export const ROUNDS = FLOW === 'together' ? TOGETHER_ROUNDS : SEQUENTIAL_ROUNDS;

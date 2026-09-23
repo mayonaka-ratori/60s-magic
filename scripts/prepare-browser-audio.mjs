@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { COUNTDOWN_MS, TOGETHER_ROUNDS, windowMsOf } from '../src/game/rounds.ts';
 
 function pcm(wav) {
   for (let at=12;at+8<=wav.length;) {
@@ -18,12 +19,12 @@ function wave(audio) {
 }
 const ice=pcm(await readFile('.local-speech/test-audio/ice.wav'));
 const seven=pcm(await readFile('.local-speech/test-audio/seven.wav'));
-// マイクは開始ボタンの直後に開き、そのあと音声認識のつなぎ込み（約0.4秒）と3秒の合図を経て、一回目の受付（18秒）が始まる。
-// 受付の17.3秒ごろ、つまり締め切りの0.7秒前に声が終わるように、そのぶん後ろへ置く。
-// 締め切りまで声を拾い続けられるかを、ブラウザーの試験でそのまま確かめるための置き方。
-// 数字の出どころ：3000は src/game/rounds.ts の COUNTDOWN_MS、18000は同じ表の ROUNDS[0].inputEnd。
-// このファイルは .mjs なので rounds.ts を読み込めない。表の秒数を変えたら、ここも直すこと。
-const LEAD_MS=3400,END_MS=17300;
+// マイクは開始ボタンの直後に開き、そのあと音声認識のつなぎ込み（約0.4秒）と準備の合図（COUNTDOWN_MS）を経て、一回目の受付が始まる。
+// 受付の締め切りの0.7秒前に声が終わるように、そのぶん後ろへ置く。
+// 締め切りまで声を拾い続けられるかを、ブラウザーの試験（tests/browser/local-voice.spec.ts）でそのまま確かめるための置き方。
+// その試験は「同時に」で遊ぶので、一回目の受付の長さは TOGETHER_ROUNDS の一行目から作る。
+const CONNECT_MS=400,END_BEFORE_MS=700;
+const LEAD_MS=COUNTDOWN_MS+CONNECT_MS,END_MS=windowMsOf(TOGETHER_ROUNDS[0])-END_BEFORE_MS;
 for (const [name,voice] of [['ice',ice],['seven',seven]]) {
   const audio=Buffer.alloc(32000*30);
   const startMs=LEAD_MS+END_MS-voice.length/32;

@@ -32,7 +32,7 @@ export class VoiceGrowth {
     }
   }
   snapshot():VoiceLayer[] {return [...this.layers.values()].map(layer=>({...layer}));}
-  /** 声だけの円から、言葉の色を三つまで次の回へ渡す。無言なら白金色。 */
+  /** 声だけの円から、言葉の色を三つまで次の回へ渡す。無言なら淡い青。 */
   inherited(atMs:number,aspect=16/9):InheritedPoint[] {
     const active=this.snapshot().filter(layer=>layer.active);
     const colors=[...new Set(active.filter(layer=>layer.element).map(layer=>layer.element!))].slice(0,3);

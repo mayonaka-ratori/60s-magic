@@ -12,7 +12,7 @@ async function build(kind) {
     // 見失いにくくするため、しきい値を低めにする。取り違えより、線が途切れる方が遊ぶ人には分かりやすい。
     minHandDetectionConfidence: 0.4, minHandPresenceConfidence: 0.3, minTrackingConfidence: 0.3,
   });
-  // 一コマ目は処理の組み立てに時間がかかります。24秒が始まる前にここで済ませます。
+  // 一コマ目は処理の組み立てに時間がかかります。本編が始まる前にここで済ませます。
   // GPUが使えないことも、ここで分かります。
   const canvas = new OffscreenCanvas(640, 480);
   const context = canvas.getContext('2d');

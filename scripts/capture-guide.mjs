@@ -1,5 +1,5 @@
 // 解説ページ（docs/遊び方の解説ページ_案.md と docs/note記事/）に載せる15枚を撮る台本。
-// 先に npm run dev を起動しておく。写真は test-results/guide/遊び方/ に出る。--flow=sequential または --flow=together で選ぶ。
+// 先に npm run dev を起動しておく。写真は test-results/guide/sequential/ または test-results/guide/together/ に出る。--flow=sequential または --flow=together で選ぶ。
 //
 // 時刻はすべて src/game/rounds.ts の表から作る。ここに秒数を書かない。
 // 遊ぶ人が見る画面に合わせるので、?dev=1 は付けない。マイクを使うときに出ない

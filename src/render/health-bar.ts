@@ -22,9 +22,9 @@ function damage(recipe: Recipe | null) {
 export type HealthStep = { at: number; from: number; left: number };
 
 /**
- * 体力が減る段を作る。命中の23.5秒から、弾が届く時刻に合わせて一段ずつ減らす。
+ * 体力が減る段を作る。一回目の命中（回の表の impact）から、弾が届く時刻に合わせて一段ずつ減らす。
  * 段の時刻は弾と同じ `hitDelay` から作るので、最後の特大の1発でもきちんと減る。
- * 単発は23.5秒ちょうどの一段だけ。
+ * 単発は命中の時刻ちょうどの一段だけ。
  */
 export function planHealthSteps(recipe: Recipe | null): HealthStep[] {
   const total = damage(recipe);
@@ -51,7 +51,7 @@ export function healthAt(ms: number, steps: HealthStep[]) {
  * 一戦を通した体力の段。一回目の命中の段に、防御で一撃を受け止めきったときの一段と、
  * とどめの回の段を足す。とどめの多段命中では、そのとき残っている量の9割を4回に等分して減らし、
  * 最後のとどめの一撃では「残りを全部」ではなく 0 と直に書く。
- * 前の二回でどれだけ減っていても、78.5秒には必ず0になる。
+ * 前の二回でどれだけ減っていても、とどめの一撃（FINAL_BLOW_MS）で必ず0になる。
  */
 export function healthSteps(recipe: Recipe | null): HealthStep[] {
   const steps = planHealthSteps(recipe);

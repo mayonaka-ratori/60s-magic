@@ -99,7 +99,8 @@ class MlxWhisperEngine:
         model = load_model(self.path)
         self.compute_type = str(getattr(model.encoder.conv1.weight, 'dtype', mx.float16)).replace('mlx.core.', '')
         # 手掛かりの語は文字のまま前置き（initial_prompt）として渡す。mlxには手掛かり専用の入口がない。
-        # 前置きは最初の30秒の窓の解読に入る。この用途の音は14秒までなので、全体に効く。
+        # 前置きは最初の30秒の窓の解読に入る。この用途の音は一回分の受付の最長（src/game/rounds.ts の MAX_INPUT_MS）までで
+        # 30秒より短いので、全体に効く。
         self.hints, self.vocabulary = load_hints(None, hints_enabled(self.kind))
 
     def transcribe(self, audio):

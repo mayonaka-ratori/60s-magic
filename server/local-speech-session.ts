@@ -42,7 +42,7 @@ export function connectLocalSpeech(ws:WebSocket,recognizer:LocalRecognizer) {
     if(!force&&!ended&&(now-lastRequestAt<650||lastSample-firstSample<6400))return;
     // 終了の直前に途中の認識を始めず、最後の音を含む要求を優先する。
     // 境目は、画面側が最後の声を待つ長さ（SPEECH_WAIT_MS）と同じにする。
-    // 一回目（18秒）なら16秒、防御（15秒）なら13秒。回の長さに合わせる。
+    // 受付の長さ（windowMs）から SPEECH_WAIT_MS を引いた所から先は、途中の認識を始めない。回の長さに合わせる。
     if(!ended&&lastSample>=Math.max(0,windowMs-SPEECH_WAIT_MS)*SAMPLES_PER_MS)return;
     // 締め切りに間に合わない認識は始めない。結果を捨てるだけで、直前の結果を送るのも遅れる。
     if(ended&&lastProcessingMs>0&&now+lastProcessingMs>deadline){finish();return;}

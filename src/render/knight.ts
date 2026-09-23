@@ -201,7 +201,7 @@ export const coreCharge=(ms:number,active=true)=>active?clamp((ms-FIRST.inputEnd
 const GUARD_STEPS:Array<{at:number;pose:number;ramp:number}>=[
   {at:0,pose:0,ramp:.5},                        // 待機
   {at:GUARD_FROM,pose:3,ramp:1},                // 構え
-  // 溜め。剣を上げきるまでの長さは回の表から作り、確定の3秒前に上げきる。
+  // 溜め。剣を上げきるまでの長さは回の表から作る。回の始まりの0.2秒後から上げ始め、確定の2.8秒前に上げきる。
   {at:DEFEND.start/1000+.2,pose:4,ramp:(DEFEND.lock-DEFEND.start)/1000-3},
   {at:DEFEND.lock/1000,pose:5,ramp:.55},        // 振り下ろし
   {at:DEFEND.impact/1000,pose:6,ramp:.22},      // 弾かれる
@@ -281,15 +281,15 @@ export function debrisMotion(dt:number,height:number,v:{vx:number;vy:number;vz:n
 }
 
 /**
- * とどめの回の核の明滅（0〜1）。56〜64秒は2秒に1回、64〜72秒は1秒に1回、
- * 確定の0.4秒前から1秒かけて最大の明るさまで上げ、そのあとは最大のままにする。
+ * とどめの回の核の明滅（0〜1）。回の始まり（start）から詠唱の案内（chant）までは2秒に1回、
+ * そこから確定の0.4秒前までは1秒に1回。確定の0.4秒前から1秒かけて最大の明るさまで上げ、そのあとは最大のままにする。
  */
 export function coreBlink(t:number) {
   const start=FINISH.start/1000,fast=FINISH.chant!/1000,aim=FINISH.lock/1000-.4;
   if(t<start)return 0;
   if(t<fast)return .5+.5*Math.sin((t-start)*Math.PI*2/2);
   if(t<aim)return .5+.5*Math.sin((t-fast)*Math.PI*2);
-  // 74.6秒から1秒かけて上げきり、そのあとは最大のまま。
+  // 確定の0.4秒前から1秒かけて上げきり、そのあとは最大のまま。
   const from=.5+.5*Math.sin((aim-fast)*Math.PI*2);
   return from+(1-from)*clamp(t-aim);
 }
@@ -299,14 +299,14 @@ export const idlePulse=(t:number)=>.5+.5*Math.sin(t*12);
 /** ふだんの脈から、とどめの回の明滅へ移り変わる長さ（秒）。 */
 export const CORE_BLEND=.3;
 /**
- * 核の明るさの脈（0〜1）。56秒の手前0.3秒で、速い脈からとどめの回の明滅へ混ぜて移る。
- * 56秒より後で混ぜると、速い脈が56秒をまたいで残り、境目で明るさが大きく動いてしまう。
+ * 核の明るさの脈（0〜1）。とどめの回の始まりの手前0.3秒で、速い脈からとどめの回の明滅へ混ぜて移る。
+ * 始まりより後で混ぜると、速い脈が始まりをまたいで残り、境目で明るさが大きく動いてしまう。
  */
 export function corePulse(t:number) {
   const start=FINISH.start/1000;
   if(t<start-CORE_BLEND)return idlePulse(t);
   const u=smooth(clamp((t-(start-CORE_BLEND))/CORE_BLEND));
-  // 56秒より前の coreBlink は0なので、混ぜ先は56秒の値（0.5）から始める。
+  // 回の始まりより前の coreBlink は0なので、混ぜ先は始まりの値（0.5）から始める。
   return idlePulse(t)*(1-u)+coreBlink(Math.max(t,start))*u;
 }
 
@@ -333,7 +333,7 @@ export function finishFlashAt(t:number) {
 }
 
 /**
- * 防御の回（29秒以降）の姿勢。順に姿勢を移すだけで、入力では変えない。
+ * 防御の回（一回目の受け渡し GUARD_FROM 以降）の姿勢。順に姿勢を移すだけで、入力では変えない。
  * 「返せ」で弾き返したときだけ、騎士が自分の一撃を受けて短くひるむ。
  */
 export function guardPose(ms:number,reduced=false,style:'block'|'reflect'|'erase'='block') {
@@ -1239,7 +1239,7 @@ export class Knight {
     this.shieldFace.emissiveColor.set(this.shieldGlow.r+flare*.55,this.shieldGlow.g+flare*.55,this.shieldGlow.b+flare*.5);
     this.shieldFace.emissiveFresnelParameters?.rightColor.set(flare,flare,flare);
     // 一回目の締め切りからの蓄積で核が明るくなり、命中では前から強く照らす。弱点が出たら脈打つ。
-    // とどめの回は、明滅の速さを回の表から作った corePulse に任せる。56秒の境目もここでつなぐ。
+    // とどめの回は、明滅の速さを回の表から作った corePulse に任せる。回の始まりの境目もここでつなぐ。
     const charge=coreCharge(ms,active);
     const pulse=active?corePulse(t):idlePulse(t);
     const glow=.22+charge*.5+pose.flash*1.5+open*pulse*.7;
