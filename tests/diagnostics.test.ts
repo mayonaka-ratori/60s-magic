@@ -15,6 +15,17 @@ describe('確認用の記録',()=>{
     expect(s.voice.lastResult).toMatchObject({arrivedMs:4000,coversUntilMs:3500,delayMs:500,text:'氷よ',processingMs:1200});
     expect(s.voice.finalReceived).toBe(false);expect(s.events[0]).toMatchObject({atMs:4000,kind:'入力を確定'});
   });
+  it('二回目以降の回でも、声の遅れを本編の開始からの時刻でそろえて出す',()=>{
+    // 声は回ごとに0から数えて届く。二回目の回が本編の開始から50000ms目に始まったとする。
+    let now=0;const d=new Diagnostics(0,()=>now);
+    d.voiceRound(0);now=4000;d.transcript({revision:1,startMs:300,endMs:3500,text:'氷よ',final:true,stability:1,source:'local'});
+    d.voiceRound(50000);d.audio(3208,0);d.audio(3208,200);
+    now=53800;d.transcript({revision:1,startMs:1000,endMs:3200,text:'光よ',final:true,stability:1,source:'local'});
+    const s=d.summary();
+    expect(s.voice.lastResult).toMatchObject({arrivedMs:53800,coversUntilMs:53200,delayMs:600,text:'光よ'});
+    expect(s.voice.firstAudioMs).toBe(50000);expect(s.voice.lastAudioMs).toBe(50200);
+    expect(s.voice.arrivals.map(t=>[t.roundStartMs,t.startMs,t.endMs])).toEqual([[0,300,3500],[50000,51000,53200]]);
+  });
   it('手の認識にかかった時間と、GPUとCPUのどちらで動いたかを残す',()=>{
     const d=new Diagnostics(0,()=>0);
     d.cameraDelegate='GPU';

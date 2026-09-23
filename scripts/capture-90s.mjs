@@ -1,6 +1,6 @@
 // 仮の時計で90秒を進めながら画面写真を撮る確認用の台本。先に npm run dev を起動しておく。
 //
-// 写真は test-results/capture/遊び方/ に出る。--flow=sequential または --flow=together で選ぶ。
+// 写真は test-results/capture/sequential/ または test-results/capture/together/ に出る。--flow=sequential または --flow=together で選ぶ。
 // Chromium は Playwright が入れたものを使う。別の場所のものを使いたいときだけ、
 // 環境変数 CAPTURE_CHROMIUM にその場所を入れる（PLAYWRIGHT_BROWSERS_PATH も効く）。
 import { chromium } from '@playwright/test';
@@ -22,7 +22,7 @@ await page.goto(pageUrl+'&dev=1');
 await page.locator('#loading').waitFor({ state: 'hidden', timeout: 90000 });
 await page.clock.runFor(500); await page.evaluate(() => window.__flushRaf());
 await page.locator(startButton).click();
-// 準備の3秒。ここまでは時計を動かしたまま。
+// 準備の合図（COUNTDOWN_MS）。ここまでは時計を動かしたまま。
 for (let i = 0; i < 40; i++) { await page.waitForTimeout(250); await page.evaluate(() => window.__flushRaf()); if (await page.locator('#countdown').isHidden() && await page.locator('#hud').isVisible()) break; }
 // ここで時計を止め、以後は runFor で進めた分だけ動かす。
 await page.clock.pauseAt(await page.evaluate(() => Date.now() + 200));

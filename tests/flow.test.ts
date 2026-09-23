@@ -129,7 +129,7 @@ describe('二つの遊び方', () => {
     const entry={id:0,revision:1,startMs:change-base.start,endMs:change-base.start+1,text:'氷',final:true,stability:1,source:'typed' as const};
     cast.speech.add({...entry,startMs:0}); expect(cast.speech.live()).toHaveLength(0);
     cast.speech.add(entry); const state=cast.freeze();
-    expect(state.timedEvents.find(e=>e.speech)?.startMs).toBe(change);
+    expect(state.timedEvents.find(e=>e.speech)?.startMs).toBe(change-base.start);
     expect(state.inputWindow.motionAndSpeechConcurrent).toBe(FLOW==='together');
     now=base.inputEnd; expect(cast.acceptingVoice).toBe(false);
   });
@@ -150,10 +150,13 @@ describe('二つの遊び方', () => {
   it('設計の時刻で三回をつなぎ、両方とも90秒で終える', () => {
     expect(TOGETHER_ROUNDS.map(r => [r.start, r.end])).toEqual([[0,30000],[30000,56000],[56000,90000]]);
     expect(SEQUENTIAL_ROUNDS.map(r => [r.start,r.inputEnd,r.lock,r.release,r.impact,r.handoff,r.end])).toEqual([
-      [0,14000,17000,18000,19500,24000,26000],
-      [26000,38000,40000,41000,42400,46000,50000],
+      [0,14000,17000,18000,19500,25000,26000],
+      [26000,38000,40000,41000,42400,47000,50000],
       [50000,72000,75000,76000,77600,84000,90000],
     ]);
+    // 発動から次の場面へ渡すまでの長さは、仕様どおり二つの遊び方でそろえる（一回目7秒、防御6秒）。
+    const 発動の場面=(rounds:typeof ROUNDS)=>rounds.slice(0,2).map(r=>r.handoff-r.release);
+    expect(発動の場面(SEQUENTIAL_ROUNDS)).toEqual(発動の場面(TOGETHER_ROUNDS));
     let now=0; const battle=new Battle(()=>now);
     for(const round of ROUNDS) {
       now=round.start; battle.tick(); expect(battle.active.round).toBe(round);

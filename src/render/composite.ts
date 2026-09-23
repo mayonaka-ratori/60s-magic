@@ -69,7 +69,7 @@ export const SLAM_AT = ENEMY_SLAM_MS / 1000;
 export const SLAM_RIPPLE_Y = .72;
 
 /**
- * その回で重い後処理を入れる時刻と切る時刻（秒）。一回目は 21.9 と 26 になる。
+ * その回で重い後処理を入れる時刻と切る時刻（秒）。一回目は POST_FROM と POST_TO（発動の0.1秒前と、命中の2.5秒後）になる。
  * 防御の回は、発動より先に敵の一撃が床を打つ（確定の0.55秒後）ので、その0.1秒前から入れる。
  */
 export const postFromOf = (beat: Beat = BEATS[0]) => (beat.defend ? Math.min(beat.release, SLAM_AT) : beat.release) - (RELEASE_AT - POST_FROM);
@@ -133,7 +133,7 @@ export const GIVE_UP_WARMUP = 90, GIVE_UP_FRAMES = 60;
 export const WARMUP_FRAMES = GIVE_UP_WARMUP + GIVE_UP_FRAMES;
 /**
  * 合成をやめるかどうか。時刻とブルームの状態も見る（画面には触らない計算だけ）。
- * - 山場（一回目は21.9〜26秒、回ごとに発動の直前から余韻まで）の間は判定を止める。命中の途中で合成が消えると絵が一瞬で変わってしまうため。
+ * - 山場（一回目は POST_FROM〜POST_TO、回ごとに発動の直前から余韻まで）の間は判定を止める。命中の途中で合成が消えると絵が一瞬で変わってしまうため。
  * - 先にブルームを切る段を挟む。ブルームが付いている間はやめず、切れてもなお遅いときだけやめる。
  */
 export function giveUpDecision(fps: number, lowFrames: number, frames: number, t: number, bloomOn: boolean, beat: Beat = BEATS[0]) {
@@ -424,7 +424,7 @@ export class Composite {
 
   /**
    * 合成を使ってよいかどうか。cast-scene が毎コマ渡す。
-   * ここで決まるのは「描いてよいか」だけで、実際に見せ始めるのは showFrom（既定は21.5秒）から。
+   * ここで決まるのは「描いてよいか」だけで、実際に見せ始めるのは showFrom（既定は SHOW_FROM。一回目の確定の0.5秒後）から。
    */
   setActive(on: boolean) {
     if (this.gaveUp) on = false;

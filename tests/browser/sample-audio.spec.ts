@@ -1,9 +1,13 @@
 import { test,expect } from '@playwright/test';
-import { 中止して記録を読む,防御の回まで待つ } from './cancel-record';
-import { 一回目に鳴る音 } from './sound-order';
+import { ENEMY_MOVES } from '../../src/game/rounds';
+import { 中止して記録を読む,声を試験用の返事にする,防御の回まで待つ } from './cancel-record';
+import { 順番に一回目に鳴る音 } from './sound-order';
 
-/** 素材を使うかどうかも合わせて見る。素材を置いた合図だけが true になる。どちらも一回目で鳴る。 */
-const 鳴る音と素材=一回目に鳴る音.map(name=>[name,name==='complete'||name==='impact']);
+/**
+ * 素材を使うかどうかも合わせて見る。素材を置いた合図だけが true になる。どちらも一回目で鳴る。
+ * 「順番に」の防御の回は、始まりと同時に線の合図（trace）が鳴るので、防御の回に入ったと分かった時点でこれも入っている。
+ */
+const 鳴る音と素材=[...順番に一回目に鳴る音,'trace'].map(name=>[name,name==='complete'||name==='impact']);
 
 /** 短い正弦波のWAVを作る。外部の素材の代わりに、読み込みと再生の経路だけを確かめる。 */
 function wav(seconds:number,frequency:number,level:number) {
@@ -31,7 +35,8 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばし、�
     const probe={peak:0,rms:0};(window as any).__soundProbe=probe;
     const connect=AudioNode.prototype.connect;
     AudioNode.prototype.connect=function(destination:any,...args:any[]):any {
-      if(destination===this.context.destination) {
+      // 声の取り込みは、音量0の段を通して出力へつなぐだけで音を出さない。測ると0で上書きされるので、曲と効果音の出口だけを測る。
+      if(destination===this.context.destination&&!(this instanceof GainNode&&this.gain.value===0)) {
         const analyser=this.context.createAnalyser();analyser.fftSize=2048;(connect as any).call(this,analyser);(connect as any).call(analyser,destination);
         const data=new Float32Array(2048);
         setInterval(()=>{analyser.getFloatTimeDomainData(data);let sum=0;for(const value of data){probe.peak=Math.max(probe.peak,Math.abs(value));sum+=value*value;}probe.rms=Math.sqrt(sum/data.length);},20);
@@ -40,11 +45,16 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばし、�
       return (connect as any).call(this,destination,...args);
     };
   });
-  await page.goto('/?dev=1&flow=together');await page.locator('.sound-settings summary').click();await page.locator('#test-sound').click();
+  await 声を試験用の返事にする(page,'雷よ、七つに分かれろ');
+  // 何も付けないURLは「順番に」。
+  await page.goto('/?dev=1');await expect(page.locator('#app')).toHaveAttribute('data-flow','sequential');
+  await expect(page.locator('#use-voice')).toBeEnabled();await expect(page.locator('#use-voice')).toBeChecked();
+  await page.locator('.sound-settings summary').click();await page.locator('#test-sound').click();
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.peak)).toBeGreaterThan(.001);
-  await page.locator('#start').click();await page.locator('#chant').fill('雷よ、七つに分かれろ');
-  // 最初の合図は7秒なので、それより前にここで音が出ていれば曲が鳴っている。
-  await page.waitForTimeout(1500);
+  await page.locator('#start').click();await expect(page.locator('#app')).toHaveAttribute('data-screen','playing',{timeout:15000});
+  // 最初の合図は騎士の足踏みなので、その半分の時刻で音が出ていれば曲が鳴っている。
+  // 一回目は声の受付中なので曲は下がっているが、止まってはいない。
+  await page.waitForTimeout(ENEMY_MOVES[0].at/2);
   expect(await page.evaluate(()=>(window as any).__soundProbe.rms)).toBeGreaterThan(.001);
   // 素材を使う合図（完成と命中）は一回目で鳴るので、90秒の終わりまでは待たない。防御の回に入ったところで中止して記録を読む。
   await 防御の回まで待つ(page);
@@ -53,6 +63,8 @@ test('置いた素材で曲と効果音が鳴り、無い素材は飛ばし、�
   expect(report.audio.credits).toEqual(['テスト用の曲']);
   // 記録は中止の直前に取るので、曲はまだ鳴っている。
   expect(report.audio.bgmStartedAtMs).toBeLessThan(1000);expect(report.audio.bgm).toBe('playing');
+  // マイクは使っているが、手だけの防御の回は声を受け付けないので、曲と効果音を下げていない。
+  expect(report.flow).toBe('sequential');expect(report.audio.microphone).toBe(true);expect(report.audio.ducked).toBe(false);
   expect(report.audio.events.map((e:{name:string;sample:boolean})=>[e.name,e.sample])).toEqual(鳴る音と素材);
   // 曲は中止したあとに止まる。終了のときも同じ止め方を通る。
   await expect.poll(()=>page.evaluate(()=>(window as any).__soundProbe.rms),{timeout:2000,intervals:[50]}).toBeLessThan(.00001);

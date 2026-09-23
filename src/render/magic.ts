@@ -144,7 +144,7 @@ export class MagicCanvas {
     const beat = input.beat ?? beatAt(t);
     const drawEnd=beat.drawEnd??beat.inputEnd,cursors=t<drawEnd?input.cursors:[];
     c.clearRect(0, 0, w, h);
-    // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前（29.5秒）で変わらない。
+    // 余韻（命中から4.5秒）が消えきるまでは切らない。一回目は回の終わりの0.5秒前のままで変わらない。
     const stopAt = stopAtOf(beat);
     if (ready || t >= stopAt) { if (this.fired.size || this.pool.count) this.reset(); this.state = still; return; }
     // 時刻が戻ったら（確認画面のつまみなど）粒と一度きりの発生をやり直す。

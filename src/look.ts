@@ -40,11 +40,11 @@ try { renderer = new CompletedSpell(canvas); knight = new Knight(el<HTMLCanvasEl
 catch { el('loading').textContent = '光の表示を準備できませんでした。ブラウザーの画像処理の設定を確認してください。'; throw new Error('確認画面のWebGL初期化に失敗'); }
 
 // 本編と同じ時刻で姿勢を止める。時刻は回の表の命中から作り、この画面に秒数を書かない。
-// 被弾は命中の0.2秒後（23.7秒）、構えを戻す途中は命中の1.4秒後（24.9秒）。
-// 本編では命中の0.62秒後（24.1秒）から戻り始め、24.3〜25.2秒がその姿勢。
+// 被弾は命中の0.2秒後、構えを戻す途中は命中の1.4秒後。
+// 本編では命中の0.62秒後から戻り始め、命中の0.8〜1.7秒後がその姿勢。
 const IMPACT_MS = ROUNDS[0].impact;
 const poseTimes: Record<string, number> = { idle: 0, hit: IMPACT_MS + 200, recover: IMPACT_MS + 1400 };
-/** 秒で書くときの見せ方。24900なら「24.9」。 */
+/** 秒で書くときの見せ方。12345なら「12.3」。 */
 const seconds = (ms: number) => (ms / 1000).toFixed(1);
 let pose = 'idle';
 let animation = requestAnimationFrame(function frame(now: number) {

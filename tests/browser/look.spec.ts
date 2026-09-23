@@ -1,15 +1,20 @@
 import { test, expect } from '@playwright/test';
+import { SEQUENTIAL_ROUNDS } from '../../src/game/rounds';
+
+/** 被弾の姿勢は、一回目の命中の時刻で止める。何も付けないURLは「順番に」なので、その表の命中を秒で書いたもの。 */
+const 命中の秒 = `${(SEQUENTIAL_ROUNDS[0].impact / 1000).toFixed(1)}秒`;
 
 test('見本と比較し、自分の線を完成形にできる', async ({page}) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('/?view=look&flow=together');
+  await page.goto('/?view=look');
   await expect(page.locator('#loading')).toBeHidden();
   await expect(page.locator('#spell')).toHaveAttribute('data-state','complete');
   await page.screenshot({path:'test-results/look-complete.png'});
   await expect(page.locator('#knight')).toHaveAttribute('data-state','idle');
   await page.getByRole('button',{name:'被弾'}).click();
   await expect(page.locator('#knight')).toHaveAttribute('data-state','hit');
+  await expect(page.locator('#note')).toContainText(命中の秒);
   await page.screenshot({path:'test-results/look-knight-hit.png'});
   await page.getByRole('button',{name:'構えを戻す'}).click();
   await expect(page.locator('#knight')).toHaveAttribute('data-state','recover');

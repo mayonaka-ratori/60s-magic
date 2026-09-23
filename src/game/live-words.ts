@@ -51,7 +51,7 @@ function firstHeard(key: string, heard: number) {
  * 音声の記録から、演出が反応すべき言葉を取り出す。語彙は spell-words.ts の表だけを見る。
  * offsetMs は、その回が始まった時刻。声の時刻は回ごとに0から数え直すので、
  * 演出が見る戦いの時刻へそろえるために足す。足さないと、防御の回は言葉への反応が
- * すべて「30秒前の言葉」になり、反応の窓から外れて一つも出なくなる。
+ * すべて「その回の始まりの分だけ前の言葉」になり、反応の窓から外れて一つも出なくなる。
  */
 export function liveWords(entries: readonly SpeechEntry[], offsetMs = 0): LiveWord[] {
   // まだ何も聞こえていない間は、この回の覚え書きを捨てる。

@@ -27,7 +27,8 @@ from download_model import default_preset, model_dir
 ROOT = Path(__file__).resolve().parents[1]
 PRESET = default_preset()
 MODEL_DIR = Path(os.environ.get('LOCAL_SPEECH_MODEL') or str(model_dir(PRESET)))
-# ゲーム側の受付上限を使う。単独の確認では、両方の遊び方を含む22秒分を受け付ける。
+# ゲーム側の受付上限を使う。サーバー（server/local-speech.ts）は src/game/rounds.ts の MAX_INPUT_SAMPLES から渡す。
+# 下の既定値は単独の確認（--check）のときだけ使う控えで、今の MAX_INPUT_MS と同じ長さ。表を変えたらここも合わせる。
 MAX_PCM_BYTES = int(os.environ.get('LOCAL_SPEECH_MAX_PCM_BYTES', 22 * 16000 * 2))
 
 
@@ -39,7 +40,7 @@ def main():
     try:
         started = time.perf_counter()
         engine = create_engine(MODEL_DIR)
-        # 読み込みと初回処理は24秒が始まる前に終える。二回通すのは、
+        # 読み込みと初回処理は本編が始まる前に終える。二回通すのは、
         # 一回目だけ極端に遅くなる動かし方があるため。
         for _ in range(2):
             engine.transcribe(silence(1.0))
