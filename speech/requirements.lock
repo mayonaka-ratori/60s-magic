@@ -8,9 +8,9 @@ av==18.1.0
     # via
     #   -c /tmp/claude-0/-home-user-60s-magic/a076eb52-4526-51df-8cbc-9f9403f40a39/scratchpad/old.lock
     #   faster-whisper
-certifi==2026.7.22
+certifi==2026.10.19
     # via
-    #   -c /tmp/claude-0/-home-user-60s-magic/a076eb52-4526-51df-8cbc-9f9403f40a39/scratchpad/old.lock
+    #   -r speech/requirements.in
     #   httpcore
     #   httpx
     #   requests
