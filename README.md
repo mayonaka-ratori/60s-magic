@@ -11,7 +11,19 @@
 
 ## 起動する
 
-Node.js 22.12以上、Chrome、Pythonの準備に使う [uv](https://docs.astral.sh/uv/getting-started/installation/) が必要です。WindowsとMacの両方で動きます。プロジェクトのフォルダーで実行してください。
+Node.jsは22.23.4以上の22系、24.22.1以上の24系、または26.12.1以上を使ってください。Chromeと、Pythonの準備に使う [uv](https://docs.astral.sh/uv/getting-started/installation/) の0.13.4以上も必要です。WindowsとMacの両方で動きます。プロジェクトのフォルダーで実行してください。
+
+2026年10月21日、eMudhraの証明書の問題に対応し、通信相手を確かめるための部品を更新しました。すでに準備済みのPCでも、上記のNode.jsとuvへ更新し、次のコマンドで音声認識用の環境を更新してください。モデルの取り直しは不要です。
+
+```powershell
+# Windows
+uv pip sync speech/requirements.lock --python .venv-speech/Scripts/python.exe
+```
+
+```bash
+# Mac・Linux
+uv pip sync speech/requirements.lock --python .venv-speech/bin/python
+```
 
 ```
 npm ci
